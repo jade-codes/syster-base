@@ -1,0 +1,17 @@
+# Release workflow using reusable syster-pipelines workflow
+# See: https://github.com/jade-codes/syster-pipelines
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - 'v[0-9]+.[0-9]+.[0-9]+-*'  # Pre-releases like v0.1.0-alpha
+
+jobs:
+  rust-release:
+    permissions:
+      contents: write
+      id-token: write
+    uses: jade-codes/syster-pipelines/.github/workflows/rust-release.yml@main

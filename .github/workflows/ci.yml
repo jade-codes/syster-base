@@ -1,0 +1,14 @@
+# CI workflow using reusable syster-pipelines workflow
+# See: https://github.com/jade-codes/syster-pipelines
+
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  rust-ci:
+    uses: jade-codes/syster-pipelines/.github/workflows/rust-ci.yml@main
