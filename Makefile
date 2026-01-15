@@ -1,4 +1,4 @@
-.PHONY: help build run test clean fmt lint check run-guidelines
+.PHONY: help build run test clean fmt lint check run-guidelines package
 
 help:
 	@echo "Available targets:"
@@ -55,3 +55,8 @@ run-guidelines:
 	@cargo test
 	@echo ""
 	@echo "=== ✓ All guidelines passed! ==="
+
+package:
+	@echo "Building package..."
+	@cargo build --release
+	@echo "✓ Package built"
