@@ -1,0 +1,25 @@
+[package]
+name = "syster-base"
+version = "0.1.8-alpha"
+edition = "2024"
+rust-version = "1.85"
+authors = ["jade-codes"]
+license = "MIT"
+repository = "https://github.com/jade-codes/syster-base"
+description = "Core library for SysML v2 and KerML parsing, AST, and semantic analysis"
+
+[lib]
+name = "syster"
+path = "src/lib.rs"
+
+[dependencies]
+pest = "2.7"
+pest_derive = "2.7"
+from-pest = "0.3"
+pest-ast = "0.3"
+rayon = "1.10"
+unicode-ident = "1.0"
+rowan = "0.16.1"
+
+[dev-dependencies]
+rstest = "0.25"
