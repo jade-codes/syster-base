@@ -27,6 +27,7 @@ pub enum Symbol {
         scope_id: usize,
         source_file: Option<String>,
         span: Option<Span>,
+        documentation: Option<String>,
     },
     Classifier {
         name: String,
@@ -36,6 +37,7 @@ pub enum Symbol {
         scope_id: usize,
         source_file: Option<String>,
         span: Option<Span>,
+        documentation: Option<String>,
     },
     Feature {
         name: String,
@@ -44,6 +46,7 @@ pub enum Symbol {
         feature_type: Option<String>,
         source_file: Option<String>,
         span: Option<Span>,
+        documentation: Option<String>,
     },
     Definition {
         name: String,
@@ -53,6 +56,7 @@ pub enum Symbol {
         scope_id: usize,
         source_file: Option<String>,
         span: Option<Span>,
+        documentation: Option<String>,
     },
     Usage {
         name: String,
@@ -63,6 +67,7 @@ pub enum Symbol {
         scope_id: usize,
         source_file: Option<String>,
         span: Option<Span>,
+        documentation: Option<String>,
     },
     Alias {
         name: String,
@@ -164,6 +169,18 @@ impl Symbol {
         match self {
             Symbol::Feature { feature_type, .. } => feature_type.as_deref(),
             _ => None,
+        }
+    }
+
+    /// Returns the documentation for this symbol, if any
+    pub fn documentation(&self) -> Option<&str> {
+        match self {
+            Symbol::Package { documentation, .. }
+            | Symbol::Classifier { documentation, .. }
+            | Symbol::Feature { documentation, .. }
+            | Symbol::Definition { documentation, .. }
+            | Symbol::Usage { documentation, .. } => documentation.as_deref(),
+            Symbol::Alias { .. } | Symbol::Import { .. } => None,
         }
     }
 }

@@ -242,6 +242,33 @@ impl ReferenceIndex {
             .collect()
     }
 
+    /// Find the reference target at a given position in a file.
+    ///
+    /// Returns the target name (what is being referenced) if the position
+    /// falls within a reference span. This is used for hover and go-to-definition.
+    ///
+    /// # Arguments
+    /// * `file_path` - The file to search in
+    /// * `position` - The cursor position (0-indexed line and column)
+    ///
+    /// # Returns
+    /// The target name if found, or None if no reference is at that position.
+    pub fn get_reference_at_position(
+        &self,
+        file_path: &str,
+        position: crate::core::Position,
+    ) -> Option<&str> {
+        let path = PathBuf::from(file_path);
+        for (target_name, entry) in &self.reverse {
+            for ref_info in &entry.references {
+                if ref_info.file == path && ref_info.span.contains(position) {
+                    return Some(target_name.as_str());
+                }
+            }
+        }
+        None
+    }
+
     /// Re-resolve simple reference targets to qualified names using the provided resolver.
     ///
     /// Called after import resolution to update references that were stored with simple names
@@ -385,5 +412,57 @@ mod tests {
 
         assert_eq!(index.target_count(), 2); // Vehicle, Engine
         assert_eq!(index.reference_count(), 3); // Car→Vehicle, Car→Engine, Truck→Vehicle
+    }
+
+    #[test]
+    fn test_get_reference_at_position() {
+        let mut index = ReferenceIndex::new();
+        let file = PathBuf::from("test.sysml");
+
+        // Add reference at line 5, columns 10-20
+        let span = Span::new(Position::new(5, 10), Position::new(5, 20));
+        index.add_reference("Car", "Vehicle", Some(&file), Some(span));
+
+        // Position inside the reference span
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(5, 15)),
+            Some("Vehicle")
+        );
+
+        // Position at start of span
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(5, 10)),
+            Some("Vehicle")
+        );
+
+        // Position at end of span
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(5, 20)),
+            Some("Vehicle")
+        );
+
+        // Position before span
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(5, 5)),
+            None
+        );
+
+        // Position after span
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(5, 25)),
+            None
+        );
+
+        // Different line
+        assert_eq!(
+            index.get_reference_at_position("test.sysml", Position::new(6, 15)),
+            None
+        );
+
+        // Different file
+        assert_eq!(
+            index.get_reference_at_position("other.sysml", Position::new(5, 15)),
+            None
+        );
     }
 }

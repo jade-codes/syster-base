@@ -1,11 +1,67 @@
 use crate::semantic::symbol_table::Symbol;
 use crate::semantic::types::TokenType;
+use crate::syntax::sysml::ast::enums::DefinitionMember;
 use crate::syntax::sysml::ast::{
     Alias, Comment, Definition, Import, NamespaceDeclaration, Package, Usage,
 };
 use crate::syntax::sysml::visitor::AstVisitor;
 
 use crate::semantic::adapters::SysmlAdapter;
+
+/// Extract documentation from a definition body.
+/// Returns the content of the first `doc /* ... */` comment found.
+fn extract_doc_from_definition(body: &[DefinitionMember]) -> Option<String> {
+    for member in body {
+        if let DefinitionMember::Comment(comment) = member {
+            let content = comment.content.trim();
+            // Check if it's a doc comment (starts with "doc")
+            if content.starts_with("doc") {
+                // Extract the comment text from "doc /* text */" or "doc text;"
+                return Some(extract_doc_text(content));
+            }
+        }
+    }
+    None
+}
+
+/// Extract documentation from a usage body.
+fn extract_doc_from_usage(
+    body: &[crate::syntax::sysml::ast::enums::UsageMember],
+) -> Option<String> {
+    for member in body {
+        if let crate::syntax::sysml::ast::enums::UsageMember::Comment(comment) = member {
+            let content = comment.content.trim();
+            if content.starts_with("doc") {
+                return Some(extract_doc_text(content));
+            }
+        }
+    }
+    None
+}
+
+/// Extract the text content from a doc comment.
+/// Handles: "doc /* text */", "doc name /* text */", "doc;"
+fn extract_doc_text(doc: &str) -> String {
+    // Remove "doc" prefix
+    let rest = doc.strip_prefix("doc").unwrap_or(doc).trim();
+
+    // Try to extract content from /* ... */
+    if let Some(start) = rest.find("/*") {
+        if let Some(end) = rest.rfind("*/") {
+            let inner = &rest[start + 2..end];
+            // Clean up the text: trim whitespace and asterisks from each line
+            return inner
+                .lines()
+                .map(|line| line.trim().trim_start_matches('*').trim())
+                .filter(|line| !line.is_empty())
+                .collect::<Vec<_>>()
+                .join(" ");
+        }
+    }
+
+    // No block comment, return empty or the identifier
+    String::new()
+}
 
 impl<'a> AstVisitor for SysmlAdapter<'a> {
     fn visit_namespace(&mut self, namespace: &NamespaceDeclaration) {
@@ -18,6 +74,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             scope_id,
             source_file: current_file,
             span: namespace.span,
+            documentation: None, // Namespace declarations don't have doc bodies
         };
         self.insert_symbol(namespace.name.clone(), symbol);
         self.enter_namespace(namespace.name.clone());
@@ -34,6 +91,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                 scope_id,
                 source_file,
                 span: package.span,
+                documentation: None, // TODO: extract from package elements if needed
             };
             self.insert_symbol(name.clone(), symbol);
             self.enter_namespace(name.clone());
@@ -46,6 +104,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             let kind = Self::map_definition_kind(&definition.kind);
             let semantic_role = Self::definition_kind_to_semantic_role(&definition.kind);
             let scope_id = self.symbol_table.current_scope_id();
+            let documentation = extract_doc_from_definition(&definition.body);
             let symbol = Symbol::Definition {
                 name: name.clone(),
                 qualified_name: qualified_name.clone(),
@@ -54,6 +113,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                 scope_id,
                 source_file: self.symbol_table.current_file().map(String::from),
                 span: definition.span,
+                documentation,
             };
             self.insert_symbol(name.clone(), symbol);
 
@@ -201,6 +261,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         let kind = Self::map_usage_kind(&usage.kind);
         let semantic_role = Self::usage_kind_to_semantic_role(&usage.kind);
         let scope_id = self.symbol_table.current_scope_id();
+        let documentation = extract_doc_from_usage(&usage.body);
 
         let symbol = Symbol::Usage {
             name: name.clone(),
@@ -211,6 +272,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             scope_id,
             source_file: self.symbol_table.current_file().map(String::from),
             span: name_span,
+            documentation,
         };
         self.insert_symbol(name.clone(), symbol);
 

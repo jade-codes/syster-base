@@ -6,16 +6,51 @@ use crate::syntax::kerml::ast::{
 
 use crate::semantic::adapters::KermlAdapter;
 
+/// Extract documentation from KerML package elements (first doc comment in body)
+fn extract_doc_from_elements(elements: &[Element]) -> Option<String> {
+    elements.iter().find_map(|el| {
+        if let Element::Comment(c) = el {
+            Some(c.content.clone())
+        } else {
+            None
+        }
+    })
+}
+
+/// Extract documentation from KerML classifier body (first doc comment)
+fn extract_doc_from_classifier_body(body: &[ClassifierMember]) -> Option<String> {
+    body.iter().find_map(|m| {
+        if let ClassifierMember::Comment(c) = m {
+            Some(c.content.clone())
+        } else {
+            None
+        }
+    })
+}
+
+/// Extract documentation from KerML feature body (first doc comment)
+fn extract_doc_from_feature_body(body: &[FeatureMember]) -> Option<String> {
+    body.iter().find_map(|m| {
+        if let FeatureMember::Comment(c) = m {
+            Some(c.content.clone())
+        } else {
+            None
+        }
+    })
+}
+
 impl<'a> KermlAdapter<'a> {
     pub(super) fn visit_namespace(&mut self, namespace: &NamespaceDeclaration) {
         let qualified_name = self.qualified_name(&namespace.name);
         let scope_id = self.symbol_table.current_scope_id();
+        // Namespace declarations don't have a body, so no documentation
         let symbol = Symbol::Package {
             name: namespace.name.clone(),
             qualified_name,
             scope_id,
             source_file: self.symbol_table.current_file().map(String::from),
             span: namespace.span,
+            documentation: None,
         };
         self.insert_symbol(namespace.name.clone(), symbol);
         self.enter_namespace(namespace.name.clone());
@@ -25,12 +60,14 @@ impl<'a> KermlAdapter<'a> {
         if let Some(name) = &package.name {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
+            let documentation = extract_doc_from_elements(&package.elements);
             let symbol = Symbol::Package {
                 name: name.clone(),
                 qualified_name,
                 scope_id,
                 source_file: self.symbol_table.current_file().map(String::from),
                 span: package.span,
+                documentation,
             };
             self.insert_symbol(name.clone(), symbol);
             self.enter_namespace(name.clone());
@@ -66,6 +103,7 @@ impl<'a> KermlAdapter<'a> {
         if let Some(name) = &classifier.name {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
+            let documentation = extract_doc_from_classifier_body(&classifier.body);
 
             let (use_classifier_symbol, kind_str) = match classifier.kind {
                 ClassifierKind::Classifier => (true, "Classifier"),
@@ -89,6 +127,7 @@ impl<'a> KermlAdapter<'a> {
                     scope_id,
                     source_file: self.symbol_table.current_file().map(String::from),
                     span: classifier.span,
+                    documentation,
                 }
             } else {
                 Symbol::Definition {
@@ -99,6 +138,7 @@ impl<'a> KermlAdapter<'a> {
                     scope_id,
                     source_file: self.symbol_table.current_file().map(String::from),
                     span: classifier.span,
+                    documentation,
                 }
             };
             self.insert_symbol(name.clone(), symbol);
@@ -133,6 +173,7 @@ impl<'a> KermlAdapter<'a> {
         if let Some(name) = &feature.name {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
+            let documentation = extract_doc_from_feature_body(&feature.body);
             let symbol = Symbol::Feature {
                 name: name.clone(),
                 qualified_name: qualified_name.clone(),
@@ -140,6 +181,7 @@ impl<'a> KermlAdapter<'a> {
                 feature_type: None,
                 source_file: self.symbol_table.current_file().map(String::from),
                 span: feature.span,
+                documentation,
             };
             self.insert_symbol(name.clone(), symbol);
             self.enter_namespace(name.clone());

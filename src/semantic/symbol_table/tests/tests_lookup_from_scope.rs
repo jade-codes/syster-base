@@ -10,6 +10,7 @@ fn test_lookup_from_scope_in_current_scope() {
 
     // Insert symbol in root scope (scope 0)
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -33,6 +34,7 @@ fn test_lookup_from_scope_in_parent_scope() {
 
     // Insert symbol in root scope (scope 0)
     let parent_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -61,6 +63,7 @@ fn test_lookup_from_scope_in_grandparent_scope() {
 
     // Insert symbol in root scope (scope 0)
     let root_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -92,6 +95,7 @@ fn test_lookup_from_scope_not_found() {
 
     // Insert a different symbol
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -114,6 +118,7 @@ fn test_lookup_from_scope_symbol_shadowing() {
 
     // Insert symbol in root scope
     let parent_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -135,6 +140,7 @@ fn test_lookup_from_scope_symbol_shadowing() {
         qualified_name: "Parent::Child::Symbol".to_string(),
         kind: "Class".to_string(),
         is_abstract: false,
+        documentation: None,
     };
 
     table.insert("Symbol".to_string(), child_symbol).unwrap();
@@ -155,6 +161,7 @@ fn test_lookup_from_scope_from_root() {
 
     // Insert symbol in root scope
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -181,6 +188,7 @@ fn test_lookup_from_scope_no_sibling_access() {
     // Enter first child scope
     table.enter_scope();
     let sibling1_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 1,
         source_file: None,
         span: None,
@@ -214,6 +222,7 @@ fn test_lookup_from_scope_different_symbol_types() {
         .insert(
             "RootPkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -236,6 +245,7 @@ fn test_lookup_from_scope_different_symbol_types() {
                 qualified_name: "RootPkg::MyClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -252,6 +262,7 @@ fn test_lookup_from_scope_different_symbol_types() {
                 name: "MyFeature".to_string(),
                 qualified_name: "RootPkg::MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
+                documentation: None,
             },
         )
         .unwrap();
@@ -260,7 +271,13 @@ fn test_lookup_from_scope_different_symbol_types() {
     let resolver = Resolver::new(&table);
     let pkg = resolver.resolve_in_scope("RootPkg", feature_scope);
     assert!(pkg.is_some());
-    assert!(matches!(pkg.unwrap(), Symbol::Package { .. }));
+    assert!(matches!(
+        pkg.unwrap(),
+        Symbol::Package {
+            documentation: None,
+            ..
+        }
+    ));
 
     let resolver = Resolver::new(&table);
     let class = resolver.resolve_in_scope("MyClass", feature_scope);
@@ -280,6 +297,7 @@ fn test_lookup_from_scope_deeply_nested() {
 
     // Insert symbol at root (level 0)
     let root_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -295,6 +313,7 @@ fn test_lookup_from_scope_deeply_nested() {
         let scope_id = table.enter_scope();
         scope_ids.push(scope_id);
         let symbol = Symbol::Package {
+            documentation: None,
             scope_id: i,
             source_file: None,
             span: None,
@@ -368,6 +387,7 @@ fn test_lookup_from_scope_no_child_access() {
 
     // Insert symbol in root scope
     let root_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -380,6 +400,7 @@ fn test_lookup_from_scope_no_child_access() {
     // Enter child scope and add a symbol there
     table.enter_scope();
     let child_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 1,
         source_file: None,
         span: None,
@@ -406,6 +427,7 @@ fn test_lookup_from_scope_with_alias() {
         .insert(
             "RealSymbol".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -442,7 +464,13 @@ fn test_lookup_from_scope_with_alias() {
     let resolver = Resolver::new(&table);
     let real = resolver.resolve_in_scope("RealSymbol", child_scope);
     assert!(real.is_some());
-    assert!(matches!(real.unwrap(), Symbol::Package { .. }));
+    assert!(matches!(
+        real.unwrap(),
+        Symbol::Package {
+            documentation: None,
+            ..
+        }
+    ));
 }
 
 /// Test lookup with Definition and Usage symbols
@@ -462,6 +490,7 @@ fn test_lookup_from_scope_definition_and_usage() {
                 qualified_name: "MyDef".to_string(),
                 kind: "Part".to_string(),
                 semantic_role: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -480,6 +509,7 @@ fn test_lookup_from_scope_definition_and_usage() {
                 name: "MyUsage".to_string(),
                 qualified_name: "MyUsage".to_string(),
                 kind: "Part".to_string(),
+                documentation: None,
             },
         )
         .unwrap();
@@ -509,6 +539,7 @@ fn test_lookup_from_scope_idempotent() {
     let mut table = SymbolTable::new();
 
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,

@@ -40,6 +40,7 @@ fn test_new_adapter_can_access_symbol_table() {
         .insert(
             "TestSymbol".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "TestSymbol".to_string(),
                 qualified_name: "TestSymbol".to_string(),
                 scope_id: 0,
@@ -76,6 +77,7 @@ fn test_new_with_populated_symbol_table() {
             .insert(
                 format!("Symbol{i}"),
                 Symbol::Package {
+                    documentation: None,
                     name: format!("Symbol{i}"),
                     qualified_name: format!("Symbol{i}"),
                     scope_id: 0,
@@ -186,6 +188,7 @@ fn test_adapter_can_be_created_in_nested_scope() {
             .insert(
                 "InnerSymbol".to_string(),
                 Symbol::Package {
+                    documentation: None,
                     name: "InnerSymbol".to_string(),
                     qualified_name: "InnerSymbol".to_string(),
                     scope_id: 0,

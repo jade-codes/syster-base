@@ -16,6 +16,7 @@ fn test_resolve_simple_name() {
         .insert(
             "MyPackage".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -28,7 +29,12 @@ fn test_resolve_simple_name() {
     let resolver = Resolver::new(&table);
     let result = resolver.resolve("MyPackage");
 
-    let Some(Symbol::Package { name, .. }) = result else {
+    let Some(Symbol::Package {
+        documentation: None,
+        name,
+        ..
+    }) = result
+    else {
         panic!("Expected Package symbol, got: {result:?}");
     };
     assert_eq!(name, "MyPackage");
@@ -51,6 +57,7 @@ fn test_resolve_qualified_name() {
         .insert(
             "Root".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -65,6 +72,7 @@ fn test_resolve_qualified_name() {
         .insert(
             "Child".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -78,6 +86,7 @@ fn test_resolve_qualified_name() {
     let result = resolver.resolve("Root::Child");
 
     let Some(Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -99,6 +108,7 @@ fn test_resolve_deeply_nested_qualified_name() {
         .insert(
             "A".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -113,6 +123,7 @@ fn test_resolve_deeply_nested_qualified_name() {
         .insert(
             "B".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -134,6 +145,7 @@ fn test_resolve_deeply_nested_qualified_name() {
                 qualified_name: "A::B::C".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -164,6 +176,7 @@ fn test_resolve_classifier_in_package() {
         .insert(
             "Pkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -185,6 +198,7 @@ fn test_resolve_classifier_in_package() {
                 qualified_name: "Pkg::MyClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -206,6 +220,7 @@ fn test_resolve_invalid_qualified_name() {
         .insert(
             "Root".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -229,6 +244,7 @@ fn test_resolve_partial_qualified_name() {
         .insert(
             "A".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -243,6 +259,7 @@ fn test_resolve_partial_qualified_name() {
         .insert(
             "B".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -266,6 +283,7 @@ fn test_resolve_feature_symbol() {
         .insert(
             "Pkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -286,6 +304,7 @@ fn test_resolve_feature_symbol() {
                 name: "attr".to_string(),
                 qualified_name: "Pkg::attr".to_string(),
                 feature_type: Some("Integer".to_string()),
+                documentation: None,
             },
         )
         .unwrap();
@@ -323,6 +342,7 @@ fn test_resolve_definition_symbol() {
                 qualified_name: "MyPart".to_string(),
                 kind: "Part".to_string(),
                 semantic_role: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -345,6 +365,7 @@ fn test_resolve_usage_symbol() {
         .insert(
             "System".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -367,6 +388,7 @@ fn test_resolve_usage_symbol() {
                 kind: "Port".to_string(),
                 semantic_role: None,
                 usage_type: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -389,6 +411,7 @@ fn test_resolve_mixed_symbol_path() {
         .insert(
             "Root".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -410,6 +433,7 @@ fn test_resolve_mixed_symbol_path() {
                 qualified_name: "Root::MyClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -425,6 +449,7 @@ fn test_resolve_mixed_symbol_path() {
                 name: "feature".to_string(),
                 qualified_name: "Root::MyClass::feature".to_string(),
                 feature_type: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -472,6 +497,7 @@ fn test_resolve_leading_separator() {
         .insert(
             "Package".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -494,6 +520,7 @@ fn test_resolve_trailing_separator() {
         .insert(
             "Package".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -516,6 +543,7 @@ fn test_resolve_multiple_consecutive_separators() {
         .insert(
             "A".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -530,6 +558,7 @@ fn test_resolve_multiple_consecutive_separators() {
         .insert(
             "B".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -553,6 +582,7 @@ fn test_resolve_definition_in_nested_scopes() {
         .insert(
             "OuterPkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -567,6 +597,7 @@ fn test_resolve_definition_in_nested_scopes() {
         .insert(
             "InnerPkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -588,6 +619,7 @@ fn test_resolve_definition_in_nested_scopes() {
                 qualified_name: "OuterPkg::InnerPkg::requirement".to_string(),
                 kind: "Requirement".to_string(),
                 semantic_role: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -624,6 +656,7 @@ fn test_resolve_abstract_classifier() {
                 qualified_name: "AbstractClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: true,
+                documentation: None,
             },
         )
         .unwrap();
@@ -652,6 +685,7 @@ fn test_resolve_different_classifier_kinds() {
                 qualified_name: "MyBehavior".to_string(),
                 kind: "Behavior".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -667,6 +701,7 @@ fn test_resolve_different_classifier_kinds() {
                 qualified_name: "MyFunction".to_string(),
                 kind: "Function".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -694,6 +729,7 @@ fn test_resolve_import_specific_member() {
         .insert(
             "Base".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -714,6 +750,7 @@ fn test_resolve_import_specific_member() {
                 qualified_name: "Base::Vehicle".to_string(),
                 kind: "PartDef".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -734,6 +771,7 @@ fn test_resolve_import_wildcard() {
         .insert(
             "Base".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -754,6 +792,7 @@ fn test_resolve_import_wildcard() {
                 qualified_name: "Base::Vehicle".to_string(),
                 kind: "PartDef".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -769,6 +808,7 @@ fn test_resolve_import_wildcard() {
                 qualified_name: "Base::Engine".to_string(),
                 kind: "PartDef".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -785,6 +825,7 @@ fn test_resolve_import_wildcard() {
                 qualified_name: "Base::Vehicle::Wheel".to_string(),
                 kind: "PartDef".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -809,6 +850,7 @@ fn test_resolve_import_bare_wildcard() {
         .insert(
             "PackageA".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -822,6 +864,7 @@ fn test_resolve_import_bare_wildcard() {
         .insert(
             "PackageB".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 1,
                 source_file: None,
                 span: None,
@@ -836,6 +879,7 @@ fn test_resolve_import_bare_wildcard() {
         .insert(
             "PackageA::Nested".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 2,
                 source_file: None,
                 span: None,

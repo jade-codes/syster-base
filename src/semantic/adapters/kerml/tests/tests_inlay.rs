@@ -36,6 +36,7 @@ fn create_feature_symbol(name: &str, type_name: Option<&str>) -> Symbol {
         feature_type: type_name.map(String::from),
         source_file: None,
         span: None,
+        documentation: None,
     }
 }
 
@@ -271,6 +272,7 @@ fn test_extract_inlay_hints_non_feature_symbol_type() {
                 scope_id: 0,
                 source_file: None,
                 span: None,
+                documentation: None,
             },
         )
         .unwrap();

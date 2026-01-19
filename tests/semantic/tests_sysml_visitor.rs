@@ -671,7 +671,11 @@ fn test_nested_packages() {
         .expect("Should have 'InnerPackage' symbol");
 
     match inner {
-        Symbol::Package { qualified_name, .. } => {
+        Symbol::Package {
+            documentation: None,
+            qualified_name,
+            ..
+        } => {
             assert_eq!(qualified_name, "OuterPackage::InnerPackage");
         }
         _ => panic!("Expected Package symbol for InnerPackage"),
@@ -741,7 +745,11 @@ fn test_qualified_names_are_correct() {
     let resolver = Resolver::new(&symbol_table);
     let vehicles = resolver.resolve("Vehicles").unwrap();
     match vehicles {
-        Symbol::Package { qualified_name, .. } => {
+        Symbol::Package {
+            documentation: None,
+            qualified_name,
+            ..
+        } => {
             assert_eq!(qualified_name, "Vehicles");
         }
         _ => panic!("Expected Package symbol"),

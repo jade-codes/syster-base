@@ -84,6 +84,7 @@ fn test_symbol_enum_variants_documented() {
 
     // Create examples of each documented variant
     let package = Symbol::Package {
+        documentation: None,
         name: "Test".to_string(),
         qualified_name: "Test".to_string(),
         scope_id: 0,
@@ -99,11 +100,18 @@ fn test_symbol_enum_variants_documented() {
         scope_id: 0,
         source_file: None,
         span: None,
+        documentation: None,
     };
 
     // Verify symbol variants can be matched
     assert!(
-        matches!(package, Symbol::Package { .. }),
+        matches!(
+            package,
+            Symbol::Package {
+                documentation: None,
+                ..
+            }
+        ),
         "Should match Package variant"
     );
     assert!(

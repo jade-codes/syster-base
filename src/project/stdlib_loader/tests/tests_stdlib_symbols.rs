@@ -131,7 +131,15 @@ fn test_stdlib_isq_massvalue() {
     let packages: Vec<_> = workspace
         .symbol_table()
         .iter_symbols()
-        .filter(|sym| matches!(sym, crate::semantic::symbol_table::Symbol::Package { .. }))
+        .filter(|sym| {
+            matches!(
+                sym,
+                crate::semantic::symbol_table::Symbol::Package {
+                    documentation: None,
+                    ..
+                }
+            )
+        })
         .filter(|sym| !sym.qualified_name().contains("::"))
         .map(|sym| sym.qualified_name())
         .collect();
@@ -284,6 +292,80 @@ fn test_stdlib_hover_with_user_file() {
         assert!(
             mass_value.is_some(),
             "MassValue should be resolvable in user file scope after import"
+        );
+    }
+}
+
+/// Test that simulates hover on `String` after `import ScalarValues::*`
+/// This tests the case where a user has `private import ScalarValues::*`
+/// and wants to hover on `String` to get type info.
+#[test]
+fn test_hover_string_from_scalar_values_wildcard_import() {
+    use crate::parser::SysMLParser;
+    use crate::parser::sysml::Rule;
+    use crate::syntax::sysml::ast::parse_file;
+    use pest::Parser;
+
+    let stdlib_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sysml.library");
+
+    let mut workspace = Workspace::<SyntaxFile>::new();
+    let loader = StdLibLoader::with_path(stdlib_path);
+    loader.load(&mut workspace).expect("Failed to load stdlib");
+    workspace.populate_all().expect("Failed to populate stdlib");
+
+    // Simulate the user's code
+    let user_source = r#"library package AHFProfileLib {
+    private import ScalarValues::*;
+    
+    port def SD {
+        doc /* Service definition */
+        
+        attribute serviceDefinition: String;
+        attribute serviceURL: String;
+    }
+}"#;
+
+    // Parse and add user file
+    let mut pairs = SysMLParser::parse(Rule::model, user_source).expect("parse user source");
+    let sysml_file = parse_file(&mut pairs).expect("from_pest");
+    let user_path = PathBuf::from("/test/AHFProfile.sysml");
+    workspace.add_file(user_path.clone(), SyntaxFile::SysML(sysml_file));
+    workspace
+        .populate_file(&user_path)
+        .expect("populate user file");
+
+    // Get the resolver
+    let resolver = crate::semantic::resolver::Resolver::new(workspace.symbol_table());
+
+    // Test 1: Can we resolve ScalarValues::String directly?
+    let scalar_string = resolver.resolve_qualified("ScalarValues::String");
+    println!(
+        "ScalarValues::String direct: {:?}",
+        scalar_string.map(|s| s.qualified_name())
+    );
+    assert!(
+        scalar_string.is_some(),
+        "ScalarValues::String should exist in stdlib"
+    );
+
+    // Test 2: Can we find the user file's scope?
+    let user_scope = workspace
+        .symbol_table()
+        .get_scope_for_file(&user_path.to_string_lossy());
+    println!("User file scope: {:?}", user_scope);
+    assert!(user_scope.is_some(), "User file should have a scope");
+
+    // Test 3: Can we resolve "String" in the user file's scope via the import?
+    if let Some(scope_id) = user_scope {
+        let string_via_import = resolver.resolve_in_scope("String", scope_id);
+        println!(
+            "String in user scope (via ScalarValues::* import): {:?}",
+            string_via_import.map(|s| s.qualified_name())
+        );
+        // This is the key test - "String" should resolve via the ScalarValues::* import
+        assert!(
+            string_via_import.is_some(),
+            "String should be resolvable in user file scope after 'import ScalarValues::*'"
         );
     }
 }

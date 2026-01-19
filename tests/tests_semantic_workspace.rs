@@ -632,6 +632,7 @@ fn test_symbol_table_mut_basic() {
 
     // Add a symbol directly
     let symbol = Symbol::Package {
+        documentation: None,
         name: "TestPackage".to_string(),
         qualified_name: "TestPackage".to_string(),
         scope_id: 0,
@@ -660,6 +661,7 @@ fn test_symbol_table_mut_allows_modifications() {
         .insert(
             "Symbol1".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "Symbol1".to_string(),
                 qualified_name: "Symbol1".to_string(),
                 scope_id: 0,
@@ -673,6 +675,7 @@ fn test_symbol_table_mut_allows_modifications() {
         .insert(
             "Symbol2".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "Symbol2".to_string(),
                 qualified_name: "Symbol2".to_string(),
                 scope_id: 0,
@@ -707,6 +710,7 @@ fn test_symbol_table_mut_independent_from_immutable() {
         .insert(
             "Test".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "Test".to_string(),
                 qualified_name: "Test".to_string(),
                 scope_id: 0,

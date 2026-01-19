@@ -86,12 +86,7 @@ fn is_qualified_name_character(c: char) -> bool {
 pub fn extract_qualified_name_at_cursor(line: &str, position: usize) -> Option<String> {
     let chars: Vec<char> = line.chars().collect();
 
-    if position >= chars.len() {
-        return None;
-    }
-
-    // Check if we're on a qualified name character
-    if !is_qualified_name_character(chars[position]) {
+    if position >= chars.len() || !is_qualified_name_character(chars[position]) {
         return None;
     }
 
@@ -109,13 +104,10 @@ pub fn extract_qualified_name_at_cursor(line: &str, position: usize) -> Option<S
 
     let result: String = chars[start..end].iter().collect();
 
-    // Clean up: trim leading/trailing colons and ensure valid structure
+    // Clean up and validate: must contain "::" (namespace separator)
+    // Single ":" is a type annotation (e.g., "attr:String"), not a qualified name
     let trimmed = result.trim_matches(':');
-    if trimmed.is_empty() {
-        return None;
-    }
-
-    Some(trimmed.to_string())
+    trimmed.contains("::").then(|| trimmed.to_string())
 }
 
 #[cfg(test)]
@@ -235,12 +227,23 @@ mod tests {
 
     #[test]
     fn test_extract_qualified_name_simple() {
-        // Simple name without ::
+        // Simple name without :: should return None (use extract_word_at_cursor instead)
         let line = "part def Vehicle;";
-        assert_eq!(
-            extract_qualified_name_at_cursor(line, 9),
-            Some("Vehicle".to_string())
-        );
+        assert_eq!(extract_qualified_name_at_cursor(line, 9), None);
+        // But extract_word_at_cursor should work
+        assert_eq!(extract_word_at_cursor(line, 9), Some("Vehicle".to_string()));
+    }
+
+    #[test]
+    fn test_extract_qualified_name_type_annotation() {
+        // Single colon (type annotation) should NOT be treated as qualified name
+        // "attribute name:String;" - hovering on "String" should extract just "String"
+        let line = "attribute serviceDefinition:String;";
+        // "attribute " = 10 chars, "serviceDefinition" = 17 chars
+        // Position 28 is 'S' of String
+        assert_eq!(extract_qualified_name_at_cursor(line, 28), None);
+        // But extract_word_at_cursor should get "String"
+        assert_eq!(extract_word_at_cursor(line, 28), Some("String".to_string()));
     }
 
     #[test]

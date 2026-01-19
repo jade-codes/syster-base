@@ -38,6 +38,7 @@ fn test_visit_namespace_creates_package_symbol() {
     assert!(symbol.is_some());
 
     let Some(Symbol::Package {
+        documentation: None,
         name,
         qualified_name,
         ..
@@ -140,7 +141,12 @@ fn test_visit_namespace_stores_scope_id() {
     let symbol = resolver.resolve("ScopedNamespace");
     assert!(symbol.is_some());
 
-    if let Some(Symbol::Package { scope_id, .. }) = symbol {
+    if let Some(Symbol::Package {
+        documentation: None,
+        scope_id,
+        ..
+    }) = symbol
+    {
         // Scope ID should be set (0 is the root scope)
         assert_eq!(*scope_id, 0);
     } else {
@@ -176,7 +182,12 @@ fn test_visit_namespace_with_span() {
     let symbol = resolver.resolve("SpannedNamespace");
     assert!(symbol.is_some());
 
-    if let Some(Symbol::Package { span, .. }) = symbol {
+    if let Some(Symbol::Package {
+        documentation: None,
+        span,
+        ..
+    }) = symbol
+    {
         assert_eq!(*span, test_span);
     } else {
         panic!("Expected Package symbol");

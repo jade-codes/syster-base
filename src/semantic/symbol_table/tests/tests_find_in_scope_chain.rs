@@ -9,6 +9,7 @@ fn test_find_in_current_scope() {
 
     // Insert symbol in root scope (scope 0)
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -31,6 +32,7 @@ fn test_find_in_parent_scope() {
 
     // Insert symbol in root scope
     let parent_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -58,6 +60,7 @@ fn test_find_in_grandparent_scope() {
 
     // Insert symbol in root scope (scope 0)
     let root_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -88,6 +91,7 @@ fn test_symbol_not_found_in_chain() {
 
     // Insert a different symbol
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -109,6 +113,7 @@ fn test_symbol_precedence_current_over_parent() {
 
     // Insert symbol in root scope
     let parent_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -130,6 +135,7 @@ fn test_symbol_precedence_current_over_parent() {
         qualified_name: "Parent::Child::Symbol".to_string(),
         kind: "Class".to_string(),
         is_abstract: false,
+        documentation: None,
     };
 
     table.insert("Symbol".to_string(), child_symbol).unwrap();
@@ -150,6 +156,7 @@ fn test_mutable_access_to_found_symbol() {
 
     // Insert a symbol
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -172,6 +179,7 @@ fn test_deeply_nested_scopes() {
 
     // Insert symbol at root (level 0)
     let root_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -185,6 +193,7 @@ fn test_deeply_nested_scopes() {
     for i in 1..=4 {
         table.enter_scope();
         let symbol = Symbol::Package {
+            documentation: None,
             scope_id: i,
             source_file: None,
             span: None,
@@ -223,6 +232,7 @@ fn test_different_symbol_types_in_chain() {
         .insert(
             "RootPkg".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -245,6 +255,7 @@ fn test_different_symbol_types_in_chain() {
                 qualified_name: "RootPkg::MyClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -261,6 +272,7 @@ fn test_different_symbol_types_in_chain() {
                 name: "MyFeature".to_string(),
                 qualified_name: "RootPkg::MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
+                documentation: None,
             },
         )
         .unwrap();
@@ -272,7 +284,13 @@ fn test_different_symbol_types_in_chain() {
 
     // Verify they are the correct types
     let pkg = table.lookup_mut("RootPkg").unwrap();
-    assert!(matches!(pkg, Symbol::Package { .. }));
+    assert!(matches!(
+        pkg,
+        Symbol::Package {
+            documentation: None,
+            ..
+        }
+    ));
 
     let class = table.lookup_mut("MyClass").unwrap();
     assert!(matches!(class, Symbol::Classifier { .. }));
@@ -291,6 +309,7 @@ fn test_scope_chain_after_enter_exit() {
         .insert(
             "Root".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -306,6 +325,7 @@ fn test_scope_chain_after_enter_exit() {
         .insert(
             "Child1".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 1,
                 source_file: None,
                 span: None,
@@ -321,6 +341,7 @@ fn test_scope_chain_after_enter_exit() {
         .insert(
             "Child2".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 2,
                 source_file: None,
                 span: None,
@@ -351,6 +372,7 @@ fn test_scope_chain_after_enter_exit() {
         .insert(
             "Child2New".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 3,
                 source_file: None,
                 span: None,
@@ -375,6 +397,7 @@ fn test_alias_symbols_in_chain() {
         .insert(
             "RealSymbol".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -409,7 +432,13 @@ fn test_alias_symbols_in_chain() {
     // Should still find the real symbol
     let real = table.lookup_mut("RealSymbol");
     assert!(real.is_some());
-    assert!(matches!(real.unwrap(), Symbol::Package { .. }));
+    assert!(matches!(
+        real.unwrap(),
+        Symbol::Package {
+            documentation: None,
+            ..
+        }
+    ));
 }
 
 /// Test with empty string as symbol name
@@ -419,6 +448,7 @@ fn test_empty_string_name() {
 
     // Insert a symbol with empty name (edge case)
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -450,6 +480,7 @@ fn test_special_characters_in_name() {
 
     for name in &special_names {
         let symbol = Symbol::Package {
+            documentation: None,
             scope_id: 0,
             source_file: None,
             span: None,
@@ -478,6 +509,7 @@ fn test_symbol_in_middle_of_chain() {
 
     // Scope 1 - add a symbol here
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 1,
         source_file: None,
         span: None,

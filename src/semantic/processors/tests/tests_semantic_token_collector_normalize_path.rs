@@ -42,6 +42,7 @@ fn create_package_symbol(
     span: Option<Span>,
 ) -> Symbol {
     Symbol::Package {
+        documentation: None,
         name: name.to_string(),
         qualified_name: qualified_name.to_string(),
         scope_id: 0,
@@ -65,6 +66,7 @@ fn create_classifier_symbol(
         scope_id: 0,
         source_file: source_file.map(|s| s.to_string()),
         span,
+        documentation: None,
     }
 }
 
@@ -83,6 +85,7 @@ fn create_definition_symbol(
         scope_id: 0,
         source_file: source_file.map(|s| s.to_string()),
         span,
+        documentation: None,
     }
 }
 

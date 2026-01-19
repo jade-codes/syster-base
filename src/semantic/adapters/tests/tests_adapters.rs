@@ -66,6 +66,7 @@ fn test_populate_preserves_existing_symbols() {
         .insert(
             "ExistingSymbol".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "ExistingSymbol".to_string(),
                 qualified_name: "ExistingSymbol".to_string(),
                 scope_id: 0,
@@ -153,6 +154,7 @@ fn test_populate_single_package() {
     assert!(symbol.is_some());
 
     let Some(Symbol::Package {
+        documentation: None,
         name,
         qualified_name,
         ..
@@ -197,7 +199,12 @@ fn test_populate_nested_packages() {
         .cloned();
     assert!(inner.is_some());
 
-    let Some(Symbol::Package { qualified_name, .. }) = inner else {
+    let Some(Symbol::Package {
+        documentation: None,
+        qualified_name,
+        ..
+    }) = inner
+    else {
         panic!("Expected Package symbol");
     };
     assert_eq!(qualified_name, "Outer::Inner");
@@ -253,6 +260,7 @@ fn test_kerml_adapter_new_symbol_table_accessible() {
 
     // Verify we can use the symbol table through the adapter
     let test_symbol = Symbol::Package {
+        documentation: None,
         name: "TestPackage".to_string(),
         qualified_name: "TestPackage".to_string(),
         scope_id: 0,
@@ -290,6 +298,7 @@ fn test_kerml_adapter_new_with_populated_table() {
         .insert(
             "ExistingSymbol".to_string(),
             Symbol::Package {
+                documentation: None,
                 name: "ExistingSymbol".to_string(),
                 qualified_name: "ExistingSymbol".to_string(),
                 scope_id: 0,

@@ -13,6 +13,7 @@ fn test_symbol_table_creation() {
 fn test_insert_and_lookup() {
     let mut table = SymbolTable::new();
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -33,6 +34,7 @@ fn test_insert_and_lookup() {
 fn test_duplicate_symbol_error() {
     let mut table = SymbolTable::new();
     let symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -52,6 +54,7 @@ fn test_scope_hierarchy() {
     let mut table = SymbolTable::new();
 
     let pkg_symbol = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -69,6 +72,7 @@ fn test_scope_hierarchy() {
         qualified_name: "Root::MyClass".to_string(),
         kind: "Class".to_string(),
         is_abstract: false,
+        documentation: None,
     };
     table.insert("MyClass".to_string(), class_symbol).unwrap();
 
@@ -86,6 +90,7 @@ fn test_all_symbols() {
     let mut table = SymbolTable::new();
 
     let pkg = Symbol::Package {
+        documentation: None,
         scope_id: 0,
         source_file: None,
         span: None,
@@ -103,6 +108,7 @@ fn test_all_symbols() {
         qualified_name: "Pkg::Class".to_string(),
         kind: "Class".to_string(),
         is_abstract: false,
+        documentation: None,
     };
     table.insert("Class".to_string(), class).unwrap();
 
@@ -118,6 +124,7 @@ fn test_multiple_nested_scopes() {
         .insert(
             "Level0".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -132,6 +139,7 @@ fn test_multiple_nested_scopes() {
         .insert(
             "Level1".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -146,6 +154,7 @@ fn test_multiple_nested_scopes() {
         .insert(
             "Level2".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -176,6 +185,7 @@ fn test_different_symbol_types() {
         .insert(
             "MyPackage".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: None,
                 span: None,
@@ -196,6 +206,7 @@ fn test_different_symbol_types() {
                 qualified_name: "MyClass".to_string(),
                 kind: "Class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
@@ -210,6 +221,7 @@ fn test_different_symbol_types() {
                 name: "MyFeature".to_string(),
                 qualified_name: "MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
+                documentation: None,
             },
         )
         .unwrap();
@@ -225,6 +237,7 @@ fn test_different_symbol_types() {
                 qualified_name: "MyDef".to_string(),
                 kind: "Part".to_string(),
                 semantic_role: None,
+                documentation: None,
             },
         )
         .unwrap();
@@ -241,6 +254,7 @@ fn test_different_symbol_types() {
                 name: "MyUsage".to_string(),
                 qualified_name: "MyUsage".to_string(),
                 kind: "Part".to_string(),
+                documentation: None,
             },
         )
         .unwrap();
@@ -281,6 +295,7 @@ fn test_remove_symbols_from_file() {
         .insert(
             "Pkg1".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: Some("file1.sysml".to_string()),
                 span: None,
@@ -296,6 +311,7 @@ fn test_remove_symbols_from_file() {
         .insert(
             "Pkg2".to_string(),
             Symbol::Package {
+                documentation: None,
                 scope_id: 0,
                 source_file: Some("file2.sysml".to_string()),
                 span: None,
@@ -319,6 +335,7 @@ fn test_remove_symbols_from_file() {
                 qualified_name: "Pkg1::Class1".to_string(),
                 kind: "class".to_string(),
                 is_abstract: false,
+                documentation: None,
             },
         )
         .unwrap();
