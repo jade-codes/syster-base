@@ -326,7 +326,7 @@ fn test_hover_string_from_scalar_values_wildcard_import() {
 }"#;
 
     // Parse and add user file
-    let mut pairs = SysMLParser::parse(Rule::model, user_source).expect("parse user source");
+    let mut pairs = SysMLParser::parse(Rule::file, user_source).expect("parse user source");
     let sysml_file = parse_file(&mut pairs).expect("from_pest");
     let user_path = PathBuf::from("/test/AHFProfile.sysml");
     workspace.add_file(user_path.clone(), SyntaxFile::SysML(sysml_file));
