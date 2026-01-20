@@ -18,6 +18,7 @@ fn test_usage_creation() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -68,6 +69,7 @@ fn test_usage_with_span() {
         span: Some(span),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -92,6 +94,7 @@ fn test_usage_derived_flag() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: true,
         is_const: false,
     };
@@ -110,6 +113,7 @@ fn test_usage_const_flag() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: true,
     };
@@ -128,6 +132,7 @@ fn test_usage_derived_and_const() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: true,
         is_const: true,
     };
@@ -144,6 +149,7 @@ fn test_usage_with_index() {
         subsets: vec![SubsettingRel {
             target: "basePart".to_string(),
             span: None,
+            chain_context: None,
         }],
         ..Relationships::none()
     };
@@ -475,57 +481,70 @@ fn test_usage_with_complex_relationships() {
             SpecializationRel {
                 target: "Base1".to_string(),
                 span: None,
+                chain_context: None,
             },
             SpecializationRel {
                 target: "Base2".to_string(),
                 span: None,
+                chain_context: None,
             },
         ],
         subsets: vec![
             SubsettingRel {
                 target: "Subset1".to_string(),
                 span: None,
+                chain_context: None,
             },
             SubsettingRel {
                 target: "Subset2".to_string(),
                 span: None,
+                chain_context: None,
             },
         ],
         redefines: vec![RedefinitionRel {
             target: "Original".to_string(),
             span: None,
+            chain_context: None,
         }],
         references: vec![ReferenceRel {
             target: "RefTarget".to_string(),
             span: None,
+            chain_context: None,
         }],
         crosses: vec![CrossRel {
             target: "CrossTarget".to_string(),
             span: None,
+            chain_context: None,
         }],
         satisfies: vec![SatisfyRel {
             target: "Requirement1".to_string(),
             span: None,
+            chain_context: None,
         }],
         performs: vec![PerformRel {
             target: "Action1".to_string(),
             span: None,
+            chain_context: None,
         }],
         exhibits: vec![ExhibitRel {
             target: "State1".to_string(),
             span: None,
+            chain_context: None,
         }],
         includes: vec![IncludeRel {
             target: "UseCase1".to_string(),
             span: None,
+            chain_context: None,
         }],
         asserts: vec![AssertRel {
             target: "Constraint1".to_string(),
             span: None,
+            chain_context: None,
         }],
         verifies: vec![VerifyRel {
             target: "Verification1".to_string(),
             span: None,
+            chain_context: None,
         }],
         meta: vec![],
     };
@@ -628,6 +647,7 @@ fn test_usage_multiple_spans() {
         span: Some(name_span),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -646,6 +666,7 @@ fn test_usage_comparison_with_different_flags() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: true,
         is_const: false,
     };
@@ -658,6 +679,7 @@ fn test_usage_comparison_with_different_flags() {
         span: None,
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: true,
     };

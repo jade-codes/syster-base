@@ -36,6 +36,7 @@ fn make_usage(name: &str, kind: UsageKind, span: Option<Span>, _body: Vec<()>) -
         relationships: Default::default(),
         body: vec![],
         span,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     }
@@ -61,10 +62,7 @@ fn make_definition(
 }
 
 fn make_comment(content: &str, span: Option<Span>) -> Comment {
-    Comment {
-        content: content.to_string(),
-        span,
-    }
+    Comment::new(content, span)
 }
 
 fn create_usage_symbol(name: &str, type_name: Option<&str>) -> Symbol {
@@ -78,6 +76,8 @@ fn create_usage_symbol(name: &str, type_name: Option<&str>) -> Symbol {
         source_file: None,
         span: None,
         documentation: None,
+        subsets: Vec::new(),
+        redefines: Vec::new(),
     }
 }
 
@@ -320,6 +320,7 @@ fn test_collect_definition_hints_usage_with_explicit_typing() {
         span: Some(make_span(2, 4, 2, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };

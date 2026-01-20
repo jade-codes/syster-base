@@ -75,10 +75,10 @@ fn test_sysml_extract_folding_ranges_comment_kind() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![SysMLElement::Comment(SysMLComment {
-            content: "A long comment".to_string(),
-            span: Some(make_span(1, 3)),
-        })],
+        elements: vec![SysMLElement::Comment(SysMLComment::new(
+            "A long comment",
+            Some(make_span(1, 3)),
+        ))],
     };
     let ranges = extract_sysml_folding_ranges(&file);
     assert_eq!(ranges.len(), 1);

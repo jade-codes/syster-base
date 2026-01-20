@@ -146,6 +146,7 @@ fn test_resolve_deeply_nested_qualified_name() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -199,6 +200,7 @@ fn test_resolve_classifier_in_package() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -305,6 +307,8 @@ fn test_resolve_feature_symbol() {
                 qualified_name: "Pkg::attr".to_string(),
                 feature_type: Some("Integer".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -343,6 +347,7 @@ fn test_resolve_definition_symbol() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -389,6 +394,8 @@ fn test_resolve_usage_symbol() {
                 semantic_role: None,
                 usage_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -434,6 +441,7 @@ fn test_resolve_mixed_symbol_path() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -450,6 +458,8 @@ fn test_resolve_mixed_symbol_path() {
                 qualified_name: "Root::MyClass::feature".to_string(),
                 feature_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -620,6 +630,7 @@ fn test_resolve_definition_in_nested_scopes() {
                 kind: "Requirement".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -657,6 +668,7 @@ fn test_resolve_abstract_classifier() {
                 kind: "Class".to_string(),
                 is_abstract: true,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -686,6 +698,7 @@ fn test_resolve_different_classifier_kinds() {
                 kind: "Behavior".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -702,6 +715,7 @@ fn test_resolve_different_classifier_kinds() {
                 kind: "Function".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -751,6 +765,7 @@ fn test_resolve_import_specific_member() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -793,6 +808,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -809,6 +825,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -826,6 +843,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -1024,10 +1042,7 @@ fn test_extract_imports_mixed_elements() {
                 is_public: false,
                 span: None,
             }),
-            Element::Comment(crate::syntax::sysml::ast::Comment {
-                content: "Some comment".to_string(),
-                span: None,
-            }),
+            Element::Comment(crate::syntax::sysml::ast::Comment::new("Some comment", None)),
             Element::Import(Import {
                 path: "Systems::Engine".to_string(),
                 path_span: None,

@@ -88,6 +88,27 @@ pub fn is_usage_rule(r: Rule) -> bool {
             | Rule::calculation_usage
             | Rule::allocation_usage
             | Rule::metadata_usage
+            | Rule::portion_usage
+            | Rule::subject_usage
+            | Rule::actor_usage
+            | Rule::stakeholder_usage
+            | Rule::interface_usage
+            | Rule::occurrence_usage
+            | Rule::individual_usage
+            | Rule::directed_parameter_member
+            | Rule::metadata_body_usage
+            | Rule::metadata_body_usage_member
+            | Rule::default_interface_end
+            | Rule::state_action_usage
+            | Rule::entry_action_member
+            | Rule::do_action_member
+            | Rule::exit_action_member
+            | Rule::flow_usage
+            | Rule::succession_flow_usage
+            | Rule::message
+            | Rule::event_occurrence_usage
+            | Rule::send_node
+            | Rule::accept_node
     )
 }
 
@@ -232,8 +253,12 @@ pub fn to_def_kind(rule: Rule) -> Result<DefinitionKind, ParseError> {
 /// Map pest Rule to UsageKind
 pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
     Some(match rule {
-        Rule::part_usage => UsageKind::Part,
-        Rule::action_usage => UsageKind::Action,
+        Rule::part_usage | Rule::subject_usage => UsageKind::Part,
+        Rule::action_usage
+        | Rule::state_action_usage
+        | Rule::entry_action_member
+        | Rule::do_action_member
+        | Rule::exit_action_member => UsageKind::Action,
         Rule::requirement_usage | Rule::objective_member => UsageKind::Requirement,
         Rule::port_usage => UsageKind::Port,
         Rule::item_usage => UsageKind::Item,
@@ -247,7 +272,8 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         | Rule::metadata_usage
         | Rule::directed_parameter_member
         | Rule::metadata_body_usage
-        | Rule::metadata_body_usage_member => UsageKind::Reference,
+        | Rule::metadata_body_usage_member
+        | Rule::default_interface_end => UsageKind::Reference,
         Rule::satisfy_requirement_usage => UsageKind::SatisfyRequirement,
         Rule::perform_action_usage => UsageKind::PerformAction,
         Rule::exhibit_state_usage => UsageKind::ExhibitState,
@@ -262,6 +288,17 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         Rule::occurrence_usage => UsageKind::Occurrence,
         Rule::individual_usage => UsageKind::Individual,
         Rule::portion_usage => UsageKind::Snapshot,
+        // Actor/stakeholder are reference-like
+        Rule::actor_usage | Rule::stakeholder_usage => UsageKind::Reference,
+        // Flow usages
+        Rule::flow_usage | Rule::succession_flow_usage => UsageKind::Flow,
+        // Message usages
+        Rule::message => UsageKind::Message,
+        // Event usages
+        Rule::event_occurrence_usage => UsageKind::Event,
+        // Send/Accept action usages
+        Rule::send_node => UsageKind::SendAction,
+        Rule::accept_node => UsageKind::AcceptAction,
         _ => return None,
     })
 }
@@ -346,9 +383,13 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
         Rule::subclassification_part => {
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
-                    for (target, span) in all_refs_with_spans_from(&p) {
+                    for r in all_refs_with_spans_from(&p) {
                         rel.specializes
-                            .push(super::types::SpecializationRel { target, span });
+                            .push(super::types::SpecializationRel { 
+                                target: r.name, 
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                     }
                 }
             }
@@ -356,32 +397,52 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
         Rule::redefinition_part => {
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
-                    for (target, span) in all_refs_with_spans_from(&p) {
+                    for r in all_refs_with_spans_from(&p) {
                         rel.redefines
-                            .push(super::types::RedefinitionRel { target, span });
+                            .push(super::types::RedefinitionRel { 
+                                target: r.name, 
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                     }
                 }
             }
         }
         Rule::satisfy_requirement_usage => {
-            for (target, span) in all_refs_with_spans_from(pair) {
+            for r in all_refs_with_spans_from(pair) {
                 rel.satisfies
-                    .push(super::types::SatisfyRel { target, span });
+                    .push(super::types::SatisfyRel { 
+                        target: r.name, 
+                        span: r.span,
+                        chain_context: r.chain_context,
+                    });
             }
         }
         Rule::perform_action_usage => {
-            for (target, span) in all_refs_with_spans_from(pair) {
-                rel.performs.push(super::types::PerformRel { target, span });
+            for r in all_refs_with_spans_from(pair) {
+                rel.performs.push(super::types::PerformRel { 
+                    target: r.name, 
+                    span: r.span,
+                    chain_context: r.chain_context,
+                });
             }
         }
         Rule::exhibit_state_usage => {
-            for (target, span) in all_refs_with_spans_from(pair) {
-                rel.exhibits.push(super::types::ExhibitRel { target, span });
+            for r in all_refs_with_spans_from(pair) {
+                rel.exhibits.push(super::types::ExhibitRel { 
+                    target: r.name, 
+                    span: r.span,
+                    chain_context: r.chain_context,
+                });
             }
         }
         Rule::include_use_case_usage => {
-            for (target, span) in all_refs_with_spans_from(pair) {
-                rel.includes.push(super::types::IncludeRel { target, span });
+            for r in all_refs_with_spans_from(pair) {
+                rel.includes.push(super::types::IncludeRel { 
+                    target: r.name, 
+                    span: r.span,
+                    chain_context: r.chain_context,
+                });
             }
         }
         Rule::feature_specialization => {
@@ -396,26 +457,42 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
                         }
                     }
                     Rule::subsettings => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for r in all_refs_with_spans_from(&spec) {
                             rel.subsets
-                                .push(super::types::SubsettingRel { target, span });
+                                .push(super::types::SubsettingRel { 
+                                    target: r.name, 
+                                    span: r.span,
+                                    chain_context: r.chain_context,
+                                });
                         }
                     }
                     Rule::redefinitions => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for r in all_refs_with_spans_from(&spec) {
                             rel.redefines
-                                .push(super::types::RedefinitionRel { target, span });
+                                .push(super::types::RedefinitionRel { 
+                                    target: r.name, 
+                                    span: r.span,
+                                    chain_context: r.chain_context,
+                                });
                         }
                     }
                     Rule::references => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for r in all_refs_with_spans_from(&spec) {
                             rel.references
-                                .push(super::types::ReferenceRel { target, span });
+                                .push(super::types::ReferenceRel { 
+                                    target: r.name, 
+                                    span: r.span,
+                                    chain_context: r.chain_context,
+                                });
                         }
                     }
                     Rule::crosses => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
-                            rel.crosses.push(super::types::CrossRel { target, span });
+                        for r in all_refs_with_spans_from(&spec) {
+                            rel.crosses.push(super::types::CrossRel { 
+                                target: r.name, 
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                         }
                     }
                     _ => {}

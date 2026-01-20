@@ -33,6 +33,7 @@ fn make_usage(name: &str, kind: UsageKind, span: Option<Span>, body: Vec<UsageMe
         relationships: Default::default(),
         body,
         span,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     }
@@ -47,10 +48,7 @@ fn make_package(name: &str, span: Option<Span>, elements: Vec<Element>) -> Packa
 }
 
 fn make_comment(content: &str, span: Option<Span>) -> Comment {
-    Comment {
-        content: content.to_string(),
-        span,
-    }
+    Comment::new(content, span)
 }
 
 // =============================================================================

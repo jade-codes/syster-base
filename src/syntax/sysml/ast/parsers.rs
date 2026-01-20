@@ -65,6 +65,9 @@ struct ParseContext {
 
     // Body members (for usages)
     usage_members: Vec<UsageMember>,
+
+    // Expression references (for value expressions)
+    expression_refs: Vec<ExtractedRef>,
 }
 
 impl ParseContext {
@@ -145,24 +148,36 @@ pub(super) fn ref_with_span_from(pair: &Pair<Rule>) -> Option<(String, Span)> {
     None
 }
 
+/// Reference extracted from parsing, with optional chain context
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct ExtractedRef {
+    pub name: String,
+    pub span: Option<Span>,
+    /// If part of a feature chain, contains (all_parts, index_in_chain)
+    pub chain_context: Option<(Vec<String>, usize)>,
+}
+
 /// Extract all references with spans from a pair
-pub(super) fn all_refs_with_spans_from(pair: &Pair<Rule>) -> Vec<(String, Option<Span>)> {
+pub(super) fn all_refs_with_spans_from(pair: &Pair<Rule>) -> Vec<ExtractedRef> {
     let mut refs = Vec::new();
     collect_refs_recursive(pair, &mut refs);
     refs
 }
 
-fn collect_refs_recursive(pair: &Pair<Rule>, refs: &mut Vec<(String, Option<Span>)>) {
+fn collect_refs_recursive(pair: &Pair<Rule>, refs: &mut Vec<ExtractedRef>) {
     match pair.as_rule() {
         Rule::owned_feature_chain => {
-            // For feature chains like `pwrCmd.pwrLevel`, emit each part as a separate reference.
-            // This enables semantic highlighting for each identifier in the chain.
+            // For feature chains like `pwrCmd.pwrLevel`, emit each part as a separate reference
+            // with chain context for proper resolution.
             let raw = pair.as_str().trim();
             let base_span = pair.as_span();
             let (base_line, base_col) = base_span.start_pos().line_col();
 
+            // Collect all parts first for the chain context
+            let chain_parts: Vec<String> = raw.split('.').map(|p| strip_quotes(p.trim())).collect();
+
             let mut offset = 0;
-            for part in raw.split('.') {
+            for (chain_index, part) in raw.split('.').enumerate() {
                 let part = part.trim();
                 if part.is_empty() {
                     continue;
@@ -180,7 +195,11 @@ fn collect_refs_recursive(pair: &Pair<Rule>, refs: &mut Vec<(String, Option<Span
 
                 // Strip quotes if present
                 let name = strip_quotes(part);
-                refs.push((name, Some(part_span)));
+                refs.push(ExtractedRef {
+                    name,
+                    span: Some(part_span),
+                    chain_context: Some((chain_parts.clone(), chain_index)),
+                });
 
                 // Move offset past this part and the dot separator
                 offset = part_end + 1; // +1 for the '.'
@@ -202,23 +221,35 @@ fn collect_refs_recursive(pair: &Pair<Rule>, refs: &mut Vec<(String, Option<Span
                 })
                 .collect();
             if !parts.is_empty() {
-                refs.push((parts.join("::"), Some(to_span(pair.as_span()))));
+                refs.push(ExtractedRef {
+                    name: parts.join("::"),
+                    span: Some(to_span(pair.as_span())),
+                    chain_context: None,
+                });
             } else {
                 // Fallback for atomic rules: use the raw string but strip quotes if needed
-                // Handle qualified names with quoted parts like "'Foo'::'Bar'" or "'Foo'"
                 let raw = pair.as_str().trim();
                 let name = strip_qualified_name_quotes(raw);
-                refs.push((name, Some(to_span(pair.as_span()))));
+                refs.push(ExtractedRef {
+                    name,
+                    span: Some(to_span(pair.as_span())),
+                    chain_context: None,
+                });
             }
         }
         Rule::identifier => {
-            refs.push((
-                pair.as_str().trim().to_string(),
-                Some(to_span(pair.as_span())),
-            ));
+            refs.push(ExtractedRef {
+                name: pair.as_str().trim().to_string(),
+                span: Some(to_span(pair.as_span())),
+                chain_context: None,
+            });
         }
         Rule::quoted_name => {
-            refs.push((strip_quotes(pair.as_str()), Some(to_span(pair.as_span()))));
+            refs.push(ExtractedRef {
+                name: strip_quotes(pair.as_str()),
+                span: Some(to_span(pair.as_span())),
+                chain_context: None,
+            });
         }
         _ => {
             for inner in pair.clone().into_inner() {
@@ -255,6 +286,7 @@ fn collect_meta_types_recursive(
                     metas.push(MetaRel {
                         target,
                         span: Some(span),
+                        chain_context: None,
                     });
                 }
             }
@@ -271,6 +303,7 @@ fn collect_meta_types_recursive(
                         metas.push(MetaRel {
                             target,
                             span: Some(span),
+                            chain_context: None,
                         });
                     }
                 } else {
@@ -286,6 +319,120 @@ fn collect_meta_types_recursive(
     for inner in pair.clone().into_inner() {
         collect_meta_types_recursive(&inner, metas, saw_type_operator);
     }
+}
+
+/// Extract feature references from value expressions (e.g., "= 2*elapseTime.num").
+/// This finds all feature_reference_expression and feature_chain_member nodes in expressions.
+fn extract_expression_refs(pair: &Pair<Rule>) -> Vec<ExtractedRef> {
+    let mut refs = Vec::new();
+    collect_expression_refs_recursive(pair, &mut refs, None);
+    refs
+}
+
+fn collect_expression_refs_recursive(
+    pair: &Pair<Rule>,
+    refs: &mut Vec<ExtractedRef>,
+    chain_base: Option<(String, Span)>,
+) {
+    let rule = pair.as_rule();
+
+    match rule {
+        // feature_reference_expression wraps qualified_name - extract as base reference
+        Rule::feature_reference_expression => {
+            // This is a starting point of a chain - extract the qualified_name
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::qualified_name {
+                    let name = strip_qualified_name_quotes(inner.as_str().trim());
+                    let span = to_span(inner.as_span());
+                    refs.push(ExtractedRef {
+                        name: name.clone(),
+                        span: Some(span),
+                        chain_context: None,
+                    });
+                }
+            }
+        }
+
+        // primary_expression contains feature_chain_member after "." operators
+        // e.g., elapseTime.num where "num" is a feature_chain_member
+        Rule::primary_expression => {
+            // Process children to find base_expression and feature_chain_members
+            let children: Vec<_> = pair.clone().into_inner().collect();
+            let mut current_base: Option<(String, Span)> = None;
+            let mut chain_parts: Vec<String> = Vec::new();
+            let mut chain_spans: Vec<Span> = Vec::new();
+
+            for child in &children {
+                match child.as_rule() {
+                    Rule::base_expression => {
+                        // Find the feature_reference_expression inside base_expression
+                        if let Some(feat_ref) = find_feature_ref_in_base(child) {
+                            current_base = Some(feat_ref.clone());
+                            chain_parts.push(feat_ref.0.clone());
+                            chain_spans.push(feat_ref.1);
+                        }
+                        // Also recurse to handle nested expressions
+                        collect_expression_refs_recursive(child, refs, None);
+                    }
+                    Rule::feature_chain_member => {
+                        // This is part of a chain like .num
+                        let name = strip_quotes(child.as_str().trim());
+                        let span = to_span(child.as_span());
+                        chain_parts.push(name.clone());
+                        chain_spans.push(span);
+                    }
+                    _ => {
+                        // Recurse into other children
+                        collect_expression_refs_recursive(child, refs, current_base.clone());
+                    }
+                }
+            }
+
+            // Now emit refs for each part of the chain with proper context
+            if chain_parts.len() > 1 {
+                for (idx, (name, span)) in chain_parts.iter().zip(chain_spans.iter()).enumerate() {
+                    refs.push(ExtractedRef {
+                        name: name.clone(),
+                        span: Some(*span),
+                        chain_context: Some((chain_parts.clone(), idx)),
+                    });
+                }
+            } else if chain_parts.len() == 1 {
+                // Single reference, no chain context needed - already added by feature_reference_expression
+            }
+            return; // Don't recurse again, we handled it
+        }
+
+        _ => {}
+    }
+
+    // Recurse into children for other rules
+    for inner in pair.clone().into_inner() {
+        collect_expression_refs_recursive(&inner, refs, chain_base.clone());
+    }
+}
+
+/// Find feature_reference_expression inside a base_expression
+fn find_feature_ref_in_base(pair: &Pair<Rule>) -> Option<(String, Span)> {
+    for inner in pair.clone().into_inner() {
+        match inner.as_rule() {
+            Rule::feature_reference_expression => {
+                for qn in inner.clone().into_inner() {
+                    if qn.as_rule() == Rule::qualified_name {
+                        let name = strip_qualified_name_quotes(qn.as_str().trim());
+                        let span = to_span(qn.as_span());
+                        return Some((name, span));
+                    }
+                }
+            }
+            _ => {
+                if let Some(result) = find_feature_ref_in_base(&inner) {
+                    return Some(result);
+                }
+            }
+        }
+    }
+    None
 }
 
 // ============================================================================
@@ -374,10 +521,10 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
         Rule::subclassification_part => {
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
-                    for (target, span) in all_refs_with_spans_from(&p) {
+                    for extracted in all_refs_with_spans_from(&p) {
                         ctx.relationships
                             .specializes
-                            .push(SpecializationRel { target, span });
+                            .push(SpecializationRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                     }
                 }
             }
@@ -386,10 +533,10 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
         Rule::redefinition_part => {
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
-                    for (target, span) in all_refs_with_spans_from(&p) {
+                    for extracted in all_refs_with_spans_from(&p) {
                         ctx.relationships
                             .redefines
-                            .push(RedefinitionRel { target, span });
+                            .push(RedefinitionRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                     }
                 }
             }
@@ -405,29 +552,29 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
                         }
                     }
                     Rule::subsettings => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for extracted in all_refs_with_spans_from(&spec) {
                             ctx.relationships
                                 .subsets
-                                .push(SubsettingRel { target, span });
+                                .push(SubsettingRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                         }
                     }
                     Rule::redefinitions => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for extracted in all_refs_with_spans_from(&spec) {
                             ctx.relationships
                                 .redefines
-                                .push(RedefinitionRel { target, span });
+                                .push(RedefinitionRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                         }
                     }
                     Rule::references => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
+                        for extracted in all_refs_with_spans_from(&spec) {
                             ctx.relationships
                                 .references
-                                .push(ReferenceRel { target, span });
+                                .push(ReferenceRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                         }
                     }
                     Rule::crosses => {
-                        for (target, span) in all_refs_with_spans_from(&spec) {
-                            ctx.relationships.crosses.push(CrossRel { target, span });
+                        for extracted in all_refs_with_spans_from(&spec) {
+                            ctx.relationships.crosses.push(CrossRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
                         }
                     }
                     _ => {}
@@ -453,29 +600,56 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
         // Handle owned_reference_subsetting (used in short-form usages like "satisfy SafetyReq;")
         // This captures the reference as a subsetting relationship
         Rule::owned_reference_subsetting => {
-            for (target, span) in all_refs_with_spans_from(pair) {
+            for extracted in all_refs_with_spans_from(pair) {
                 ctx.relationships
                     .subsets
-                    .push(SubsettingRel { target, span });
+                    .push(SubsettingRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
             }
         }
 
         // Domain-specific relationships
         Rule::satisfaction_subject_member => {
-            for (target, span) in all_refs_with_spans_from(pair) {
+            for extracted in all_refs_with_spans_from(pair) {
                 ctx.relationships
                     .satisfies
-                    .push(SatisfyRel { target, span });
+                    .push(SatisfyRel { target: extracted.name, span: extracted.span, chain_context: extracted.chain_context });
+            }
+        }
+
+        // Flow connection endpoints - extract feature chains from flow_part
+        // flow_part contains: from_token ~ flow_end_member ~ to_token ~ flow_end_member
+        // or: flow_end_member ~ to_token ~ flow_end_member
+        // flow_end_member contains owned_feature_chain or flow_feature_member
+        Rule::flow_part | Rule::flow_end_member | Rule::flow_end | Rule::flow_feature_member => {
+            // Extract all feature chain references from flow endpoints
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+
+        // Connection endpoints - extract references from connector_end_reference
+        // connector_end_reference can be:
+        // - owned_feature_chain (e.g., `a.b.c`)
+        // - identifier ~ ::> ~ (owned_feature_chain | feature_reference) (e.g., `cause1 ::> causer1`)
+        // - feature_reference (e.g., `causer1`)
+        Rule::connector_end_member | Rule::connector_end | Rule::connector_end_reference => {
+            // Extract all feature chain references from connection endpoints
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
             }
         }
 
         // ====================================================================
-        // Value expressions - extract meta type references
+        // Value expressions - extract meta type and feature references
         // ====================================================================
         Rule::value_part | Rule::feature_value => {
             // Extract meta type references from the expression
             let meta_refs = extract_meta_types_from_expression(pair);
             ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
         }
 
         // ====================================================================
@@ -507,12 +681,39 @@ fn visit_body_member(pair: &Pair<Rule>, ctx: &mut ParseContext) {
         // Comments
         Rule::documentation | Rule::block_comment => {
             let comment = Comment {
+                name: None,
+                name_span: None,
                 content: pair.as_str().to_string(),
+                about: Vec::new(),
                 span: Some(to_span(pair.as_span())),
             };
             ctx.def_members
                 .push(DefinitionMember::Comment(Box::new(comment.clone())));
             ctx.usage_members.push(UsageMember::Comment(comment));
+        }
+        
+        // Named comments with optional about clause
+        Rule::comment_annotation => {
+            if let Ok(comment) = parse_comment_from_pair(pair.clone()) {
+                ctx.def_members
+                    .push(DefinitionMember::Comment(Box::new(comment.clone())));
+                ctx.usage_members.push(UsageMember::Comment(comment));
+            }
+        }
+        
+        // Annotation wrappers - recurse into them to find comment_annotation
+        Rule::visible_annotating_member | Rule::annotating_element | Rule::annotating_member | Rule::owned_annotation => {
+            for inner in pair.clone().into_inner() {
+                visit_body_member(&inner, ctx);
+            }
+        }
+
+        // Imports inside definitions (e.g., `part def Camera { private import X::*; }`)
+        Rule::membership_import | Rule::namespace_import => {
+            if let Ok(import) = parse_import(&mut pair.clone().into_inner()) {
+                ctx.def_members
+                    .push(DefinitionMember::Import(Box::new(import)));
+            }
         }
 
         // Parameter binding (for in/out/inout parameters)
@@ -582,6 +783,7 @@ fn parse_usage_with_kind(pair: Pair<Rule>, kind: UsageKind) -> Usage {
         span: ctx.name_span,
         is_derived: ctx.is_derived,
         is_const: ctx.is_const,
+        expression_refs: ctx.expression_refs,
     }
 }
 
@@ -630,16 +832,52 @@ pub fn parse_package(pairs: &mut Pairs<Rule>) -> Result<Package, ParseError> {
     })
 }
 
-/// Parse a comment from pest pairs
-pub fn parse_comment(pairs: &mut Pairs<Rule>) -> Result<Comment, ParseError> {
-    let pair = pairs.next().ok_or(ParseError::no_match())?;
+/// Parse a comment from a single pair (used by parse_element)
+/// Grammar: comment_annotation = { comment_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (about_token ~ element_reference ~ ("," ~ element_reference)*)? ~ (block_comment | semi_colon)? }
+pub fn parse_comment_from_pair(pair: Pair<Rule>) -> Result<Comment, ParseError> {
     if pair.as_rule() != Rule::comment_annotation {
         return Err(ParseError::no_match());
     }
+    
+    let content = pair.as_str().to_string();
+    let span = Some(to_span(pair.as_span()));
+    let mut name = None;
+    let mut name_span = None;
+    let mut about = Vec::new();
+    
+    for child in pair.into_inner() {
+        match child.as_rule() {
+            Rule::identifier => {
+                name = Some(child.as_str().to_string());
+                name_span = Some(to_span(child.as_span()));
+            }
+            Rule::element_reference => {
+                // element_reference can contain qualified_name or feature_chain_expression
+                let ref_text = child.as_str().to_string();
+                let ref_span = Some(to_span(child.as_span()));
+                about.push(crate::syntax::sysml::ast::types::AboutReference {
+                    name: ref_text,
+                    span: ref_span,
+                });
+            }
+            _ => {}
+        }
+    }
+    
     Ok(Comment {
-        content: pair.as_str().to_string(),
-        span: Some(to_span(pair.as_span())),
+        name,
+        name_span,
+        content,
+        about,
+        span,
     })
+}
+
+/// Parse a comment from pest pairs (legacy, used by visit_body_member)
+/// Grammar: comment_annotation = { comment_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (about_token ~ element_reference ~ ("," ~ element_reference)*)? ~ (block_comment | semi_colon)? }
+pub fn parse_comment(pairs: &mut Pairs<Rule>) -> Result<Comment, ParseError> {
+    let pair = pairs.next().ok_or(ParseError::no_match())?;
+    parse_comment_from_pair(pair)
 }
 
 /// Parse an import from pest pairs
@@ -667,7 +905,22 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
                 }
             }
             Rule::imported_membership | Rule::imported_namespace => {
-                *path = pair.as_str().to_string();
+                // Normalize the path by stripping quotes from each component
+                // e.g., "'Robotic Vacuum Cleaner'::*" -> "Robotic Vacuum Cleaner::*"
+                let raw_path = pair.as_str();
+                let normalized = raw_path
+                    .split("::")
+                    .map(|part| {
+                        let trimmed = part.trim();
+                        if trimmed.starts_with('\'') && trimmed.ends_with('\'') && trimmed.len() >= 2 {
+                            trimmed[1..trimmed.len() - 1].to_string()
+                        } else {
+                            trimmed.to_string()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join("::");
+                *path = normalized;
                 *span = Some(to_span(pair.as_span()));
                 *path_span = Some(to_span(pair.as_span()));
                 *is_recursive = pair
@@ -758,7 +1011,25 @@ pub fn parse_element(pairs: &mut Pairs<Rule>) -> Result<Element, ParseError> {
         | Rule::non_occurrence_usage_element => parse_element(&mut pair.into_inner())?,
         r if is_definition_rule(r) => Element::Definition(parse_definition(pair)?),
         r if is_usage_rule(r) => Element::Usage(parse_usage(pair)),
-        Rule::comment_annotation => Element::Comment(parse_comment(&mut pair.into_inner())?),
+        Rule::comment_annotation => {
+            // Don't call into_inner() - parse_comment expects to receive the comment_annotation pair directly
+            Element::Comment(parse_comment_from_pair(pair)?)
+        }
+        // Handle annotation wrappers - recurse into them to find comment_annotation
+        Rule::visible_annotating_member | Rule::annotating_element | Rule::annotating_member | Rule::owned_annotation => {
+            parse_element(&mut pair.into_inner())?
+        }
+        // Handle documentation as a comment (doc comments)
+        Rule::documentation => {
+            let comment = Comment {
+                name: None,
+                name_span: None,
+                content: pair.as_str().to_string(),
+                about: Vec::new(),
+                span: Some(to_span(pair.as_span())),
+            };
+            Element::Comment(comment)
+        }
         Rule::import => Element::Import(parse_import(&mut pair.into_inner())?),
         Rule::alias_member_element => Element::Alias(parse_alias(&mut pair.into_inner())?),
         _ => return Err(ParseError::no_match()),
@@ -1125,8 +1396,8 @@ mod tests {
         let refs = all_refs_with_spans_from(&pair);
 
         // Find the references from the owned_feature_chain
-        let pwr_cmd_refs: Vec<_> = refs.iter().filter(|(name, _)| name == "pwrCmd").collect();
-        let pwr_level_refs: Vec<_> = refs.iter().filter(|(name, _)| name == "pwrLevel").collect();
+        let pwr_cmd_refs: Vec<_> = refs.iter().filter(|r| r.name == "pwrCmd").collect();
+        let pwr_level_refs: Vec<_> = refs.iter().filter(|r| r.name == "pwrLevel").collect();
 
         assert!(
             !pwr_cmd_refs.is_empty(),
@@ -1140,21 +1411,37 @@ mod tests {
         );
 
         // Check that pwrCmd span is correct (starts at position of 'p' in pwrCmd)
-        if let Some((_, Some(span))) = pwr_cmd_refs.first() {
-            // "attribute :>> pwrCmd.pwrLevel = 0;"
-            //               ^ pwrCmd starts here (column 15, 0-indexed = 14)
-            assert_eq!(span.start.column, 14, "pwrCmd should start at column 14");
-            // pwrCmd is 6 characters long, so end column should be 14+6=20
-            assert_eq!(span.end.column, 20, "pwrCmd should end at column 20");
+        if let Some(extracted) = pwr_cmd_refs.first() {
+            if let Some(span) = &extracted.span {
+                // "attribute :>> pwrCmd.pwrLevel = 0;"
+                //               ^ pwrCmd starts here (column 15, 0-indexed = 14)
+                assert_eq!(span.start.column, 14, "pwrCmd should start at column 14");
+                // pwrCmd is 6 characters long, so end column should be 14+6=20
+                assert_eq!(span.end.column, 20, "pwrCmd should end at column 20");
+            }
+            // Check chain context
+            assert!(extracted.chain_context.is_some(), "pwrCmd should have chain context");
+            if let Some((parts, index)) = &extracted.chain_context {
+                assert_eq!(parts, &vec!["pwrCmd".to_string(), "pwrLevel".to_string()]);
+                assert_eq!(*index, 0, "pwrCmd should be at index 0");
+            }
         }
 
         // Check that pwrLevel span is correct
-        if let Some((_, Some(span))) = pwr_level_refs.first() {
-            // "attribute :>> pwrCmd.pwrLevel = 0;"
-            //                      ^ pwrLevel starts here (column 21, 0-indexed = 20+1=21)
-            assert_eq!(span.start.column, 21, "pwrLevel should start at column 21");
-            // pwrLevel is 8 characters long, so end column should be 21+8=29
-            assert_eq!(span.end.column, 29, "pwrLevel should end at column 29");
+        if let Some(extracted) = pwr_level_refs.first() {
+            if let Some(span) = &extracted.span {
+                // "attribute :>> pwrCmd.pwrLevel = 0;"
+                //                      ^ pwrLevel starts here (column 21, 0-indexed = 20+1=21)
+                assert_eq!(span.start.column, 21, "pwrLevel should start at column 21");
+                // pwrLevel is 8 characters long, so end column should be 21+8=29
+                assert_eq!(span.end.column, 29, "pwrLevel should end at column 29");
+            }
+            // Check chain context for pwrLevel
+            assert!(extracted.chain_context.is_some(), "pwrLevel should have chain context");
+            if let Some((parts, index)) = &extracted.chain_context {
+                assert_eq!(parts, &vec!["pwrCmd".to_string(), "pwrLevel".to_string()]);
+                assert_eq!(*index, 1, "pwrLevel should be at index 1");
+            }
         }
     }
 
@@ -1200,5 +1487,52 @@ mod tests {
         let cloned = error.clone();
         assert_eq!(error, cloned);
         assert_eq!(cloned.message, "Invalid rule: test");
+    }
+
+    #[test]
+    fn test_parse_calc_def_with_in_params() {
+        use crate::parser::sysml::Rule;
+        use pest::Parser;
+        
+        let input = r#"calc def CalcBatteryLevel{
+            in energy : Real; 
+            in capacity : Real; 
+            
+            energy / capacity
+        }"#;
+        
+        let pairs = crate::parser::sysml::SysMLParser::parse(Rule::calculation_definition, input)
+            .expect("Failed to parse calc def");
+        
+        let pair = pairs.into_iter().next().unwrap();
+        let def = parse_definition(pair).unwrap();
+        
+        assert_eq!(def.name, Some("CalcBatteryLevel".to_string()));
+        
+        // Check that body members include the in parameters
+        println!("Definition body members: {:#?}", def.body);
+        
+        // Find usages in the body
+        let usages: Vec<_> = def.body.iter()
+            .filter_map(|m| {
+                if let crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) = m {
+                    Some(u)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        println!("Usages found: {:?}", usages.iter().map(|u| &u.name).collect::<Vec<_>>());
+        
+        // Should have at least 2 usages (energy and capacity)
+        assert!(usages.len() >= 2, "Expected at least 2 usages, got {}", usages.len());
+        
+        // Check that energy and capacity are found
+        let names: Vec<_> = usages.iter()
+            .filter_map(|u| u.name.as_ref())
+            .collect();
+        assert!(names.contains(&&"energy".to_string()), "energy not found in {:?}", names);
+        assert!(names.contains(&&"capacity".to_string()), "capacity not found in {:?}", names);
     }
 }

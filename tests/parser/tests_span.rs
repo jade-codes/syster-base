@@ -300,6 +300,9 @@ fn test_deeply_nested_span() {
             syster::syntax::sysml::ast::DefinitionMember::Comment(comment) => {
                 assert!(comment.span.is_some(), "Nested comment should have span");
             }
+            syster::syntax::sysml::ast::DefinitionMember::Import(import) => {
+                assert!(import.span.is_some(), "Nested import should have span");
+            }
         }
     }
 }

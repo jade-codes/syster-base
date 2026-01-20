@@ -105,6 +105,19 @@ impl<'a> KermlAdapter<'a> {
             let scope_id = self.symbol_table.current_scope_id();
             let documentation = extract_doc_from_classifier_body(&classifier.body);
 
+            // Extract specializes from classifier body members
+            let specializes: Vec<String> = classifier
+                .body
+                .iter()
+                .filter_map(|member| {
+                    if let ClassifierMember::Specialization(spec) = member {
+                        Some(spec.general.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
             let (use_classifier_symbol, kind_str) = match classifier.kind {
                 ClassifierKind::Classifier => (true, "Classifier"),
                 ClassifierKind::DataType => (false, "Datatype"),
@@ -128,6 +141,7 @@ impl<'a> KermlAdapter<'a> {
                     source_file: self.symbol_table.current_file().map(String::from),
                     span: classifier.span,
                     documentation,
+                    specializes: specializes.clone(),
                 }
             } else {
                 Symbol::Definition {
@@ -139,6 +153,7 @@ impl<'a> KermlAdapter<'a> {
                     source_file: self.symbol_table.current_file().map(String::from),
                     span: classifier.span,
                     documentation,
+                    specializes,
                 }
             };
             self.insert_symbol(name.clone(), symbol);
@@ -174,14 +189,35 @@ impl<'a> KermlAdapter<'a> {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
             let documentation = extract_doc_from_feature_body(&feature.body);
+
+            // Extract subsets, redefines, and typing from feature body members
+            let mut subsets = Vec::new();
+            let mut redefines = Vec::new();
+            let mut feature_type = None;
+            for member in &feature.body {
+                match member {
+                    FeatureMember::Subsetting(s) => subsets.push(s.subset.clone()),
+                    FeatureMember::Redefinition(r) => redefines.push(r.redefined.clone()),
+                    FeatureMember::Typing(t) => {
+                        // Only take the first type if multiple are specified
+                        if feature_type.is_none() {
+                            feature_type = Some(t.typed.clone());
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
             let symbol = Symbol::Feature {
                 name: name.clone(),
                 qualified_name: qualified_name.clone(),
                 scope_id,
-                feature_type: None,
+                feature_type,
                 source_file: self.symbol_table.current_file().map(String::from),
                 span: feature.span,
                 documentation,
+                subsets,
+                redefines,
             };
             self.insert_symbol(name.clone(), symbol);
             self.enter_namespace(name.clone());

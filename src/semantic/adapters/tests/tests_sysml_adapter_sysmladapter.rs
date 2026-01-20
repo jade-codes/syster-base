@@ -296,10 +296,7 @@ fn test_visit_comment_does_not_affect_symbol_table() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "This is a test comment".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("This is a test comment", None))],
     };
 
     let result = adapter.populate(&file);
@@ -317,10 +314,7 @@ fn test_visit_comment_empty_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("", None))],
     };
 
     let result = adapter.populate(&file);
@@ -337,10 +331,7 @@ fn test_visit_comment_multiline_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "Line 1\nLine 2\nLine 3".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("Line 1\nLine 2\nLine 3", None))],
     };
 
     let result = adapter.populate(&file);
@@ -357,10 +348,7 @@ fn test_visit_comment_with_special_characters() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "/* Comment with special chars: @#$%^&*() */".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("/* Comment with special chars: @#$%^&*() */", None))],
     };
 
     let result = adapter.populate(&file);
@@ -378,18 +366,9 @@ fn test_visit_comment_multiple_comments() {
         namespace: None,
         namespaces: vec![],
         elements: vec![
-            Element::Comment(Comment {
-                content: "First comment".to_string(),
-                span: None,
-            }),
-            Element::Comment(Comment {
-                content: "Second comment".to_string(),
-                span: None,
-            }),
-            Element::Comment(Comment {
-                content: "Third comment".to_string(),
-                span: None,
-            }),
+            Element::Comment(Comment::new("First comment", None)),
+            Element::Comment(Comment::new("Second comment", None)),
+            Element::Comment(Comment::new("Third comment", None)),
         ],
     };
 
@@ -421,10 +400,7 @@ fn test_visit_comment_between_definitions() {
                 short_name: None,
                 short_name_span: None,
             }),
-            Element::Comment(Comment {
-                content: "Comment between definitions".to_string(),
-                span: None,
-            }),
+            Element::Comment(Comment::new("Comment between definitions", None)),
             Element::Definition(Definition {
                 kind: DefinitionKind::Part,
                 name: Some("SecondPart".to_string()),
@@ -458,13 +434,13 @@ fn test_visit_comment_with_span() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "Comment with span".to_string(),
-            span: Some(Span {
+        elements: vec![Element::Comment(Comment::new(
+            "Comment with span",
+            Some(Span {
                 start: Position::new(1, 1),
                 end: Position::new(1, 20),
             }),
-        })],
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -488,10 +464,7 @@ fn test_visit_comment_does_not_change_current_namespace() {
         }),
         namespaces: vec![],
         elements: vec![
-            Element::Comment(Comment {
-                content: "Comment in namespace".to_string(),
-                span: None,
-            }),
+            Element::Comment(Comment::new("Comment in namespace", None)),
             Element::Definition(Definition {
                 kind: DefinitionKind::Part,
                 name: Some("PartInNamespace".to_string()),
@@ -527,10 +500,7 @@ fn test_visit_comment_long_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: long_comment,
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new(&long_comment, None))],
     };
 
     let result = adapter.populate(&file);
@@ -547,10 +517,7 @@ fn test_visit_comment_unicode_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "Unicode comment: 你好世界 🚀 ñ é".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("Unicode comment: 你好世界 🚀 ñ é", None))],
     };
 
     let result = adapter.populate(&file);
@@ -574,10 +541,7 @@ fn test_namespace_with_comments() {
             span: None,
         }),
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "This namespace is documented".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("This namespace is documented", None))],
     };
 
     let result = adapter.populate(&file);
@@ -605,10 +569,7 @@ fn test_comment_before_namespace_not_typical_but_handled() {
             span: None,
         }),
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment {
-            content: "Comment at file level".to_string(),
-            span: None,
-        })],
+        elements: vec![Element::Comment(Comment::new("Comment at file level", None))],
     };
 
     let result = adapter.populate(&file);

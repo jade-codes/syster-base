@@ -73,12 +73,17 @@ pub enum UsageKind {
     Interface,
     Allocation,
     Flow,
+    Message,
+    Event,
+    SendAction,
+    AcceptAction,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DefinitionMember {
     Comment(Box<Comment>),
     Usage(Box<Usage>),
+    Import(Box<Import>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

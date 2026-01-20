@@ -1,77 +1,93 @@
 use super::enums::{DefinitionKind, DefinitionMember, Element, UsageKind, UsageMember};
 use crate::core::Span;
 
+/// Chain context for feature chain references (e.g., takePicture.focus)
+/// This tracks which part of a chain this reference is, enabling proper resolution.
+pub type ChainContext = Option<(Vec<String>, usize)>;
+
 // Relationship types with span information
 #[derive(Debug, Clone, PartialEq)]
 pub struct SpecializationRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RedefinitionRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SubsettingRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ReferenceRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CrossRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SatisfyRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct PerformRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ExhibitRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct IncludeRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AssertRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct VerifyRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct MetaRel {
     pub target: String,
     pub span: Option<Span>,
+    pub chain_context: ChainContext,
 }
 
 /// Represents a parsed SysML file with support for multiple package declarations
@@ -314,6 +330,9 @@ pub struct Usage {
     pub body: Vec<UsageMember>,
     /// Span of the usage name identifier
     pub span: Option<Span>,
+    /// References found in value expressions (e.g., `= 2*elapseTime.num`)
+    /// These are identifiers and feature chains used in expressions.
+    pub expression_refs: Vec<super::parsers::ExtractedRef>,
     // Property modifiers
     #[doc(hidden)]
     pub is_derived: bool,
@@ -337,6 +356,7 @@ impl Usage {
             relationships,
             body,
             span: None,
+            expression_refs: Vec::new(),
             is_derived: false,
             is_const: false,
         }
@@ -366,10 +386,37 @@ impl Usage {
     }
 }
 
+/// Represents a reference to an element in `about` clause
 #[derive(Debug, Clone, PartialEq)]
-pub struct Comment {
-    pub content: String,
+pub struct AboutReference {
+    pub name: String,
     pub span: Option<Span>,
+}
+
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Comment {
+    /// Optional name for named comments
+    pub name: Option<String>,
+    /// Optional name span for named comments
+    pub name_span: Option<Span>,
+    /// The content of the comment (the entire raw string)
+    pub content: String,
+    /// References in the `about` clause
+    pub about: Vec<AboutReference>,
+    pub span: Option<Span>,
+}
+
+impl Comment {
+    /// Create a new Comment with only content and span
+    pub fn new(content: impl Into<String>, span: Option<Span>) -> Self {
+        Self {
+            name: None,
+            name_span: None,
+            content: content.into(),
+            about: Vec::new(),
+            span,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -141,6 +141,7 @@ fn test_lookup_from_scope_symbol_shadowing() {
         kind: "Class".to_string(),
         is_abstract: false,
         documentation: None,
+        specializes: Vec::new(),
     };
 
     table.insert("Symbol".to_string(), child_symbol).unwrap();
@@ -246,6 +247,7 @@ fn test_lookup_from_scope_different_symbol_types() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -263,6 +265,8 @@ fn test_lookup_from_scope_different_symbol_types() {
                 qualified_name: "RootPkg::MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -491,6 +495,7 @@ fn test_lookup_from_scope_definition_and_usage() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -510,6 +515,8 @@ fn test_lookup_from_scope_definition_and_usage() {
                 qualified_name: "MyUsage".to_string(),
                 kind: "Part".to_string(),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();

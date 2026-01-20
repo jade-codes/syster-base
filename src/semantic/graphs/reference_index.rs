@@ -10,6 +10,15 @@ use crate::semantic::types::TokenType;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
+/// Context for a reference that is part of a feature chain (e.g., `localClock.currentTime`).
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct FeatureChainContext {
+    /// All parts of the chain (e.g., ["localClock", "currentTime"])
+    pub chain_parts: Vec<String>,
+    /// Index of this reference in the chain (0 = first part)
+    pub chain_index: usize,
+}
+
 /// A single reference from a source symbol to a target
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ReferenceInfo {
@@ -22,6 +31,10 @@ pub struct ReferenceInfo {
     /// Optional token type for semantic highlighting.
     /// If None, defaults to TokenType::Type when generating semantic tokens.
     pub token_type: Option<TokenType>,
+    /// Feature chain context if this is part of a chain (e.g., `a.b.c`)
+    pub chain_context: Option<FeatureChainContext>,
+    /// Scope ID where the reference was made (for proper resolution)
+    pub scope_id: Option<usize>,
 }
 
 /// Entry in the reverse index: all references to a target
@@ -88,6 +101,29 @@ impl ReferenceIndex {
         span: Option<Span>,
         token_type: Option<TokenType>,
     ) {
+        self.add_reference_full(source_qname, target_name, source_file, span, token_type, None, None);
+    }
+
+    /// Add a reference with full context including feature chain information.
+    ///
+    /// # Arguments
+    /// * `source_qname` - Qualified name of the symbol that has the reference
+    /// * `target_name` - Name of the target (may be simple or qualified)
+    /// * `source_file` - File containing the reference
+    /// * `span` - Location of the reference in source code
+    /// * `token_type` - Token type for semantic highlighting (None defaults to Type)
+    /// * `chain_context` - Feature chain context if this is part of a chain (e.g., `a.b.c`)
+    /// * `scope_id` - Scope ID where the reference was made (for proper resolution)
+    pub fn add_reference_full(
+        &mut self,
+        source_qname: &str,
+        target_name: &str,
+        source_file: Option<&PathBuf>,
+        span: Option<Span>,
+        token_type: Option<TokenType>,
+        chain_context: Option<FeatureChainContext>,
+        scope_id: Option<usize>,
+    ) {
         // Only add if we have both file and span
         if let (Some(file), Some(span)) = (source_file, span) {
             let info = ReferenceInfo {
@@ -95,6 +131,8 @@ impl ReferenceIndex {
                 file: file.clone(),
                 span,
                 token_type,
+                chain_context,
+                scope_id,
             };
 
             // Add to reverse index (target → sources)
@@ -269,6 +307,32 @@ impl ReferenceIndex {
         None
     }
 
+    /// Find the reference at a given position, returning both target name and full info.
+    ///
+    /// This is useful when you need access to the source_qname for scope-aware resolution.
+    ///
+    /// # Arguments
+    /// * `file_path` - The file to search in
+    /// * `position` - The cursor position (0-indexed line and column)
+    ///
+    /// # Returns
+    /// A tuple of (target_name, reference_info) if found.
+    pub fn get_full_reference_at_position(
+        &self,
+        file_path: &str,
+        position: crate::core::Position,
+    ) -> Option<(&str, &ReferenceInfo)> {
+        let path = PathBuf::from(file_path);
+        for (target_name, entry) in &self.reverse {
+            for ref_info in &entry.references {
+                if ref_info.file == path && ref_info.span.contains(position) {
+                    return Some((target_name.as_str(), ref_info));
+                }
+            }
+        }
+        None
+    }
+
     /// Re-resolve simple reference targets to qualified names using the provided resolver.
     ///
     /// Called after import resolution to update references that were stored with simple names
@@ -290,6 +354,11 @@ impl ReferenceIndex {
             }
 
             for ref_info in &entry.references {
+                // Skip feature chain parts - they need special handling
+                if ref_info.chain_context.is_some() {
+                    continue;
+                }
+                
                 if let Some(qualified_name) = resolve_fn(target_name, &ref_info.file) {
                     // Only update if the resolved name is different
                     if &qualified_name != target_name {
@@ -321,6 +390,60 @@ impl ReferenceIndex {
         }
 
         // Clean up empty entries
+        self.reverse.retain(|_, entry| !entry.references.is_empty());
+    }
+
+    /// Re-resolve feature chain targets to qualified names.
+    ///
+    /// This handles references that are part of a feature chain (e.g., `takePicture.focus`).
+    /// For each part, it uses the chain context to resolve through the type hierarchy.
+    ///
+    /// # Arguments
+    /// * `resolve_chain_fn` - A function that takes (chain_parts, chain_index, scope_id) 
+    ///                        and returns Option<qualified_name>
+    pub fn resolve_chain_targets<F>(&mut self, mut resolve_chain_fn: F)
+    where
+        F: FnMut(&[String], usize, usize) -> Option<String>,
+    {
+        let mut updates: Vec<(String, String, ReferenceInfo)> = Vec::new();
+
+        for (target_name, entry) in &self.reverse {
+            for ref_info in &entry.references {
+                // Only process references with chain context
+                if let Some(chain_ctx) = &ref_info.chain_context {
+                    if let Some(scope_id) = ref_info.scope_id {
+                        if let Some(qualified_name) = resolve_chain_fn(
+                            &chain_ctx.chain_parts,
+                            chain_ctx.chain_index,
+                            scope_id,
+                        ) {
+                            if &qualified_name != target_name {
+                                updates.push((target_name.clone(), qualified_name, ref_info.clone()));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Apply the updates
+        for (old_target, new_target, ref_info) in updates {
+            if let Some(entry) = self.reverse.get_mut(&old_target) {
+                entry.references.remove(&ref_info);
+            }
+
+            self.reverse
+                .entry(new_target.clone())
+                .or_default()
+                .references
+                .insert(ref_info.clone());
+
+            if let Some(targets) = self.forward.get_mut(&ref_info.source_qname) {
+                targets.remove(&old_target);
+                targets.insert(new_target);
+            }
+        }
+
         self.reverse.retain(|_, entry| !entry.references.is_empty());
     }
 }

@@ -100,6 +100,11 @@ fn collect_definition_spans(def: &Definition, position: Position, spans: &mut Ve
                     return true;
                 }
             }
+            DefinitionMember::Import(i) => {
+                if try_push_span(&i.span, position, spans) {
+                    return true;
+                }
+            }
         }
     }
 

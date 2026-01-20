@@ -119,6 +119,7 @@ impl SemanticTokenCollector {
             Symbol::Definition { .. } => TokenType::Type,
             Symbol::Alias { .. } => TokenType::Variable,
             Symbol::Import { .. } => TokenType::Namespace,
+            Symbol::Comment { .. } => TokenType::Comment,
         }
     }
 }

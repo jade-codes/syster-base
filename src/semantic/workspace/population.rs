@@ -77,6 +77,7 @@ impl Workspace<SyntaxFile> {
             })
             .collect();
 
+        // Resolve simple (non-chain) references
         self.reference_index.resolve_targets(|simple_name, file| {
             // Get the scope for this file
             let scope_id = file_scopes.get(file).copied()?;
@@ -85,6 +86,14 @@ impl Workspace<SyntaxFile> {
             let resolver = Resolver::new(&self.symbol_table);
             let symbol = resolver.resolve_in_scope(simple_name, scope_id)?;
 
+            Some(symbol.qualified_name().to_string())
+        });
+        
+        // Resolve feature chain references (e.g., takePicture.focus)
+        self.reference_index.resolve_chain_targets(|chain_parts, chain_index, scope_id| {
+            let resolver = Resolver::new(&self.symbol_table);
+            let parts: Vec<&str> = chain_parts.iter().map(|s| s.as_str()).collect();
+            let symbol = resolver.resolve_feature_chain(&parts, chain_index, scope_id)?;
             Some(symbol.qualified_name().to_string())
         });
     }
