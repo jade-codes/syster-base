@@ -551,10 +551,10 @@ fn test_sysml_comments_in_definition() {
         elements: vec![SysMLElement::Definition(make_definition(
             DefinitionKind::Part,
             Some("MyPart".to_string()),
-            vec![DefinitionMember::Comment(Box::new(SysMLComment {
-                content: "Comment in definition".to_string(),
-                span: Some(make_span(2, 4)),
-            }))],
+            vec![DefinitionMember::Comment(Box::new(SysMLComment::new(
+                "Comment in definition",
+                Some(make_span(2, 4)),
+            )))],
             make_span(1, 10),
         ))],
     };
@@ -574,10 +574,10 @@ fn test_sysml_comments_in_usage() {
         elements: vec![SysMLElement::Usage(make_usage(
             UsageKind::Part,
             Some("myUsage".to_string()),
-            vec![UsageMember::Comment(SysMLComment {
-                content: "Comment in usage".to_string(),
-                span: Some(make_span(2, 4)),
-            })],
+            vec![UsageMember::Comment(SysMLComment::new(
+                "Comment in usage",
+                Some(make_span(2, 4)),
+            ))],
             make_span(1, 10),
         ))],
     };
@@ -654,33 +654,33 @@ fn test_sysml_mixed_nesting_with_comments() {
         namespace: None,
         namespaces: vec![],
         elements: vec![
-            SysMLElement::Comment(SysMLComment {
-                content: "Top-level comment".to_string(),
-                span: Some(make_span(1, 3)),
-            }),
+            SysMLElement::Comment(SysMLComment::new(
+                "Top-level comment",
+                Some(make_span(1, 3)),
+            )),
             SysMLElement::Package(SysMLPackage {
                 name: Some("Pkg".to_string()),
                 span: Some(make_span(4, 20)),
                 elements: vec![
-                    SysMLElement::Comment(SysMLComment {
-                        content: "Package comment".to_string(),
-                        span: Some(make_span(5, 7)),
-                    }),
+                    SysMLElement::Comment(SysMLComment::new(
+                        "Package comment",
+                        Some(make_span(5, 7)),
+                    )),
                     SysMLElement::Definition(make_definition(
                         DefinitionKind::Part,
                         Some("MyPart".to_string()),
                         vec![
-                            DefinitionMember::Comment(Box::new(SysMLComment {
-                                content: "Definition comment".to_string(),
-                                span: Some(make_span(9, 11)),
-                            })),
+                            DefinitionMember::Comment(Box::new(SysMLComment::new(
+                                "Definition comment",
+                                Some(make_span(9, 11)),
+                            ))),
                             DefinitionMember::Usage(Box::new(make_usage(
                                 UsageKind::Part,
                                 Some("usage".to_string()),
-                                vec![UsageMember::Comment(SysMLComment {
-                                    content: "Usage comment".to_string(),
-                                    span: Some(make_span(13, 15)),
-                                })],
+                                vec![UsageMember::Comment(SysMLComment::new(
+                                    "Usage comment",
+                                    Some(make_span(13, 15)),
+                                ))],
                                 make_span(12, 18),
                             ))),
                         ],
@@ -745,18 +745,9 @@ fn test_sysml_multiple_comments_in_sequence() {
         namespace: None,
         namespaces: vec![],
         elements: vec![
-            SysMLElement::Comment(SysMLComment {
-                content: "Comment 1".to_string(),
-                span: Some(make_span(1, 3)),
-            }),
-            SysMLElement::Comment(SysMLComment {
-                content: "Comment 2".to_string(),
-                span: Some(make_span(4, 6)),
-            }),
-            SysMLElement::Comment(SysMLComment {
-                content: "Comment 3".to_string(),
-                span: Some(make_span(7, 9)),
-            }),
+            SysMLElement::Comment(SysMLComment::new("Comment 1", Some(make_span(1, 3)))),
+            SysMLElement::Comment(SysMLComment::new("Comment 2", Some(make_span(4, 6)))),
+            SysMLElement::Comment(SysMLComment::new("Comment 3", Some(make_span(7, 9)))),
         ],
     };
 
@@ -843,10 +834,10 @@ fn test_sysml_single_line_elements_filtered() {
                 span: Some(make_span(5, 5)), // Same start and end line
                 elements: vec![],
             }),
-            SysMLElement::Comment(SysMLComment {
-                content: "Single line".to_string(),
-                span: Some(make_span(10, 10)), // Same start and end line
-            }),
+            SysMLElement::Comment(SysMLComment::new(
+                "Single line",
+                Some(make_span(10, 10)), // Same start and end line
+            )),
         ],
     };
 

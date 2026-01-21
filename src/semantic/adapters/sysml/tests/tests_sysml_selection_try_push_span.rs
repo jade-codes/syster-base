@@ -31,10 +31,7 @@ fn make_package(name: &str, span: Option<Span>) -> Package {
 }
 
 fn make_comment(content: &str, span: Option<Span>) -> Comment {
-    Comment {
-        content: content.to_string(),
-        span,
-    }
+    Comment::new(content, span)
 }
 
 fn make_import(path: &str, span: Option<Span>) -> Import {

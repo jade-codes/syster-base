@@ -54,6 +54,10 @@ fn test_collect_hints_package_traversal() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -66,6 +70,7 @@ fn test_collect_hints_package_traversal() {
         span: Some(Span::from_coords(3, 4, 3, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -106,6 +111,10 @@ fn test_collect_hints_nested_packages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -118,6 +127,7 @@ fn test_collect_hints_nested_packages() {
         span: Some(Span::from_coords(5, 8, 5, 13)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -164,6 +174,10 @@ fn test_collect_hints_definition_element() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -176,6 +190,7 @@ fn test_collect_hints_definition_element() {
         span: Some(Span::from_coords(3, 8, 3, 13)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -223,6 +238,10 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -240,6 +259,10 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -252,6 +275,7 @@ fn test_collect_hints_definition_with_multiple_usages() {
         span: Some(Span::from_coords(3, 4, 3, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -264,6 +288,7 @@ fn test_collect_hints_definition_with_multiple_usages() {
         span: Some(Span::from_coords(4, 4, 4, 16)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -301,10 +326,7 @@ fn test_collect_hints_definition_with_multiple_usages() {
 fn test_collect_hints_definition_with_comments_only() {
     let symbol_table = SymbolTable::new();
 
-    let comment = Comment {
-        content: "This is a comment".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("This is a comment", None);
 
     let definition = Definition {
         kind: DefinitionKind::Part,
@@ -347,6 +369,10 @@ fn test_collect_hints_usage_element() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -359,6 +385,7 @@ fn test_collect_hints_usage_element() {
         span: Some(Span::from_coords(1, 0, 1, 6)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -381,10 +408,10 @@ fn test_collect_hints_usage_element() {
 fn test_collect_hints_comment_element_ignored() {
     let symbol_table = SymbolTable::new();
 
-    let comment = Comment {
-        content: "This is a top-level comment".to_string(),
-        span: Some(Span::from_coords(1, 0, 1, 30)),
-    };
+    let comment = Comment::new(
+        "This is a top-level comment",
+        Some(Span::from_coords(1, 0, 1, 30)),
+    );
 
     let file = SysMLFile {
         namespace: None,
@@ -462,14 +489,15 @@ fn test_collect_hints_mixed_element_types() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
 
-    let comment = Comment {
-        content: "Comment".to_string(),
-        span: Some(Span::from_coords(1, 0, 1, 10)),
-    };
+    let comment = Comment::new("Comment", Some(Span::from_coords(1, 0, 1, 10)));
 
     let import = Import {
         path: "Package::*".to_string(),
@@ -487,6 +515,7 @@ fn test_collect_hints_mixed_element_types() {
         span: Some(Span::from_coords(3, 0, 3, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -537,6 +566,10 @@ fn test_collect_hints_deeply_nested_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -550,6 +583,7 @@ fn test_collect_hints_deeply_nested_usages() {
         span: Some(Span::from_coords(5, 12, 5, 18)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -562,6 +596,7 @@ fn test_collect_hints_deeply_nested_usages() {
         span: Some(Span::from_coords(3, 8, 6, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -574,6 +609,7 @@ fn test_collect_hints_deeply_nested_usages() {
         span: Some(Span::from_coords(1, 4, 7, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -608,14 +644,15 @@ fn test_collect_hints_usage_with_comment_members() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
 
-    let comment = Comment {
-        content: "Inner comment".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("Inner comment", None);
 
     let inner_usage = Usage {
         kind: UsageKind::Part,
@@ -625,6 +662,7 @@ fn test_collect_hints_usage_with_comment_members() {
         span: Some(Span::from_coords(3, 4, 3, 13)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -640,6 +678,7 @@ fn test_collect_hints_usage_with_comment_members() {
         span: Some(Span::from_coords(1, 0, 4, 1)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -674,6 +713,10 @@ fn test_collect_hints_package_definition_usage_hierarchy() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -686,6 +729,7 @@ fn test_collect_hints_package_definition_usage_hierarchy() {
         span: Some(Span::from_coords(4, 8, 4, 17)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -742,6 +786,10 @@ fn test_collect_hints_range_filter_excludes_before() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -755,6 +803,7 @@ fn test_collect_hints_range_filter_excludes_before() {
         span: Some(Span::from_coords(2, 0, 2, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -796,6 +845,10 @@ fn test_collect_hints_range_filter_excludes_after() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -809,6 +862,7 @@ fn test_collect_hints_range_filter_excludes_after() {
         span: Some(Span::from_coords(10, 0, 10, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -847,6 +901,10 @@ fn test_collect_hints_range_filter_includes_in_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -860,6 +918,7 @@ fn test_collect_hints_range_filter_includes_in_range() {
         span: Some(Span::from_coords(5, 0, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -902,6 +961,10 @@ fn test_collect_hints_range_filter_nested_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -919,6 +982,10 @@ fn test_collect_hints_range_filter_nested_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -932,6 +999,7 @@ fn test_collect_hints_range_filter_nested_usages() {
         span: Some(Span::from_coords(3, 4, 3, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -945,6 +1013,7 @@ fn test_collect_hints_range_filter_nested_usages() {
         span: Some(Span::from_coords(15, 4, 15, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -961,6 +1030,7 @@ fn test_collect_hints_range_filter_nested_usages() {
         span: Some(Span::from_coords(1, 0, 20, 0)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1003,6 +1073,10 @@ fn test_collect_hints_range_filter_boundary_start() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1016,6 +1090,7 @@ fn test_collect_hints_range_filter_boundary_start() {
         span: Some(Span::from_coords(5, 0, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1058,6 +1133,10 @@ fn test_collect_hints_range_filter_boundary_end() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1071,6 +1150,7 @@ fn test_collect_hints_range_filter_boundary_end() {
         span: Some(Span::from_coords(10, 0, 10, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1118,6 +1198,10 @@ fn test_collect_hints_multiple_packages_with_same_usage_names() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1130,6 +1214,7 @@ fn test_collect_hints_multiple_packages_with_same_usage_names() {
         span: Some(Span::from_coords(3, 4, 3, 8)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1142,6 +1227,7 @@ fn test_collect_hints_multiple_packages_with_same_usage_names() {
         span: Some(Span::from_coords(7, 4, 7, 8)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1239,6 +1325,10 @@ fn test_collect_hints_usage_without_span() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1251,6 +1341,7 @@ fn test_collect_hints_usage_without_span() {
         span: None, // No span
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1284,14 +1375,15 @@ fn test_collect_hints_multiple_element_types_in_package() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
 
-    let comment = Comment {
-        content: "Comment".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("Comment", None);
 
     let import = Import {
         path: "SomePackage::*".to_string(),
@@ -1309,6 +1401,7 @@ fn test_collect_hints_multiple_element_types_in_package() {
         span: Some(Span::from_coords(5, 4, 5, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1366,6 +1459,10 @@ fn test_collect_hints_no_range_filter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1383,6 +1480,10 @@ fn test_collect_hints_no_range_filter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1395,6 +1496,7 @@ fn test_collect_hints_no_range_filter() {
         span: Some(Span::from_coords(1, 0, 1, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1407,6 +1509,7 @@ fn test_collect_hints_no_range_filter() {
         span: Some(Span::from_coords(100, 0, 100, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1452,6 +1555,7 @@ fn test_collect_usage_hints_with_explicit_type() {
         span: Some(Span::from_coords(3, 4, 3, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1488,6 +1592,10 @@ fn test_collect_usage_hints_nested_usage() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1500,6 +1608,7 @@ fn test_collect_usage_hints_nested_usage() {
         span: Some(Span::from_coords(4, 8, 4, 14)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1512,6 +1621,7 @@ fn test_collect_usage_hints_nested_usage() {
         span: Some(Span::from_coords(3, 4, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1552,6 +1662,10 @@ fn test_collect_usage_hints_with_range_filter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1569,6 +1683,10 @@ fn test_collect_usage_hints_with_range_filter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1581,6 +1699,7 @@ fn test_collect_usage_hints_with_range_filter() {
         span: Some(Span::from_coords(3, 4, 3, 8)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1593,6 +1712,7 @@ fn test_collect_usage_hints_with_range_filter() {
         span: Some(Span::from_coords(5, 4, 5, 8)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1655,6 +1775,7 @@ fn test_collect_usage_hints_usage_without_name() {
         span: Some(Span::from_coords(3, 8, 3, 15)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1688,6 +1809,7 @@ fn test_collect_usage_hints_deeply_nested() {
         span: Some(Span::from_coords(7, 16, 7, 22)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1700,6 +1822,7 @@ fn test_collect_usage_hints_deeply_nested() {
         span: Some(Span::from_coords(6, 12, 8, 13)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1712,6 +1835,7 @@ fn test_collect_usage_hints_deeply_nested() {
         span: Some(Span::from_coords(5, 8, 9, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1724,6 +1848,7 @@ fn test_collect_usage_hints_deeply_nested() {
         span: Some(Span::from_coords(3, 4, 10, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };

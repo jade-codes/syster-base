@@ -332,10 +332,7 @@ fn test_extract_imports_ignores_non_import_elements_sysml() {
     use crate::syntax::sysml::ast::Comment;
 
     let import = create_sysml_import("Base::Package");
-    let comment = SysMLElement::Comment(Comment {
-        content: "This is a comment".to_string(),
-        span: None,
-    });
+    let comment = SysMLElement::Comment(Comment::new("This is a comment", None));
     let sysml_file = create_sysml_file(vec![import, comment]);
     let syntax_file = SyntaxFile::SysML(sysml_file);
 

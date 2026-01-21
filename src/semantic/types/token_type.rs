@@ -15,4 +15,5 @@ pub enum TokenType {
     Variable = 2,
     Property = 3,
     Keyword = 4,
+    Comment = 5,
 }

@@ -70,6 +70,10 @@ fn test_extract_inlay_hints_delegates_to_sysml_adapter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -83,6 +87,7 @@ fn test_extract_inlay_hints_delegates_to_sysml_adapter() {
         span: Some(Span::from_coords(1, 0, 1, 6)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -117,6 +122,8 @@ fn test_extract_inlay_hints_delegates_to_kerml_adapter() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -161,6 +168,10 @@ fn test_extract_inlay_hints_respects_range_filter_sysml() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -174,6 +185,7 @@ fn test_extract_inlay_hints_respects_range_filter_sysml() {
         span: Some(Span::from_coords(5, 0, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -211,6 +223,8 @@ fn test_extract_inlay_hints_respects_range_filter_kerml() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -282,6 +296,10 @@ fn test_sysml_usage_without_explicit_type_shows_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -294,6 +312,7 @@ fn test_sysml_usage_without_explicit_type_shows_hint() {
         span: Some(Span::from_coords(1, 4, 1, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -334,6 +353,7 @@ fn test_sysml_usage_with_explicit_type_no_hint() {
         span: Some(Span::from_coords(1, 4, 1, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -364,6 +384,7 @@ fn test_sysml_usage_without_name_no_hint() {
         span: Some(Span::from_coords(1, 4, 1, 10)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -399,6 +420,10 @@ fn test_sysml_usage_without_span_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -411,6 +436,7 @@ fn test_sysml_usage_without_span_no_hint() {
         span: None, // No span
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -441,6 +467,7 @@ fn test_sysml_usage_not_in_symbol_table_no_hint() {
         span: Some(Span::from_coords(1, 4, 1, 15)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -477,6 +504,10 @@ fn test_sysml_usage_symbol_without_type_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -489,6 +520,7 @@ fn test_sysml_usage_symbol_without_type_no_hint() {
         span: Some(Span::from_coords(1, 4, 1, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -524,6 +556,7 @@ fn test_sysml_non_usage_symbol_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -536,6 +569,7 @@ fn test_sysml_non_usage_symbol_no_hint() {
         span: Some(Span::from_coords(1, 4, 1, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -571,6 +605,10 @@ fn test_sysml_nested_usages_in_definition() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -583,6 +621,7 @@ fn test_sysml_nested_usages_in_definition() {
         span: Some(Span::from_coords(3, 8, 3, 13)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -631,6 +670,10 @@ fn test_sysml_deeply_nested_usages() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -644,6 +687,7 @@ fn test_sysml_deeply_nested_usages() {
         span: Some(Span::from_coords(5, 12, 5, 18)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -656,6 +700,7 @@ fn test_sysml_deeply_nested_usages() {
         span: Some(Span::from_coords(3, 8, 6, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -668,6 +713,7 @@ fn test_sysml_deeply_nested_usages() {
         span: Some(Span::from_coords(1, 4, 7, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -704,6 +750,10 @@ fn test_sysml_multiple_usages_multiple_hints() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -721,6 +771,10 @@ fn test_sysml_multiple_usages_multiple_hints() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -733,6 +787,7 @@ fn test_sysml_multiple_usages_multiple_hints() {
         span: Some(Span::from_coords(1, 0, 1, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -745,6 +800,7 @@ fn test_sysml_multiple_usages_multiple_hints() {
         span: Some(Span::from_coords(2, 0, 2, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -781,6 +837,10 @@ fn test_sysml_range_filter_excludes_usage_before_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -794,6 +854,7 @@ fn test_sysml_range_filter_excludes_usage_before_range() {
         span: Some(Span::from_coords(2, 0, 2, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -836,6 +897,10 @@ fn test_sysml_range_filter_excludes_usage_after_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -849,6 +914,7 @@ fn test_sysml_range_filter_excludes_usage_after_range() {
         span: Some(Span::from_coords(10, 0, 10, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -888,6 +954,10 @@ fn test_sysml_range_filter_includes_usage_in_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -901,6 +971,7 @@ fn test_sysml_range_filter_includes_usage_in_range() {
         span: Some(Span::from_coords(5, 0, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -944,6 +1015,10 @@ fn test_sysml_package_traversal() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -956,6 +1031,7 @@ fn test_sysml_package_traversal() {
         span: Some(Span::from_coords(3, 4, 3, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -998,6 +1074,10 @@ fn test_sysml_hint_position_calculation() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1011,6 +1091,7 @@ fn test_sysml_hint_position_calculation() {
         span: Some(Span::from_coords(5, 10, 5, 18)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -1065,6 +1146,8 @@ fn test_kerml_feature_without_explicit_typing_shows_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1168,6 +1251,8 @@ fn test_kerml_feature_without_span_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1236,6 +1321,8 @@ fn test_kerml_feature_symbol_without_type_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1279,6 +1366,7 @@ fn test_kerml_non_feature_symbol_no_hint() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -1320,6 +1408,8 @@ fn test_kerml_multiple_features_multiple_hints() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1335,6 +1425,8 @@ fn test_kerml_multiple_features_multiple_hints() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1389,6 +1481,8 @@ fn test_kerml_range_filter_excludes_feature_before_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1438,6 +1532,8 @@ fn test_kerml_range_filter_excludes_feature_after_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1484,6 +1580,8 @@ fn test_kerml_range_filter_includes_feature_in_range() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1535,6 +1633,8 @@ fn test_kerml_package_traversal() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -1583,6 +1683,8 @@ fn test_kerml_hint_position_calculation() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();

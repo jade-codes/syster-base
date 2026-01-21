@@ -8390,6 +8390,8 @@ part cal : Calculator;
             Element::Comment(_) => println!("element[{i}] = Comment"),
             Element::Import(_) => println!("element[{i}] = Import"),
             Element::Alias(_) => println!("element[{i}] = Alias"),
+            Element::Dependency(_) => println!("element[{i}] = Dependency"),
+            Element::Filter(_) => println!("element[{i}] = Filter"),
         }
     }
 
@@ -8629,4 +8631,94 @@ fn test_expose_namespace_before_membership(#[case] input: &str, #[case] desc: &s
         consumed, input,
         "expose only consumed '{consumed}', expected '{input}'"
     );
+}
+
+#[test]
+fn test_debug_send_node_ast() {
+    use pest::Parser;
+    use syster::parser::sysml::{Rule, SysMLParser};
+    use syster::syntax::sysml::ast::parsers::parse_file;
+
+    // Use actual syntax from the Vehicle Example
+    let source = r#"package Test {
+    item def IgnitionCmd;
+    
+    part part0 {
+        perform action startVehicle {
+            action turnVehicleOn send ignitionCmd via p1 {
+                in ignitionCmd : IgnitionCmd;
+            }
+        }
+    }
+}"#;
+
+    // Parse the file
+    let mut pairs = SysMLParser::parse(Rule::file, source).expect("Should parse");
+    let file = parse_file(&mut pairs).expect("Should build AST");
+
+    println!("\n=== Parsed File Structure ===");
+    for element in &file.elements {
+        if let syster::syntax::sysml::ast::enums::Element::Package(pkg) = element {
+            println!("Package: {}", pkg.name.as_deref().unwrap_or("<anon>"));
+            for elem in &pkg.elements {
+                match elem {
+                    syster::syntax::sysml::ast::enums::Element::Definition(def) => {
+                        println!(
+                            "  Definition: {} ({:?})",
+                            def.name.as_deref().unwrap_or("<anon>"),
+                            def.kind
+                        );
+                    }
+                    syster::syntax::sysml::ast::enums::Element::Usage(u) => {
+                        println!(
+                            "  Usage: {} ({:?})",
+                            u.name.as_deref().unwrap_or("<anon>"),
+                            u.kind
+                        );
+                        println!("    typed_by: {:?}", u.relationships.typed_by);
+                        println!("    body members: {}", u.body.len());
+                        for (i, member) in u.body.iter().enumerate() {
+                            if let syster::syntax::sysml::ast::enums::UsageMember::Usage(nested) =
+                                member
+                            {
+                                println!(
+                                    "      [{}] Nested Usage: {} ({:?})",
+                                    i,
+                                    nested.name.as_deref().unwrap_or("<anon>"),
+                                    nested.kind
+                                );
+                                println!("          typed_by: {:?}", nested.relationships.typed_by);
+                                println!("          body members: {}", nested.body.len());
+                                for (j, nested_member) in nested.body.iter().enumerate() {
+                                    if let syster::syntax::sysml::ast::enums::UsageMember::Usage(
+                                        n2,
+                                    ) = nested_member
+                                    {
+                                        println!(
+                                            "            [{}] Nested^2 Usage: {} ({:?})",
+                                            j,
+                                            n2.name.as_deref().unwrap_or("<anon>"),
+                                            n2.kind
+                                        );
+                                        println!(
+                                            "                typed_by: {:?}",
+                                            n2.relationships.typed_by
+                                        );
+                                        println!("                body members: {}", n2.body.len());
+                                        for (k, n3_member) in n2.body.iter().enumerate() {
+                                            if let syster::syntax::sysml::ast::enums::UsageMember::Usage(n3) = n3_member {
+                                                println!("                  [{}] Nested^3 Usage: {} ({:?})", k, n3.name.as_deref().unwrap_or("<anon>"), n3.kind);
+                                                println!("                      typed_by: {:?}", n3.relationships.typed_by);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
 }

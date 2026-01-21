@@ -54,6 +54,7 @@ fn make_usage(name: &str, kind: UsageKind, span: Option<Span>) -> Usage {
         relationships: Default::default(),
         body: vec![],
         span,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     }

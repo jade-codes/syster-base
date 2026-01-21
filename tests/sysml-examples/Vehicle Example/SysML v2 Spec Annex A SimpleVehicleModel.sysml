@@ -1052,7 +1052,7 @@ package SimpleVehicleModel{
                 }
             }
             
-            calc def FuelConsumption {
+            calc def FuelConsumption { 
                 in bestFuelConsumption: Real;
                 in idlingFuelConsumption: Real; 
                 in tpd_avg:>timePerDistance;

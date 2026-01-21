@@ -853,6 +853,82 @@ fn test_import_statement() {
     // This test checks that the adapter processes imports without crashing
 }
 
+/// Test that wildcard imports are indexed for hover support.
+/// The import path (minus wildcard) should be added to the ReferenceIndex.
+#[test]
+fn test_import_indexed_for_hover() {
+    let source = "package Camera { import PictureTaking::*; }";
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    let mut symbol_table = SymbolTable::new();
+    // CRITICAL: set_current_file must be called for references to be indexed
+    symbol_table.set_current_file(Some("/test.sysml".to_string()));
+
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    // The import "PictureTaking::*" should be indexed as target "PictureTaking"
+    let targets = graph.targets();
+    println!("Indexed targets: {:?}", targets);
+
+    assert!(
+        targets.contains(&"PictureTaking"),
+        "Import target 'PictureTaking' should be indexed for hover support. Found: {:?}",
+        targets
+    );
+
+    // Verify the reference has a span
+    let refs = graph.get_references("PictureTaking");
+    assert!(
+        !refs.is_empty(),
+        "Should have at least one reference to PictureTaking"
+    );
+
+    let ref_info = &refs[0];
+    println!(
+        "Reference info: source={}, span={:?}",
+        ref_info.source_qname, ref_info.span
+    );
+}
+
+/// Test that imports with quoted names (containing spaces) are indexed correctly.
+/// The quotes should be stripped so resolution works properly.
+#[test]
+fn test_import_quoted_name_indexed_for_hover() {
+    let source = r#"package 'Robotic Vacuum Cleaner' { part def Robot; }
+package Test { import 'Robotic Vacuum Cleaner'::*; }"#;
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    let mut symbol_table = SymbolTable::new();
+    symbol_table.set_current_file(Some("/test.sysml".to_string()));
+
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    // The import "'Robotic Vacuum Cleaner'::*" should be indexed as target "Robotic Vacuum Cleaner"
+    // (without the quotes)
+    let targets = graph.targets();
+    println!("Indexed targets: {:?}", targets);
+
+    assert!(
+        targets.contains(&"Robotic Vacuum Cleaner"),
+        "Import target 'Robotic Vacuum Cleaner' should be indexed WITHOUT quotes. Found: {:?}",
+        targets
+    );
+
+    // Should also have the package symbol
+    let resolver = Resolver::new(&symbol_table);
+    let pkg = resolver.resolve("Robotic Vacuum Cleaner");
+    assert!(
+        pkg.is_some(),
+        "Package 'Robotic Vacuum Cleaner' should be resolvable"
+    );
+}
+
 #[test]
 fn test_port_definition_and_usage() {
     let source = r#"
@@ -1265,4 +1341,304 @@ fn test_assert_constraint_usage_with_in_parameters() {
 
     assert!(has_mass, "Should have 'mass' parameter");
     assert!(has_max_mass, "Should have 'maxMass' parameter");
+}
+
+#[test]
+fn test_feature_chain_source_parses_correctly() {
+    let source = r#"package Camera {
+    action def TakePicture {
+        in item focus;
+        out item photo;
+    }
+
+    part def FocusingSubsystem {
+        perform action takePicture : TakePicture {
+            in item :>> focus;
+        }
+
+        perform action :> takePicture.focus;
+    }
+}"#;
+
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    let mut symbol_table = SymbolTable::new();
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    let resolver = Resolver::new(&symbol_table);
+
+    // Debug: print all symbols
+    println!("=== All Symbols ===");
+    for sym in symbol_table.iter_symbols() {
+        println!("  {} (span: {:?})", sym.qualified_name(), sym.span());
+    }
+
+    // Verify package is created
+    assert!(
+        resolver.resolve("Camera").is_some(),
+        "Should have Camera package"
+    );
+
+    // Verify action def is created
+    assert!(
+        resolver.resolve("Camera::TakePicture").is_some(),
+        "Should have TakePicture action def"
+    );
+
+    // Verify part def is created
+    assert!(
+        resolver.resolve("Camera::FocusingSubsystem").is_some(),
+        "Should have FocusingSubsystem part def"
+    );
+
+    // Verify focus and photo items are created
+    assert!(
+        resolver.resolve("Camera::TakePicture::focus").is_some(),
+        "Should have focus item"
+    );
+    assert!(
+        resolver.resolve("Camera::TakePicture::photo").is_some(),
+        "Should have photo item"
+    );
+
+    // Verify takePicture perform usage is created
+    assert!(
+        resolver
+            .resolve("Camera::FocusingSubsystem::takePicture")
+            .is_some(),
+        "Should have takePicture perform"
+    );
+}
+
+#[test]
+fn test_resolve_member_through_subsets() {
+    // Test that resolve_member properly follows subsets relationships
+    // to find nested members
+    //
+    // Structure:
+    // - PictureTaking package with takePicture action containing focus/shoot
+    // - Camera::takePicture subsets PictureTaking::takePicture
+    // - resolve_member("focus", Camera::takePicture) should find PictureTaking::takePicture::focus
+    let source = r#"package PictureTaking {
+    action def TakePicture {
+        action focus;
+        action shoot;
+    }
+    action takePicture : TakePicture;
+}
+
+part def Camera {
+    perform action takePicture :> PictureTaking::takePicture;
+}"#;
+
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    let mut symbol_table = SymbolTable::new();
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    let resolver = Resolver::new(&symbol_table);
+
+    // Debug: print all symbols
+    println!("=== All Symbols ===");
+    for sym in symbol_table.iter_symbols() {
+        if let Symbol::Usage {
+            usage_type,
+            subsets,
+            ..
+        } = sym
+        {
+            println!(
+                "  {} (USAGE - type: {:?}, subsets: {:?})",
+                sym.qualified_name(),
+                usage_type,
+                subsets
+            );
+        } else {
+            println!("  {} (subsets: {:?})", sym.qualified_name(), sym.subsets());
+        }
+    }
+
+    // Verify the symbols exist
+    let camera_takepicture = resolver
+        .resolve("Camera::takePicture")
+        .expect("Should have Camera::takePicture");
+    println!(
+        "\nCamera::takePicture subsets: {:?}",
+        camera_takepicture.subsets()
+    );
+
+    let pt_takepicture = resolver
+        .resolve("PictureTaking::takePicture")
+        .expect("Should have PictureTaking::takePicture");
+    println!(
+        "PictureTaking::takePicture: {:?}",
+        pt_takepicture.qualified_name()
+    );
+
+    let focus_symbol = resolver
+        .resolve("PictureTaking::TakePicture::focus")
+        .expect("Should have focus in TakePicture action def");
+    println!(
+        "PictureTaking::TakePicture::focus: {}",
+        focus_symbol.qualified_name()
+    );
+
+    // Now test resolve_member - this is what the hover uses
+    let camera_scope_id = resolver
+        .resolve("Camera")
+        .expect("Should have Camera")
+        .scope_id();
+
+    println!("\n=== Testing resolve_member ===");
+    println!(
+        "Looking for 'focus' as member of {}",
+        camera_takepicture.qualified_name()
+    );
+
+    let result = resolver.resolve_member("focus", camera_takepicture, camera_scope_id);
+
+    assert!(
+        result.is_some(),
+        "resolve_member should find 'focus' through subsets relationship"
+    );
+    let resolved = result.unwrap();
+    println!("Found: {}", resolved.qualified_name());
+    assert!(
+        resolved.qualified_name().contains("focus"),
+        "Resolved symbol should be 'focus'"
+    );
+}
+
+#[test]
+fn test_feature_chain_redefine_indexes_correctly() {
+    // Test that feature chain redefinitions like `:>> localClock.currentTime`
+    // are properly indexed with chain_context for hover resolution
+    let source = r#"package TimeTest {
+    part def Clock {
+        attribute currentTime;
+    }
+    
+    part def Transport {
+        part localClock : Clock;
+        attribute :>> localClock.currentTime = 0;
+    }
+}"#;
+
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    // Debug: print the parsed AST structure
+    println!("=== Parsed AST ===");
+    for elem in &file.elements {
+        match elem {
+            crate::syntax::sysml::ast::Element::Package(pkg) => {
+                println!("  Package: {:?}", pkg.name);
+                for inner_elem in &pkg.elements {
+                    if let crate::syntax::sysml::ast::Element::Definition(def) = inner_elem {
+                        println!("    Definition: {:?} (kind: {:?})", def.name, def.kind);
+                        for body_member in &def.body {
+                            match body_member {
+                                crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) => {
+                                    println!(
+                                        "      Usage: {} (kind: {:?})",
+                                        u.name.as_deref().unwrap_or("<anonymous>"),
+                                        u.kind
+                                    );
+                                    println!("        redefines: {:?}", u.relationships.redefines);
+                                    println!("        subsets: {:?}", u.relationships.subsets);
+                                }
+                                crate::syntax::sysml::ast::enums::DefinitionMember::Comment(_c) => {
+                                    println!("      Comment");
+                                }
+                                crate::syntax::sysml::ast::enums::DefinitionMember::Import(i) => {
+                                    println!("      Import: {}", i.path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            crate::syntax::sysml::ast::Element::Definition(def) => {
+                println!("  Definition: {:?} (kind: {:?})", def.name, def.kind);
+            }
+            _ => {
+                println!("  Other element");
+            }
+        }
+    }
+
+    let mut symbol_table = SymbolTable::new();
+    // CRITICAL: set_current_file must be called for references to be indexed
+    symbol_table.set_current_file(Some("/test.sysml".to_string()));
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    let resolver = Resolver::new(&symbol_table);
+
+    // Debug: print all symbols
+    println!("=== All Symbols ===");
+    for sym in symbol_table.iter_symbols() {
+        println!("  {}", sym.qualified_name());
+    }
+
+    // Debug: print all reference targets
+    println!("\n=== Reference Targets ===");
+    for target in graph.targets() {
+        println!("  {}", target);
+    }
+
+    // Verify basic symbols exist
+    assert!(
+        resolver.resolve("TimeTest::Clock").is_some(),
+        "Should have Clock"
+    );
+    assert!(
+        resolver.resolve("TimeTest::Clock::currentTime").is_some(),
+        "Should have Clock::currentTime"
+    );
+    assert!(
+        resolver.resolve("TimeTest::Transport").is_some(),
+        "Should have Transport"
+    );
+    assert!(
+        resolver
+            .resolve("TimeTest::Transport::localClock")
+            .is_some(),
+        "Should have localClock"
+    );
+
+    // Check that the feature chain reference was indexed
+    // The reference to `localClock` should be indexed
+    let localclock_refs = graph.get_references("localClock");
+    println!("\n=== References to 'localClock' ===");
+    for r in &localclock_refs {
+        println!(
+            "  source={}, chain_context={:?}",
+            r.source_qname, r.chain_context
+        );
+    }
+
+    // The reference to `currentTime` should be indexed with chain_context
+    let currenttime_refs = graph.get_references("currentTime");
+    println!("\n=== References to 'currentTime' ===");
+    for r in &currenttime_refs {
+        println!(
+            "  source={}, chain_context={:?}",
+            r.source_qname, r.chain_context
+        );
+    }
+
+    // At least one reference should have chain_context set
+    let has_chain_ref = currenttime_refs.iter().any(|r| r.chain_context.is_some());
+    assert!(
+        has_chain_ref,
+        "currentTime reference should have chain_context for feature chain resolution"
+    );
 }

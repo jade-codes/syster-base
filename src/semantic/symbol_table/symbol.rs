@@ -38,6 +38,7 @@ pub enum Symbol {
         source_file: Option<String>,
         span: Option<Span>,
         documentation: Option<String>,
+        specializes: Vec<String>,
     },
     Feature {
         name: String,
@@ -47,6 +48,8 @@ pub enum Symbol {
         source_file: Option<String>,
         span: Option<Span>,
         documentation: Option<String>,
+        subsets: Vec<String>,
+        redefines: Vec<String>,
     },
     Definition {
         name: String,
@@ -57,6 +60,7 @@ pub enum Symbol {
         source_file: Option<String>,
         span: Option<Span>,
         documentation: Option<String>,
+        specializes: Vec<String>,
     },
     Usage {
         name: String,
@@ -68,6 +72,12 @@ pub enum Symbol {
         source_file: Option<String>,
         span: Option<Span>,
         documentation: Option<String>,
+        subsets: Vec<String>,
+        redefines: Vec<String>,
+        /// Perform targets (e.g., from `perform startVehicle.trigger1;` nested in this usage)
+        performs: Vec<String>,
+        /// References targets (e.g., from `lugNutCompositePort ::> wheel1.lugNutCompositePort`)
+        references: Vec<String>,
     },
     Alias {
         name: String,
@@ -91,6 +101,15 @@ pub enum Symbol {
         source_file: Option<String>,
         span: Option<Span>,
     },
+    /// A named comment (e.g., `comment cmt /* text */`)
+    Comment {
+        name: String,
+        qualified_name: String,
+        scope_id: usize,
+        source_file: Option<String>,
+        span: Option<Span>,
+        documentation: Option<String>,
+    },
 }
 
 impl Symbol {
@@ -103,7 +122,8 @@ impl Symbol {
             | Symbol::Definition { qualified_name, .. }
             | Symbol::Usage { qualified_name, .. }
             | Symbol::Alias { qualified_name, .. }
-            | Symbol::Import { qualified_name, .. } => qualified_name,
+            | Symbol::Import { qualified_name, .. }
+            | Symbol::Comment { qualified_name, .. } => qualified_name,
         }
     }
 
@@ -115,7 +135,8 @@ impl Symbol {
             | Symbol::Feature { name, .. }
             | Symbol::Definition { name, .. }
             | Symbol::Usage { name, .. }
-            | Symbol::Alias { name, .. } => name,
+            | Symbol::Alias { name, .. }
+            | Symbol::Comment { name, .. } => name,
             Symbol::Import { path, .. } => path,
         }
     }
@@ -129,7 +150,8 @@ impl Symbol {
             | Symbol::Definition { scope_id, .. }
             | Symbol::Usage { scope_id, .. }
             | Symbol::Alias { scope_id, .. }
-            | Symbol::Import { scope_id, .. } => *scope_id,
+            | Symbol::Import { scope_id, .. }
+            | Symbol::Comment { scope_id, .. } => *scope_id,
         }
     }
 
@@ -142,7 +164,8 @@ impl Symbol {
             | Symbol::Definition { source_file, .. }
             | Symbol::Usage { source_file, .. }
             | Symbol::Alias { source_file, .. }
-            | Symbol::Import { source_file, .. } => source_file.as_deref(),
+            | Symbol::Import { source_file, .. }
+            | Symbol::Comment { source_file, .. } => source_file.as_deref(),
         }
     }
 
@@ -155,7 +178,8 @@ impl Symbol {
             | Symbol::Definition { span, .. }
             | Symbol::Usage { span, .. }
             | Symbol::Alias { span, .. }
-            | Symbol::Import { span, .. } => *span,
+            | Symbol::Import { span, .. }
+            | Symbol::Comment { span, .. } => *span,
         }
     }
 
@@ -179,8 +203,51 @@ impl Symbol {
             | Symbol::Classifier { documentation, .. }
             | Symbol::Feature { documentation, .. }
             | Symbol::Definition { documentation, .. }
-            | Symbol::Usage { documentation, .. } => documentation.as_deref(),
+            | Symbol::Usage { documentation, .. }
+            | Symbol::Comment { documentation, .. } => documentation.as_deref(),
             Symbol::Alias { .. } | Symbol::Import { .. } => None,
+        }
+    }
+
+    /// Returns the subsets relationships for Features and Usages
+    pub fn subsets(&self) -> &[String] {
+        match self {
+            Symbol::Feature { subsets, .. } | Symbol::Usage { subsets, .. } => subsets,
+            _ => &[],
+        }
+    }
+
+    /// Returns the redefines relationships for Features and Usages
+    pub fn redefines(&self) -> &[String] {
+        match self {
+            Symbol::Feature { redefines, .. } | Symbol::Usage { redefines, .. } => redefines,
+            _ => &[],
+        }
+    }
+
+    /// Returns the performs relationships for Usages (from nested perform statements)
+    pub fn performs(&self) -> &[String] {
+        match self {
+            Symbol::Usage { performs, .. } => performs,
+            _ => &[],
+        }
+    }
+
+    /// Returns the references relationships for Usages (from `::>` featured_by)
+    pub fn references(&self) -> &[String] {
+        match self {
+            Symbol::Usage { references, .. } => references,
+            _ => &[],
+        }
+    }
+
+    /// Returns the specializes relationships for Definitions and Classifiers
+    pub fn specializes(&self) -> &[String] {
+        match self {
+            Symbol::Definition { specializes, .. } | Symbol::Classifier { specializes, .. } => {
+                specializes
+            }
+            _ => &[],
         }
     }
 }

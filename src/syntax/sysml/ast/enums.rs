@@ -1,4 +1,4 @@
-use super::types::{Alias, Comment, Definition, Import, Package, Usage};
+use super::types::{Alias, Comment, Definition, Dependency, Filter, Import, Package, Usage};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Element {
@@ -8,6 +8,8 @@ pub enum Element {
     Comment(Comment),
     Import(Import),
     Alias(Alias),
+    Dependency(Dependency),
+    Filter(Filter),
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -73,12 +75,21 @@ pub enum UsageKind {
     Interface,
     Allocation,
     Flow,
+    Message,
+    Event,
+    SendAction,
+    AcceptAction,
+    Transition,
+    // View-related usages
+    Rendering,
+    Viewpoint,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum DefinitionMember {
     Comment(Box<Comment>),
     Usage(Box<Usage>),
+    Import(Box<Import>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

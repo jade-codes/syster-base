@@ -73,6 +73,7 @@ fn test_scope_hierarchy() {
         kind: "Class".to_string(),
         is_abstract: false,
         documentation: None,
+        specializes: Vec::new(),
     };
     table.insert("MyClass".to_string(), class_symbol).unwrap();
 
@@ -109,6 +110,7 @@ fn test_all_symbols() {
         kind: "Class".to_string(),
         is_abstract: false,
         documentation: None,
+        specializes: Vec::new(),
     };
     table.insert("Class".to_string(), class).unwrap();
 
@@ -207,6 +209,7 @@ fn test_different_symbol_types() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -222,6 +225,8 @@ fn test_different_symbol_types() {
                 qualified_name: "MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -238,6 +243,7 @@ fn test_different_symbol_types() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -255,6 +261,10 @@ fn test_different_symbol_types() {
                 qualified_name: "MyUsage".to_string(),
                 kind: "Part".to_string(),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -336,6 +346,7 @@ fn test_remove_symbols_from_file() {
                 kind: "class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();

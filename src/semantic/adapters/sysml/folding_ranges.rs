@@ -40,6 +40,9 @@ fn collect_ranges(element: &Element, ranges: &mut Vec<FoldingRangeInfo>) {
                     DefinitionMember::Comment(c) => {
                         collect_ranges(&Element::Comment((**c).clone()), ranges)
                     }
+                    DefinitionMember::Import(_) => {
+                        // Imports are single-line, no folding needed
+                    }
                 }
             }
         }
@@ -59,6 +62,6 @@ fn collect_ranges(element: &Element, ranges: &mut Vec<FoldingRangeInfo>) {
                 ranges.push(FoldingRangeInfo::comment(*span));
             }
         }
-        Element::Import(_) | Element::Alias(_) => {}
+        Element::Import(_) | Element::Alias(_) | Element::Dependency(_) | Element::Filter(_) => {}
     }
 }

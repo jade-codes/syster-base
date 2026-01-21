@@ -136,6 +136,7 @@ fn test_symbol_precedence_current_over_parent() {
         kind: "Class".to_string(),
         is_abstract: false,
         documentation: None,
+        specializes: Vec::new(),
     };
 
     table.insert("Symbol".to_string(), child_symbol).unwrap();
@@ -256,6 +257,7 @@ fn test_different_symbol_types_in_chain() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -273,6 +275,8 @@ fn test_different_symbol_types_in_chain() {
                 qualified_name: "RootPkg::MyClass::MyFeature".to_string(),
                 feature_type: Some("String".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();

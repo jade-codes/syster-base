@@ -301,6 +301,7 @@ fn test_anonymous_usage_with_redefinition_gets_property_token() {
     // - annotatedElement (Property) - the redefined feature name
     // - Usage (Type) - the type reference after ":"
     // - baseType (Property) - the redefined feature name
+    // - causes (Property) - the feature reference in the expression
     // - Usage (Type) - the type reference after "as"
 
     let type_tokens: Vec<_> = tokens
@@ -320,11 +321,11 @@ fn test_anonymous_usage_with_redefinition_gets_property_token() {
         type_tokens.len()
     );
 
-    // annotatedElement + baseType = 2 Property tokens
+    // annotatedElement + baseType + causes = 3 Property tokens
     assert_eq!(
         property_tokens.len(),
-        2,
-        "Expected 2 Property tokens (annotatedElement, baseType), got {}",
+        3,
+        "Expected 3 Property tokens (annotatedElement, baseType, causes), got {}",
         property_tokens.len()
     );
 

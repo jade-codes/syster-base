@@ -67,6 +67,7 @@ fn create_classifier_symbol(
         source_file: source_file.map(|s| s.to_string()),
         span,
         documentation: None,
+        specializes: Vec::new(),
     }
 }
 
@@ -86,6 +87,7 @@ fn create_definition_symbol(
         source_file: source_file.map(|s| s.to_string()),
         span,
         documentation: None,
+        specializes: Vec::new(),
     }
 }
 

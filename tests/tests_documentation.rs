@@ -101,6 +101,7 @@ fn test_symbol_enum_variants_documented() {
         source_file: None,
         span: None,
         documentation: None,
+        specializes: Vec::new(),
     };
 
     // Verify symbol variants can be matched

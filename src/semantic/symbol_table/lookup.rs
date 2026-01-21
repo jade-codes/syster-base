@@ -59,6 +59,13 @@ impl SymbolTable {
             .filter_map(|id| self.arena.get(id.index()))
     }
 
+    /// Returns an iterator over all active symbols with their IDs
+    pub fn iter_symbols_with_ids(&self) -> impl Iterator<Item = (SymbolId, &Symbol)> {
+        self.symbols_by_qname
+            .values()
+            .filter_map(|id| self.arena.get(id.index()).map(|s| (*id, s)))
+    }
+
     /// Returns all symbols as a Vec (for backward compatibility, prefer iter_symbols())
     #[deprecated(note = "Use iter_symbols() for iteration or targeted index methods")]
     pub fn all_symbols(&self) -> Vec<&Symbol> {

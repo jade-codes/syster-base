@@ -63,6 +63,7 @@ fn test_lookup_global_mut_across_multiple_scopes() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -80,6 +81,8 @@ fn test_lookup_global_mut_across_multiple_scopes() {
                 qualified_name: "RootSymbol::NestedSymbol::DeepSymbol".to_string(),
                 feature_type: Some("String".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -132,6 +135,7 @@ fn test_lookup_global_mut_returns_first_match() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -157,6 +161,8 @@ fn test_lookup_global_mut_mutability() {
                 qualified_name: "MutableSymbol".to_string(),
                 feature_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -199,6 +205,7 @@ fn test_lookup_global_mut_different_symbol_types() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -215,6 +222,8 @@ fn test_lookup_global_mut_different_symbol_types() {
                 qualified_name: "Package::Classifier::Feature".to_string(),
                 feature_type: Some("Integer".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -232,6 +241,7 @@ fn test_lookup_global_mut_different_symbol_types() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -250,6 +260,10 @@ fn test_lookup_global_mut_different_symbol_types() {
                 usage_type: None,
                 semantic_role: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -313,6 +327,7 @@ fn test_lookup_global_mut_vs_lookup_mut_difference() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -345,6 +360,8 @@ fn test_lookup_global_mut_vs_lookup_mut_difference() {
                 qualified_name: "RootOnly::OtherBranch".to_string(),
                 feature_type: Some("String".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -400,6 +417,7 @@ fn test_lookup_global_mut_after_scope_operations() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -416,6 +434,8 @@ fn test_lookup_global_mut_after_scope_operations() {
                 qualified_name: "Symbol1::Symbol2::Symbol3".to_string(),
                 feature_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -444,6 +464,7 @@ fn test_lookup_global_mut_after_scope_operations() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();

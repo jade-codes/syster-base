@@ -72,6 +72,7 @@ fn test_collect_containing_spans_usage_element() {
         span: Some(make_span(0, 0, 2, 1)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -91,10 +92,7 @@ fn test_collect_containing_spans_usage_element() {
 #[test]
 fn test_collect_containing_spans_comment_element() {
     // Test collecting spans for a comment element
-    let comment = Comment {
-        content: "Test comment".to_string(),
-        span: Some(make_span(0, 0, 0, 20)),
-    };
+    let comment = Comment::new("Test comment", Some(make_span(0, 0, 0, 20)));
 
     let file = SysMLFile {
         namespace: None,
@@ -129,10 +127,7 @@ fn test_collect_containing_spans_multiple_element_types() {
         is_variation: false,
     };
 
-    let comment = Comment {
-        content: "Comment".to_string(),
-        span: Some(make_span(6, 0, 6, 15)),
-    };
+    let comment = Comment::new("Comment", Some(make_span(6, 0, 6, 15)));
 
     let file = SysMLFile {
         namespace: None,

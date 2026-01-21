@@ -53,6 +53,7 @@ fn test_collect_definition_spans_with_usage() {
         span: Some(make_span(2, 4, 3, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -87,10 +88,7 @@ fn test_collect_definition_spans_with_usage() {
 #[test]
 fn test_collect_definition_spans_with_comment() {
     // Test definition containing a comment
-    let comment = Comment {
-        content: "Test comment".to_string(),
-        span: Some(make_span(1, 4, 1, 20)),
-    };
+    let comment = Comment::new("Test comment", Some(make_span(1, 4, 1, 20)));
 
     let definition = Definition {
         kind: DefinitionKind::Part,
@@ -130,14 +128,12 @@ fn test_collect_definition_spans_multiple_members() {
         span: Some(make_span(1, 4, 2, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
 
-    let comment = Comment {
-        content: "Comment".to_string(),
-        span: Some(make_span(3, 4, 3, 15)),
-    };
+    let comment = Comment::new("Comment", Some(make_span(3, 4, 3, 15)));
 
     let usage2 = Usage {
         kind: UsageKind::Part,
@@ -147,6 +143,7 @@ fn test_collect_definition_spans_multiple_members() {
         span: Some(make_span(4, 4, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -193,6 +190,7 @@ fn test_collect_definition_spans_nested_usages() {
         span: Some(make_span(3, 8, 4, 9)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };
@@ -205,6 +203,7 @@ fn test_collect_definition_spans_nested_usages() {
         span: Some(make_span(2, 4, 5, 5)),
         short_name: None,
         short_name_span: None,
+        expression_refs: Vec::new(),
         is_derived: false,
         is_const: false,
     };

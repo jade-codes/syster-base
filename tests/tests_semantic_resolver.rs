@@ -143,6 +143,7 @@ fn test_resolve_deeply_nested_qualified_name() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -197,6 +198,7 @@ fn test_resolve_classifier_in_package() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -303,6 +305,8 @@ fn test_resolve_feature_symbol() {
                 qualified_name: "Pkg::attr".to_string(),
                 feature_type: Some("Integer".to_string()),
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -342,6 +346,7 @@ fn test_resolve_definition_symbol() {
                 kind: "Part".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -388,6 +393,10 @@ fn test_resolve_usage_symbol() {
                 semantic_role: None,
                 usage_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
+                performs: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -433,6 +442,7 @@ fn test_resolve_mixed_symbol_path() {
                 kind: "Class".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -449,6 +459,8 @@ fn test_resolve_mixed_symbol_path() {
                 qualified_name: "Root::MyClass::feature".to_string(),
                 feature_type: None,
                 documentation: None,
+                subsets: Vec::new(),
+                redefines: Vec::new(),
             },
         )
         .unwrap();
@@ -620,6 +632,7 @@ fn test_resolve_definition_in_nested_scopes() {
                 kind: "Requirement".to_string(),
                 semantic_role: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -657,6 +670,7 @@ fn test_resolve_abstract_classifier() {
                 kind: "Class".to_string(),
                 is_abstract: true,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -686,6 +700,7 @@ fn test_resolve_different_classifier_kinds() {
                 kind: "Behavior".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -702,6 +717,7 @@ fn test_resolve_different_classifier_kinds() {
                 kind: "Function".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -751,6 +767,7 @@ fn test_resolve_import_specific_member() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -793,6 +810,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -809,6 +827,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -826,6 +845,7 @@ fn test_resolve_import_wildcard() {
                 kind: "PartDef".to_string(),
                 is_abstract: false,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();
@@ -1025,7 +1045,10 @@ fn test_extract_imports_mixed_elements() {
                 span: None,
             }),
             Element::Comment(syster::syntax::sysml::ast::Comment {
+                name: None,
+                name_span: None,
                 content: "Some comment".to_string(),
+                about: Vec::new(),
                 span: None,
             }),
             Element::Import(Import {
@@ -1169,6 +1192,10 @@ fn test_resolve_in_scope_with_import() {
     // Create another scope WITHOUT the import
     table.enter_scope();
     let scope_without_import = table.current_scope_id();
+
+    // Run import resolution phases (normally done by Workspace.populate_all)
+    syster::semantic::resolver::resolve_imports(&mut table);
+    syster::semantic::resolver::build_export_maps(&mut table);
 
     // From scope with import, should resolve "Vehicle" via import
     let resolver = Resolver::new(&table);

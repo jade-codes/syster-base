@@ -1,3 +1,3 @@
 mod reference_index;
 
-pub use reference_index::{ReferenceIndex, ReferenceInfo};
+pub use reference_index::{FeatureChainContext, ReferenceIndex, ReferenceInfo};

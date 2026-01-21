@@ -75,7 +75,10 @@ fn test_sysml_extract_folding_ranges_comment_kind() {
         namespace: None,
         namespaces: vec![],
         elements: vec![SysMLElement::Comment(SysMLComment {
+            name: None,
+            name_span: None,
             content: "A long comment".to_string(),
+            about: Vec::new(),
             span: Some(make_span(1, 3)),
         })],
     });

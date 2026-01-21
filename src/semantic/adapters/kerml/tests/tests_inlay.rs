@@ -37,6 +37,8 @@ fn create_feature_symbol(name: &str, type_name: Option<&str>) -> Symbol {
         source_file: None,
         span: None,
         documentation: None,
+        subsets: Vec::new(),
+        redefines: Vec::new(),
     }
 }
 
@@ -273,6 +275,7 @@ fn test_extract_inlay_hints_non_feature_symbol_type() {
                 source_file: None,
                 span: None,
                 documentation: None,
+                specializes: Vec::new(),
             },
         )
         .unwrap();

@@ -119,7 +119,7 @@ part def Vehicle;"#;
 
     let file = parse_sysml(source);
 
-    let syster::syntax::sysml::ast::Element::Definition(def) = &file.elements[1] else {
+    let syster::syntax::sysml::ast::Element::Definition(def) = &file.elements[2] else {
         panic!("Expected Definition");
     };
     let span = def.span.expect("Definition should have span");
@@ -298,6 +298,9 @@ fn test_deeply_nested_span() {
             }
             syster::syntax::sysml::ast::DefinitionMember::Comment(comment) => {
                 assert!(comment.span.is_some(), "Nested comment should have span");
+            }
+            syster::syntax::sysml::ast::DefinitionMember::Import(import) => {
+                assert!(import.span.is_some(), "Nested import should have span");
             }
         }
     }

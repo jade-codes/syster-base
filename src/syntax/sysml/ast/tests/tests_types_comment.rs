@@ -10,10 +10,7 @@ use crate::core::Span;
 
 #[test]
 fn test_comment_creation() {
-    let comment = Comment {
-        content: "This is a test comment".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("This is a test comment", None);
 
     assert_eq!(comment.content, "This is a test comment");
     assert_eq!(comment.span, None);
@@ -29,10 +26,7 @@ fn test_comment_with_span() {
         },
     };
 
-    let comment = Comment {
-        content: "Comment with span".to_string(),
-        span: Some(span),
-    };
+    let comment = Comment::new("Comment with span", Some(span));
 
     assert_eq!(comment.content, "Comment with span");
     assert_eq!(comment.span, Some(span));
@@ -40,10 +34,7 @@ fn test_comment_with_span() {
 
 #[test]
 fn test_comment_empty_content() {
-    let comment = Comment {
-        content: String::new(),
-        span: None,
-    };
+    let comment = Comment::new("", None);
 
     assert_eq!(comment.content, "");
     assert!(comment.content.is_empty());
@@ -53,10 +44,7 @@ fn test_comment_empty_content() {
 #[test]
 fn test_comment_multiline_content() {
     let content = "This is a\nmultiline\ncomment".to_string();
-    let comment = Comment {
-        content: content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&content, None);
 
     assert_eq!(comment.content, content);
     assert!(comment.content.contains('\n'));
@@ -65,20 +53,14 @@ fn test_comment_multiline_content() {
 #[test]
 fn test_comment_special_characters() {
     let content = "Comment with special chars: @#$%^&*(){}[]|\\:;\"'<>,.?/~`".to_string();
-    let comment = Comment {
-        content: content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&content, None);
 
     assert_eq!(comment.content, content);
 }
 
 #[test]
 fn test_comment_clone() {
-    let comment1 = Comment {
-        content: "Original comment".to_string(),
-        span: None,
-    };
+    let comment1 = Comment::new("Original comment", None);
 
     let comment2 = comment1.clone();
 
@@ -88,30 +70,18 @@ fn test_comment_clone() {
 
 #[test]
 fn test_comment_partial_eq() {
-    let comment1 = Comment {
-        content: "Same comment".to_string(),
-        span: None,
-    };
+    let comment1 = Comment::new("Same comment", None);
 
-    let comment2 = Comment {
-        content: "Same comment".to_string(),
-        span: None,
-    };
+    let comment2 = Comment::new("Same comment", None);
 
     assert_eq!(comment1, comment2);
 }
 
 #[test]
 fn test_comment_not_eq_different_content() {
-    let comment1 = Comment {
-        content: "First comment".to_string(),
-        span: None,
-    };
+    let comment1 = Comment::new("First comment", None);
 
-    let comment2 = Comment {
-        content: "Second comment".to_string(),
-        span: None,
-    };
+    let comment2 = Comment::new("Second comment", None);
 
     assert_ne!(comment1, comment2);
 }
@@ -134,25 +104,16 @@ fn test_comment_not_eq_different_span() {
         },
     };
 
-    let comment1 = Comment {
-        content: "Same comment".to_string(),
-        span: Some(span1),
-    };
+    let comment1 = Comment::new("Same comment", Some(span1));
 
-    let comment2 = Comment {
-        content: "Same comment".to_string(),
-        span: Some(span2),
-    };
+    let comment2 = Comment::new("Same comment", Some(span2));
 
     assert_ne!(comment1, comment2);
 }
 
 #[test]
 fn test_comment_debug_trait() {
-    let comment = Comment {
-        content: "Debug test".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("Debug test", None);
 
     let debug_str = format!("{comment:?}");
     assert!(debug_str.contains("Comment"));
@@ -165,10 +126,7 @@ fn test_comment_debug_trait() {
 
 #[test]
 fn test_comment_as_element() {
-    let comment = Comment {
-        content: "Test comment".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("Test comment", None);
 
     let element = Element::Comment(comment.clone());
 
@@ -183,10 +141,7 @@ fn test_comment_as_element() {
 
 #[test]
 fn test_comment_element_pattern_matching() {
-    let comment = Comment {
-        content: "Pattern match test".to_string(),
-        span: None,
-    };
+    let comment = Comment::new("Pattern match test", None);
 
     let element = Element::Comment(comment);
 
@@ -204,10 +159,7 @@ fn test_comment_element_pattern_matching() {
 #[test]
 fn test_comment_very_long_content() {
     let long_content = "x".repeat(10000);
-    let comment = Comment {
-        content: long_content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&long_content, None);
 
     assert_eq!(comment.content.len(), 10000);
     assert_eq!(comment.content, long_content);
@@ -216,10 +168,7 @@ fn test_comment_very_long_content() {
 #[test]
 fn test_comment_unicode_content() {
     let unicode_content = "Hello 世界 🌍 Привет مرحبا".to_string();
-    let comment = Comment {
-        content: unicode_content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&unicode_content, None);
 
     assert_eq!(comment.content, unicode_content);
 }
@@ -227,10 +176,7 @@ fn test_comment_unicode_content() {
 #[test]
 fn test_comment_with_embedded_quotes() {
     let content = r#"Comment with "double quotes" and 'single quotes'"#.to_string();
-    let comment = Comment {
-        content: content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&content, None);
 
     assert_eq!(comment.content, content);
 }
@@ -238,10 +184,7 @@ fn test_comment_with_embedded_quotes() {
 #[test]
 fn test_comment_with_escape_sequences() {
     let content = "Comment with\ttabs\nand\nnewlines\rand\\backslashes".to_string();
-    let comment = Comment {
-        content: content.clone(),
-        span: None,
-    };
+    let comment = Comment::new(&content, None);
 
     assert_eq!(comment.content, content);
 }
