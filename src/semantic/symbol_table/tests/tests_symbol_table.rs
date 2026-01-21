@@ -264,7 +264,7 @@ fn test_different_symbol_types() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();

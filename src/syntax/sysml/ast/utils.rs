@@ -301,7 +301,7 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         Rule::requirement_usage | Rule::objective_member | Rule::objective_requirement_usage => UsageKind::Requirement,
         Rule::port_usage => UsageKind::Port,
         Rule::item_usage => UsageKind::Item,
-        Rule::attribute_usage 
+        Rule::attribute_usage
         | Rule::return_parameter_member
         | Rule::result_expression_member => UsageKind::Attribute,
         Rule::concern_usage | Rule::framed_concern_usage => UsageKind::Concern,
@@ -445,12 +445,11 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
                     for r in all_refs_with_spans_from(&p) {
-                        rel.specializes
-                            .push(super::types::SpecializationRel { 
-                                target: r.name, 
-                                span: r.span,
-                                chain_context: r.chain_context,
-                            });
+                        rel.specializes.push(super::types::SpecializationRel {
+                            target: r.name,
+                            span: r.span,
+                            chain_context: r.chain_context,
+                        });
                     }
                 }
             }
@@ -459,30 +458,28 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
             for p in pair.clone().into_inner() {
                 if p.as_rule() == Rule::owned_subclassification {
                     for r in all_refs_with_spans_from(&p) {
-                        rel.redefines
-                            .push(super::types::RedefinitionRel { 
-                                target: r.name, 
-                                span: r.span,
-                                chain_context: r.chain_context,
-                            });
+                        rel.redefines.push(super::types::RedefinitionRel {
+                            target: r.name,
+                            span: r.span,
+                            chain_context: r.chain_context,
+                        });
                     }
                 }
             }
         }
         Rule::satisfy_requirement_usage => {
             for r in all_refs_with_spans_from(pair) {
-                rel.satisfies
-                    .push(super::types::SatisfyRel { 
-                        target: r.name, 
-                        span: r.span,
-                        chain_context: r.chain_context,
-                    });
+                rel.satisfies.push(super::types::SatisfyRel {
+                    target: r.name,
+                    span: r.span,
+                    chain_context: r.chain_context,
+                });
             }
         }
         Rule::perform_action_usage => {
             for r in all_refs_with_spans_from(pair) {
-                rel.performs.push(super::types::PerformRel { 
-                    target: r.name, 
+                rel.performs.push(super::types::PerformRel {
+                    target: r.name,
                     span: r.span,
                     chain_context: r.chain_context,
                 });
@@ -490,8 +487,8 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
         }
         Rule::exhibit_state_usage => {
             for r in all_refs_with_spans_from(pair) {
-                rel.exhibits.push(super::types::ExhibitRel { 
-                    target: r.name, 
+                rel.exhibits.push(super::types::ExhibitRel {
+                    target: r.name,
                     span: r.span,
                     chain_context: r.chain_context,
                 });
@@ -499,8 +496,8 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
         }
         Rule::include_use_case_usage => {
             for r in all_refs_with_spans_from(pair) {
-                rel.includes.push(super::types::IncludeRel { 
-                    target: r.name, 
+                rel.includes.push(super::types::IncludeRel {
+                    target: r.name,
                     span: r.span,
                     chain_context: r.chain_context,
                 });
@@ -519,38 +516,35 @@ fn extract_rels_recursive(pair: &Pair<Rule>, rel: &mut super::types::Relationshi
                     }
                     Rule::subsettings => {
                         for r in all_refs_with_spans_from(&spec) {
-                            rel.subsets
-                                .push(super::types::SubsettingRel { 
-                                    target: r.name, 
-                                    span: r.span,
-                                    chain_context: r.chain_context,
-                                });
+                            rel.subsets.push(super::types::SubsettingRel {
+                                target: r.name,
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                         }
                     }
                     Rule::redefinitions => {
                         for r in all_refs_with_spans_from(&spec) {
-                            rel.redefines
-                                .push(super::types::RedefinitionRel { 
-                                    target: r.name, 
-                                    span: r.span,
-                                    chain_context: r.chain_context,
-                                });
+                            rel.redefines.push(super::types::RedefinitionRel {
+                                target: r.name,
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                         }
                     }
                     Rule::references => {
                         for r in all_refs_with_spans_from(&spec) {
-                            rel.references
-                                .push(super::types::ReferenceRel { 
-                                    target: r.name, 
-                                    span: r.span,
-                                    chain_context: r.chain_context,
-                                });
+                            rel.references.push(super::types::ReferenceRel {
+                                target: r.name,
+                                span: r.span,
+                                chain_context: r.chain_context,
+                            });
                         }
                     }
                     Rule::crosses => {
                         for r in all_refs_with_spans_from(&spec) {
-                            rel.crosses.push(super::types::CrossRel { 
-                                target: r.name, 
+                            rel.crosses.push(super::types::CrossRel {
+                                target: r.name,
                                 span: r.span,
                                 chain_context: r.chain_context,
                             });

@@ -745,18 +745,9 @@ fn test_sysml_multiple_comments_in_sequence() {
         namespace: None,
         namespaces: vec![],
         elements: vec![
-            SysMLElement::Comment(SysMLComment::new(
-                "Comment 1",
-                Some(make_span(1, 3)),
-            )),
-            SysMLElement::Comment(SysMLComment::new(
-                "Comment 2",
-                Some(make_span(4, 6)),
-            )),
-            SysMLElement::Comment(SysMLComment::new(
-                "Comment 3",
-                Some(make_span(7, 9)),
-            )),
+            SysMLElement::Comment(SysMLComment::new("Comment 1", Some(make_span(1, 3)))),
+            SysMLElement::Comment(SysMLComment::new("Comment 2", Some(make_span(4, 6)))),
+            SysMLElement::Comment(SysMLComment::new("Comment 3", Some(make_span(7, 9)))),
         ],
     };
 

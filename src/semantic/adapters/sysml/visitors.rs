@@ -61,7 +61,7 @@ fn implicit_supertype_for_kind(kind: &str) -> Option<&'static str> {
 fn extract_relationship_targets<T: HasTargetAndChain>(rels: &[T]) -> Vec<String> {
     let mut result = Vec::new();
     let mut processed_chains = std::collections::HashSet::new();
-    
+
     for rel in rels {
         if let Some((chain_parts, _)) = rel.chain_context() {
             // This is part of a feature chain - reconstruct and dedupe
@@ -84,18 +84,30 @@ trait HasTargetAndChain {
 }
 
 impl HasTargetAndChain for SubsettingRel {
-    fn target(&self) -> &str { &self.target }
-    fn chain_context(&self) -> Option<&(Vec<String>, usize)> { self.chain_context.as_ref() }
+    fn target(&self) -> &str {
+        &self.target
+    }
+    fn chain_context(&self) -> Option<&(Vec<String>, usize)> {
+        self.chain_context.as_ref()
+    }
 }
 
 impl HasTargetAndChain for RedefinitionRel {
-    fn target(&self) -> &str { &self.target }
-    fn chain_context(&self) -> Option<&(Vec<String>, usize)> { self.chain_context.as_ref() }
+    fn target(&self) -> &str {
+        &self.target
+    }
+    fn chain_context(&self) -> Option<&(Vec<String>, usize)> {
+        self.chain_context.as_ref()
+    }
 }
 
 impl HasTargetAndChain for PerformRel {
-    fn target(&self) -> &str { &self.target }
-    fn chain_context(&self) -> Option<&(Vec<String>, usize)> { self.chain_context.as_ref() }
+    fn target(&self) -> &str {
+        &self.target
+    }
+    fn chain_context(&self) -> Option<&(Vec<String>, usize)> {
+        self.chain_context.as_ref()
+    }
 }
 
 /// Extract documentation from a definition body.
@@ -241,17 +253,41 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
 
             // Index all relationship references for reverse lookups
             for spec in &definition.relationships.specializes {
-                self.index_reference_with_chain_context(&qualified_name, &spec.target, spec.span, None, spec.chain_context.clone());
+                self.index_reference_with_chain_context(
+                    &qualified_name,
+                    &spec.target,
+                    spec.span,
+                    None,
+                    spec.chain_context.clone(),
+                );
             }
             for redef in &definition.relationships.redefines {
-                self.index_reference_with_chain_context(&qualified_name, &redef.target, redef.span, None, redef.chain_context.clone());
+                self.index_reference_with_chain_context(
+                    &qualified_name,
+                    &redef.target,
+                    redef.span,
+                    None,
+                    redef.chain_context.clone(),
+                );
             }
             for include in &definition.relationships.includes {
-                self.index_reference_with_chain_context(&qualified_name, &include.target, include.span, None, include.chain_context.clone());
+                self.index_reference_with_chain_context(
+                    &qualified_name,
+                    &include.target,
+                    include.span,
+                    None,
+                    include.chain_context.clone(),
+                );
             }
             // Index meta type references (e.g., filter @SysML::PartUsage inside view def)
             for meta in &definition.relationships.meta {
-                self.index_reference_with_chain_context(&qualified_name, &meta.target, meta.span, None, meta.chain_context.clone());
+                self.index_reference_with_chain_context(
+                    &qualified_name,
+                    &meta.target,
+                    meta.span,
+                    None,
+                    meta.chain_context.clone(),
+                );
             }
 
             // Index domain relationships from nested usages
@@ -262,16 +298,40 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     }
                     // Also index explicit relationship targets
                     for satisfy in &usage.relationships.satisfies {
-                        self.index_reference_with_chain_context(&qualified_name, &satisfy.target, satisfy.span, None, satisfy.chain_context.clone());
+                        self.index_reference_with_chain_context(
+                            &qualified_name,
+                            &satisfy.target,
+                            satisfy.span,
+                            None,
+                            satisfy.chain_context.clone(),
+                        );
                     }
                     for perform in &usage.relationships.performs {
-                        self.index_reference_with_chain_context(&qualified_name, &perform.target, perform.span, None, perform.chain_context.clone());
+                        self.index_reference_with_chain_context(
+                            &qualified_name,
+                            &perform.target,
+                            perform.span,
+                            None,
+                            perform.chain_context.clone(),
+                        );
                     }
                     for exhibit in &usage.relationships.exhibits {
-                        self.index_reference_with_chain_context(&qualified_name, &exhibit.target, exhibit.span, None, exhibit.chain_context.clone());
+                        self.index_reference_with_chain_context(
+                            &qualified_name,
+                            &exhibit.target,
+                            exhibit.span,
+                            None,
+                            exhibit.chain_context.clone(),
+                        );
                     }
                     for include in &usage.relationships.includes {
-                        self.index_reference_with_chain_context(&qualified_name, &include.target, include.span, None, include.chain_context.clone());
+                        self.index_reference_with_chain_context(
+                            &qualified_name,
+                            &include.target,
+                            include.span,
+                            None,
+                            include.chain_context.clone(),
+                        );
                     }
                 }
             }
@@ -296,11 +356,16 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
     }
 
     fn visit_usage(&mut self, usage: &Usage) {
-        trace!("[VISITOR] visit_usage: name={:?} kind={:?} typed_by={:?} redefines={:?} subsets={:?} expr_refs={:?}",
-            usage.name, usage.kind, usage.relationships.typed_by, 
-            usage.relationships.redefines, usage.relationships.subsets,
-            usage.expression_refs);
-        
+        trace!(
+            "[VISITOR] visit_usage: name={:?} kind={:?} typed_by={:?} redefines={:?} subsets={:?} expr_refs={:?}",
+            usage.name,
+            usage.kind,
+            usage.relationships.typed_by,
+            usage.relationships.redefines,
+            usage.relationships.subsets,
+            usage.expression_refs
+        );
+
         // Determine the name and span: prefer explicit name, fall back to first redefinition or subsetting target
         let (name, name_span, is_anonymous) = if let Some(name) = &usage.name {
             (name.clone(), usage.span, false)
@@ -318,7 +383,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     | UsageKind::SatisfyRequirement
                     | UsageKind::IncludeUseCase
             );
-            
+
             if is_reference_only {
                 let parent_qname = self.current_namespace.join("::");
                 // Index all subset references for hover/go-to-definition
@@ -331,37 +396,43 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                         subset.chain_context.clone(),
                     );
                 }
-                
+
                 // Add perform targets to the parent symbol for resolution
                 // e.g., `perform startVehicle.sendStatus` adds "startVehicle.sendStatus" to parent's performs
                 if usage.kind == UsageKind::PerformAction {
-                    let perform_targets = extract_relationship_targets(&usage.relationships.subsets);
-                    if let Some(parent) = self.symbol_table.find_by_qualified_name_mut(&parent_qname) {
-                        if let Symbol::Usage { performs, .. } = parent {
-                            for pt in perform_targets {
-                                if !performs.contains(&pt) {
-                                    performs.push(pt);
-                                }
+                    let perform_targets =
+                        extract_relationship_targets(&usage.relationships.subsets);
+                    if let Some(Symbol::Usage { performs, .. }) =
+                        self.symbol_table.find_by_qualified_name_mut(&parent_qname)
+                    {
+                        for pt in perform_targets {
+                            if !performs.contains(&pt) {
+                                performs.push(pt);
                             }
                         }
                     }
                 }
                 return;
             }
-            
+
             // For other anonymous usages with subsets, use the target as the name
             (first_subset.target.clone(), first_subset.span, true)
         } else if let Some(first_perform) = usage.relationships.performs.first() {
             // Use the perform target's base name (e.g., "startVehicle" from "startVehicle.trigger1")
             // as the name, with its span (fallback in case performs are not in subsets)
-            let base_name = first_perform.target.split('.').next().unwrap_or(&first_perform.target).to_string();
+            let base_name = first_perform
+                .target
+                .split('.')
+                .next()
+                .unwrap_or(&first_perform.target)
+                .to_string();
             (base_name, first_perform.span, true)
         } else {
             // Anonymous usage with no name - still need to index references for hover/semantic tokens
             // This is common for flow usages like `flow of Exposure from focus.xrsl to shoot.xsf;`
             // and connection end usages like `end #original ::> vehicleSpecification.vehicleMassRequirement;`
             let parent_qname = self.current_namespace.join("::");
-            
+
             // Index the typed_by reference (e.g., Exposure in `flow of Exposure`)
             if let Some(ref target) = usage.relationships.typed_by {
                 self.index_reference_with_type(
@@ -371,7 +442,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     Some(TokenType::Type),
                 );
             }
-            
+
             // Index expression references (e.g., focus.xrsl and shoot.xsf in flow)
             for expr_ref in &usage.expression_refs {
                 self.index_reference_with_chain_context(
@@ -382,7 +453,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     expr_ref.chain_context.clone(),
                 );
             }
-            
+
             // Index references (::>) - e.g., `end #original ::> vehicleSpecification.vehicleMassRequirement;`
             for reference in &usage.relationships.references {
                 self.index_reference_with_chain_context(
@@ -393,7 +464,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     reference.chain_context.clone(),
                 );
             }
-            
+
             // IMPORTANT: Visit nested members even for anonymous usages!
             // This is needed for connection usages like `#derivation connection { end #original ::> ... }`
             // where the end usages are nested inside the anonymous connection usage.
@@ -407,7 +478,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     }
                 }
             }
-            
+
             return;
         };
 
@@ -479,7 +550,10 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         if !is_anonymous {
             match usage.kind {
                 UsageKind::PerformAction if usage.relationships.performs.is_empty() => {
-                    trace!("[VISITOR] perform action usage '{}' has name but no explicit performs - indexing name as reference", name);
+                    trace!(
+                        "[VISITOR] perform action usage '{}' has name but no explicit performs - indexing name as reference",
+                        name
+                    );
                     self.index_reference_with_type(
                         &qualified_name,
                         &name,
@@ -488,7 +562,10 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     );
                 }
                 UsageKind::ExhibitState if usage.relationships.exhibits.is_empty() => {
-                    trace!("[VISITOR] exhibit state usage '{}' has name but no explicit exhibits - indexing name as reference", name);
+                    trace!(
+                        "[VISITOR] exhibit state usage '{}' has name but no explicit exhibits - indexing name as reference",
+                        name
+                    );
                     self.index_reference_with_type(
                         &qualified_name,
                         &name,
@@ -497,7 +574,10 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     );
                 }
                 UsageKind::SatisfyRequirement if usage.relationships.satisfies.is_empty() => {
-                    trace!("[VISITOR] satisfy requirement usage '{}' has name but no explicit satisfies - indexing name as reference", name);
+                    trace!(
+                        "[VISITOR] satisfy requirement usage '{}' has name but no explicit satisfies - indexing name as reference",
+                        name
+                    );
                     self.index_reference_with_type(
                         &qualified_name,
                         &name,
@@ -506,7 +586,10 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     );
                 }
                 UsageKind::IncludeUseCase if usage.relationships.includes.is_empty() => {
-                    trace!("[VISITOR] include use case usage '{}' has name but no explicit includes - indexing name as reference", name);
+                    trace!(
+                        "[VISITOR] include use case usage '{}' has name but no explicit includes - indexing name as reference",
+                        name
+                    );
                     self.index_reference_with_type(
                         &qualified_name,
                         &name,
@@ -538,7 +621,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         // e.g., `:>> localClock.currentTime` should have redefines = ["localClock.currentTime"]
         let mut subsets: Vec<String> = extract_relationship_targets(&usage.relationships.subsets);
         let redefines: Vec<String> = extract_relationship_targets(&usage.relationships.redefines);
-        
+
         // For PerformAction usages, performs are also subsets
         if usage.kind == UsageKind::PerformAction && !usage.relationships.performs.is_empty() {
             let perform_targets = extract_relationship_targets(&usage.relationships.performs);
@@ -550,7 +633,10 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         }
 
         // Build references list from `::>` featured_by relationships
-        let references: Vec<String> = usage.relationships.references.iter()
+        let references: Vec<String> = usage
+            .relationships
+            .references
+            .iter()
             .map(|r| r.target.clone())
             .collect();
 
@@ -589,14 +675,20 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         // Visit nested members
         if !usage.body.is_empty() {
             self.enter_namespace(name.clone());
-            
+
             // Index expression_refs AFTER entering namespace, so they can resolve
             // to payload parameters defined in accept statements within the body.
             // e.g., "if ignitionCmd.ignitionOnOff==..." where ignitionCmd comes from
             // "accept ignitionCmd:IgnitionCmd via ignitionCmdPort"
-            trace!("[VISITOR] indexing expression_refs for '{}': {:?}", qualified_name, usage.expression_refs);
+            trace!(
+                "[VISITOR] indexing expression_refs for '{}': {:?}",
+                qualified_name, usage.expression_refs
+            );
             for expr_ref in &usage.expression_refs {
-                trace!("[VISITOR]   expr_ref: name='{}' span={:?} chain={:?}", expr_ref.name, expr_ref.span, expr_ref.chain_context);
+                trace!(
+                    "[VISITOR]   expr_ref: name='{}' span={:?} chain={:?}",
+                    expr_ref.name, expr_ref.span, expr_ref.chain_context
+                );
                 self.index_reference_with_chain_context(
                     &qualified_name,
                     &expr_ref.name,
@@ -605,7 +697,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                     expr_ref.chain_context.clone(),
                 );
             }
-            
+
             for member in &usage.body {
                 match member {
                     crate::syntax::sysml::ast::enums::UsageMember::Usage(nested_usage) => {
@@ -619,9 +711,15 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             self.exit_namespace();
         } else {
             // No body - index expression_refs in current scope
-            trace!("[VISITOR] indexing expression_refs for '{}': {:?}", qualified_name, usage.expression_refs);
+            trace!(
+                "[VISITOR] indexing expression_refs for '{}': {:?}",
+                qualified_name, usage.expression_refs
+            );
             for expr_ref in &usage.expression_refs {
-                trace!("[VISITOR]   expr_ref: name='{}' span={:?} chain={:?}", expr_ref.name, expr_ref.span, expr_ref.chain_context);
+                trace!(
+                    "[VISITOR]   expr_ref: name='{}' span={:?} chain={:?}",
+                    expr_ref.name, expr_ref.span, expr_ref.chain_context
+                );
                 self.index_reference_with_chain_context(
                     &qualified_name,
                     &expr_ref.name,
@@ -684,20 +782,24 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
             let source_file = self.symbol_table.current_file().map(String::from);
-            
+
             // Extract the actual comment text (from block comment)
             let doc_text = extract_doc_text(&comment.content);
-            
+
             let symbol = Symbol::Comment {
                 name: name.clone(),
                 qualified_name: qualified_name.clone(),
                 scope_id,
                 source_file,
                 span: comment.name_span,
-                documentation: if doc_text.is_empty() { None } else { Some(doc_text) },
+                documentation: if doc_text.is_empty() {
+                    None
+                } else {
+                    Some(doc_text)
+                },
             };
             self.insert_symbol(name.clone(), symbol);
-            
+
             // Index the `about` references
             for about_ref in &comment.about {
                 self.index_reference(&qualified_name, &about_ref.name, about_ref.span);
@@ -711,7 +813,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
             } else {
                 format!("{}::<anonymous_comment>", context_name)
             };
-            
+
             for about_ref in &comment.about {
                 self.index_reference(&qualified_name, &about_ref.name, about_ref.span);
             }
@@ -722,7 +824,7 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
         if let Some(name) = &alias.name {
             let qualified_name = self.qualified_name(name);
             let scope_id = self.symbol_table.current_scope_id();
-            
+
             // Qualify the target - it may be a simple name like "duration" that needs
             // to be resolved to "ISQSpaceTime::duration" for the alias to work properly
             let qualified_target = if alias.target.contains("::") {
@@ -732,16 +834,22 @@ impl<'a> AstVisitor for SysmlAdapter<'a> {
                 // Try to qualify using current namespace
                 let candidate = self.qualified_name(&alias.target);
                 // Check if the candidate exists in the symbol table
-                if self.symbol_table.find_by_qualified_name(&candidate).is_some() {
+                if self
+                    .symbol_table
+                    .find_by_qualified_name(&candidate)
+                    .is_some()
+                {
                     candidate
                 } else {
                     // Fallback to raw target (may be from import)
                     alias.target.clone()
                 }
             };
-            trace!("[VISITOR] visit_alias: name='{}' raw_target='{}' qualified_target='{}'", 
-                name, alias.target, qualified_target);
-            
+            trace!(
+                "[VISITOR] visit_alias: name='{}' raw_target='{}' qualified_target='{}'",
+                name, alias.target, qualified_target
+            );
+
             let symbol = Symbol::Alias {
                 name: name.clone(),
                 qualified_name: qualified_name.clone(),

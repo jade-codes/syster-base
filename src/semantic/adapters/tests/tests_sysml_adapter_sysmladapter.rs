@@ -296,7 +296,10 @@ fn test_visit_comment_does_not_affect_symbol_table() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("This is a test comment", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "This is a test comment",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -331,7 +334,10 @@ fn test_visit_comment_multiline_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("Line 1\nLine 2\nLine 3", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "Line 1\nLine 2\nLine 3",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -348,7 +354,10 @@ fn test_visit_comment_with_special_characters() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("/* Comment with special chars: @#$%^&*() */", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "/* Comment with special chars: @#$%^&*() */",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -517,7 +526,10 @@ fn test_visit_comment_unicode_content() {
     let file = SysMLFile {
         namespace: None,
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("Unicode comment: 你好世界 🚀 ñ é", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "Unicode comment: 你好世界 🚀 ñ é",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -541,7 +553,10 @@ fn test_namespace_with_comments() {
             span: None,
         }),
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("This namespace is documented", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "This namespace is documented",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);
@@ -569,7 +584,10 @@ fn test_comment_before_namespace_not_typical_but_handled() {
             span: None,
         }),
         namespaces: vec![],
-        elements: vec![Element::Comment(Comment::new("Comment at file level", None))],
+        elements: vec![Element::Comment(Comment::new(
+            "Comment at file level",
+            None,
+        ))],
     };
 
     let result = adapter.populate(&file);

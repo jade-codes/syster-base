@@ -73,7 +73,7 @@ fn test_extract_inlay_hints_delegates_to_sysml_adapter() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -171,7 +171,7 @@ fn test_extract_inlay_hints_respects_range_filter_sysml() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -299,7 +299,7 @@ fn test_sysml_usage_without_explicit_type_shows_hint() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -423,7 +423,7 @@ fn test_sysml_usage_without_span_no_hint() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -507,7 +507,7 @@ fn test_sysml_usage_symbol_without_type_no_hint() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -608,7 +608,7 @@ fn test_sysml_nested_usages_in_definition() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -673,7 +673,7 @@ fn test_sysml_deeply_nested_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -753,7 +753,7 @@ fn test_sysml_multiple_usages_multiple_hints() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -774,7 +774,7 @@ fn test_sysml_multiple_usages_multiple_hints() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -840,7 +840,7 @@ fn test_sysml_range_filter_excludes_usage_before_range() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -900,7 +900,7 @@ fn test_sysml_range_filter_excludes_usage_after_range() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -957,7 +957,7 @@ fn test_sysml_range_filter_includes_usage_in_range() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1018,7 +1018,7 @@ fn test_sysml_package_traversal() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1077,7 +1077,7 @@ fn test_sysml_hint_position_calculation() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();

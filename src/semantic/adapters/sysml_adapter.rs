@@ -70,9 +70,11 @@ impl<'a> SysmlAdapter<'a> {
         chain_context: Option<(Vec<String>, usize)>,
     ) {
         use tracing::trace;
-        trace!("[ADAPTER] index_reference_with_chain_context: source='{}' target='{}' span={:?} chain={:?}",
-            source_qname, target, span, chain_context);
-        
+        trace!(
+            "[ADAPTER] index_reference_with_chain_context: source='{}' target='{}' span={:?} chain={:?}",
+            source_qname, target, span, chain_context
+        );
+
         // Check if this is a feature chain (contains `.`) - legacy handling
         if chain_context.is_none() && target.contains('.') {
             trace!("[ADAPTER]   -> delegating to index_feature_chain (contains '.')");
@@ -83,7 +85,7 @@ impl<'a> SysmlAdapter<'a> {
         // Store the raw target name - resolution happens at hover time using the Resolver
         // which has access to imports, inheritance, and full scope chain
         let file = self.symbol_table.current_file().map(PathBuf::from);
-        
+
         // Get the current scope ID for proper resolution at hover time
         let scope_id = self.symbol_table.current_scope_id();
         trace!("[ADAPTER]   scope_id={} file={:?}", scope_id, file);
@@ -96,10 +98,13 @@ impl<'a> SysmlAdapter<'a> {
 
         // Add to index with raw name - the Resolver will resolve it at hover time
         if let Some(index) = &mut self.reference_index {
-            trace!("[ADAPTER]   -> adding to index: target='{}' scope_id={}", target, scope_id);
+            trace!(
+                "[ADAPTER]   -> adding to index: target='{}' scope_id={}",
+                target, scope_id
+            );
             index.add_reference_full(
                 source_qname,
-                target,  // Use raw target, not resolved
+                target, // Use raw target, not resolved
                 file.as_ref(),
                 span,
                 token_type,

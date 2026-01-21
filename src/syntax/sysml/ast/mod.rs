@@ -10,8 +10,8 @@ pub use types::*;
 
 // Re-export parsers
 pub use parsers::{
-    ExtractedRef, ParseError, parse_alias, parse_comment, parse_definition, parse_element, parse_file,
-    parse_import, parse_package, parse_usage,
+    ExtractedRef, ParseError, parse_alias, parse_comment, parse_definition, parse_element,
+    parse_file, parse_import, parse_package, parse_usage,
 };
 
 #[cfg(test)]

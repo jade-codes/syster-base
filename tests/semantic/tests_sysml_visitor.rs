@@ -1278,12 +1278,18 @@ fn test_alias_resolution_via_public_import() {
 
     // 3. The alias Torque should exist
     let torque_alias = resolver.resolve_qualified("Automotive::Torque");
-    assert!(torque_alias.is_some(), "Automotive::Torque alias should exist");
+    assert!(
+        torque_alias.is_some(),
+        "Automotive::Torque alias should exist"
+    );
 
     // 4. Resolving the alias should give us the target TorqueValue
     if let Some(Symbol::Alias { target, .. }) = torque_alias {
-        assert_eq!(target, "ISQ::TorqueValue", "Alias target should be ISQ::TorqueValue");
-        
+        assert_eq!(
+            target, "ISQ::TorqueValue",
+            "Alias target should be ISQ::TorqueValue"
+        );
+
         // 5. The alias target should be resolvable
         let resolved_target = resolver.resolve_qualified(target);
         assert!(
@@ -1297,7 +1303,8 @@ fn test_alias_resolution_via_public_import() {
     // 6. Verify there is a reference index entry for "Torque" typed_by
     // The driveshaftTorque parameter has `typed_by: Some("Torque")`
     // This should result in a reference being indexed
-    let driveshaft_torque = resolver.resolve_qualified("Automotive::DistributeTorque::driveshaftTorque");
+    let driveshaft_torque =
+        resolver.resolve_qualified("Automotive::DistributeTorque::driveshaftTorque");
     assert!(
         driveshaft_torque.is_some(),
         "driveshaftTorque parameter should exist"

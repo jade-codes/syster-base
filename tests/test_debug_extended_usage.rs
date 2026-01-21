@@ -1,6 +1,6 @@
-use syster::syntax::sysml::ast::{parse_file, DefinitionMember, UsageMember, Element};
-use syster::parser::sysml::{SysMLParser, Rule};
 use pest::Parser;
+use syster::parser::sysml::{Rule, SysMLParser};
+use syster::syntax::sysml::ast::{DefinitionMember, Element, UsageMember, parse_file};
 
 #[test]
 fn test_debug_extended_usage_parsing() {
@@ -31,16 +31,27 @@ fn test_debug_extended_usage_parsing() {
     for elem in &file.elements {
         match elem {
             Element::Package(pkg) => {
-                println!("Package: {}", pkg.name.as_ref().unwrap_or(&"<unnamed>".to_string()));
+                println!(
+                    "Package: {}",
+                    pkg.name.as_ref().unwrap_or(&"<unnamed>".to_string())
+                );
                 for member in &pkg.elements {
                     print_element(member, 1);
                 }
             }
             Element::Definition(def) => {
-                println!("Definition: {} (kind: {:?})", def.name.as_ref().unwrap_or(&"<unnamed>".to_string()), def.kind);
+                println!(
+                    "Definition: {} (kind: {:?})",
+                    def.name.as_ref().unwrap_or(&"<unnamed>".to_string()),
+                    def.kind
+                );
             }
             Element::Usage(usage) => {
-                println!("Usage: {} (kind: {:?})", usage.name.as_ref().unwrap_or(&"<unnamed>".to_string()), usage.kind);
+                println!(
+                    "Usage: {} (kind: {:?})",
+                    usage.name.as_ref().unwrap_or(&"<unnamed>".to_string()),
+                    usage.kind
+                );
             }
             _ => {}
         }
@@ -51,7 +62,12 @@ fn print_element(elem: &Element, indent: usize) {
     let prefix = "  ".repeat(indent);
     match elem {
         Element::Definition(def) => {
-            println!("{}Definition: {} (kind: {:?})", prefix, def.name.as_ref().unwrap_or(&"<unnamed>".to_string()), def.kind);
+            println!(
+                "{}Definition: {} (kind: {:?})",
+                prefix,
+                def.name.as_ref().unwrap_or(&"<unnamed>".to_string()),
+                def.kind
+            );
             for m in &def.body {
                 print_definition_member(m, indent + 1);
             }
@@ -60,7 +76,11 @@ fn print_element(elem: &Element, indent: usize) {
             print_usage(usage, indent);
         }
         Element::Package(pkg) => {
-            println!("{}Package: {}", prefix, pkg.name.as_ref().unwrap_or(&"<unnamed>".to_string()));
+            println!(
+                "{}Package: {}",
+                prefix,
+                pkg.name.as_ref().unwrap_or(&"<unnamed>".to_string())
+            );
         }
         _ => {}
     }
@@ -83,11 +103,28 @@ fn print_definition_member(member: &DefinitionMember, indent: usize) {
 
 fn print_usage(usage: &syster::syntax::sysml::ast::Usage, indent: usize) {
     let prefix = "  ".repeat(indent);
-    println!("{}Usage: {} (kind: {:?})", prefix, usage.name.as_ref().unwrap_or(&"<unnamed>".to_string()), usage.kind);
-    println!("{}  relationships.subsets: {:?}", prefix, usage.relationships.subsets);
-    println!("{}  relationships.typed_by: {:?}", prefix, usage.relationships.typed_by);
-    println!("{}  relationships.redefines: {:?}", prefix, usage.relationships.redefines);
-    println!("{}  relationships.references: {:?}", prefix, usage.relationships.references);
+    println!(
+        "{}Usage: {} (kind: {:?})",
+        prefix,
+        usage.name.as_ref().unwrap_or(&"<unnamed>".to_string()),
+        usage.kind
+    );
+    println!(
+        "{}  relationships.subsets: {:?}",
+        prefix, usage.relationships.subsets
+    );
+    println!(
+        "{}  relationships.typed_by: {:?}",
+        prefix, usage.relationships.typed_by
+    );
+    println!(
+        "{}  relationships.redefines: {:?}",
+        prefix, usage.relationships.redefines
+    );
+    println!(
+        "{}  relationships.references: {:?}",
+        prefix, usage.relationships.references
+    );
     println!("{}  expression_refs: {:?}", prefix, usage.expression_refs);
     for m in &usage.body {
         print_usage_member(m, indent + 1);

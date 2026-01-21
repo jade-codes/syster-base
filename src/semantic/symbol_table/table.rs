@@ -329,12 +329,19 @@ impl SymbolTable {
     /// Look up a symbol in a scope's export map (O(1))
     pub fn lookup_in_export_map(&self, scope_id: usize, name: &str) -> Option<&Symbol> {
         let export_map = self.get_export_map(scope_id)?;
-        tracing::trace!("[EXPORT_MAP] lookup scope={} name='{}' export_map_keys={:?}", 
-            scope_id, name, export_map.keys().take(10).collect::<Vec<_>>());
+        tracing::trace!(
+            "[EXPORT_MAP] lookup scope={} name='{}' export_map_keys={:?}",
+            scope_id,
+            name,
+            export_map.keys().take(10).collect::<Vec<_>>()
+        );
         let symbol_id = export_map.get(name)?;
         let result = self.get_symbol(*symbol_id);
-        tracing::trace!("[EXPORT_MAP] -> found symbol_id={:?} symbol={:?}", 
-            symbol_id, result.map(|s| s.qualified_name()));
+        tracing::trace!(
+            "[EXPORT_MAP] -> found symbol_id={:?} symbol={:?}",
+            symbol_id,
+            result.map(|s| s.qualified_name())
+        );
         result
     }
 

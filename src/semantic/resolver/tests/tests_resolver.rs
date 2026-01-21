@@ -397,7 +397,7 @@ fn test_resolve_usage_symbol() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1044,7 +1044,10 @@ fn test_extract_imports_mixed_elements() {
                 is_public: false,
                 span: None,
             }),
-            Element::Comment(crate::syntax::sysml::ast::Comment::new("Some comment", None)),
+            Element::Comment(crate::syntax::sysml::ast::Comment::new(
+                "Some comment",
+                None,
+            )),
             Element::Import(Import {
                 path: "Systems::Engine".to_string(),
                 path_span: None,

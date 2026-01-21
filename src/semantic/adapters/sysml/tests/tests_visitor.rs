@@ -864,7 +864,7 @@ fn test_import_indexed_for_hover() {
     let mut symbol_table = SymbolTable::new();
     // CRITICAL: set_current_file must be called for references to be indexed
     symbol_table.set_current_file(Some("/test.sysml".to_string()));
-    
+
     let mut graph = ReferenceIndex::new();
     let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
     adapter.populate(&file).unwrap();
@@ -872,18 +872,25 @@ fn test_import_indexed_for_hover() {
     // The import "PictureTaking::*" should be indexed as target "PictureTaking"
     let targets = graph.targets();
     println!("Indexed targets: {:?}", targets);
-    
+
     assert!(
         targets.contains(&"PictureTaking"),
-        "Import target 'PictureTaking' should be indexed for hover support. Found: {:?}", targets
+        "Import target 'PictureTaking' should be indexed for hover support. Found: {:?}",
+        targets
     );
-    
+
     // Verify the reference has a span
     let refs = graph.get_references("PictureTaking");
-    assert!(!refs.is_empty(), "Should have at least one reference to PictureTaking");
-    
+    assert!(
+        !refs.is_empty(),
+        "Should have at least one reference to PictureTaking"
+    );
+
     let ref_info = &refs[0];
-    println!("Reference info: source={}, span={:?}", ref_info.source_qname, ref_info.span);
+    println!(
+        "Reference info: source={}, span={:?}",
+        ref_info.source_qname, ref_info.span
+    );
 }
 
 /// Test that imports with quoted names (containing spaces) are indexed correctly.
@@ -897,7 +904,7 @@ package Test { import 'Robotic Vacuum Cleaner'::*; }"#;
 
     let mut symbol_table = SymbolTable::new();
     symbol_table.set_current_file(Some("/test.sysml".to_string()));
-    
+
     let mut graph = ReferenceIndex::new();
     let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
     adapter.populate(&file).unwrap();
@@ -906,12 +913,13 @@ package Test { import 'Robotic Vacuum Cleaner'::*; }"#;
     // (without the quotes)
     let targets = graph.targets();
     println!("Indexed targets: {:?}", targets);
-    
+
     assert!(
         targets.contains(&"Robotic Vacuum Cleaner"),
-        "Import target 'Robotic Vacuum Cleaner' should be indexed WITHOUT quotes. Found: {:?}", targets
+        "Import target 'Robotic Vacuum Cleaner' should be indexed WITHOUT quotes. Found: {:?}",
+        targets
     );
-    
+
     // Should also have the package symbol
     let resolver = Resolver::new(&symbol_table);
     let pkg = resolver.resolve("Robotic Vacuum Cleaner");
@@ -1351,7 +1359,7 @@ fn test_feature_chain_source_parses_correctly() {
         perform action :> takePicture.focus;
     }
 }"#;
-    
+
     let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
     let file = parse_file(&mut pairs).unwrap();
 
@@ -1361,7 +1369,7 @@ fn test_feature_chain_source_parses_correctly() {
     adapter.populate(&file).unwrap();
 
     let resolver = Resolver::new(&symbol_table);
-    
+
     // Debug: print all symbols
     println!("=== All Symbols ===");
     for sym in symbol_table.iter_symbols() {
@@ -1369,20 +1377,40 @@ fn test_feature_chain_source_parses_correctly() {
     }
 
     // Verify package is created
-    assert!(resolver.resolve("Camera").is_some(), "Should have Camera package");
+    assert!(
+        resolver.resolve("Camera").is_some(),
+        "Should have Camera package"
+    );
 
     // Verify action def is created
-    assert!(resolver.resolve("Camera::TakePicture").is_some(), "Should have TakePicture action def");
+    assert!(
+        resolver.resolve("Camera::TakePicture").is_some(),
+        "Should have TakePicture action def"
+    );
 
     // Verify part def is created
-    assert!(resolver.resolve("Camera::FocusingSubsystem").is_some(), "Should have FocusingSubsystem part def");
+    assert!(
+        resolver.resolve("Camera::FocusingSubsystem").is_some(),
+        "Should have FocusingSubsystem part def"
+    );
 
     // Verify focus and photo items are created
-    assert!(resolver.resolve("Camera::TakePicture::focus").is_some(), "Should have focus item");
-    assert!(resolver.resolve("Camera::TakePicture::photo").is_some(), "Should have photo item");
+    assert!(
+        resolver.resolve("Camera::TakePicture::focus").is_some(),
+        "Should have focus item"
+    );
+    assert!(
+        resolver.resolve("Camera::TakePicture::photo").is_some(),
+        "Should have photo item"
+    );
 
     // Verify takePicture perform usage is created
-    assert!(resolver.resolve("Camera::FocusingSubsystem::takePicture").is_some(), "Should have takePicture perform");
+    assert!(
+        resolver
+            .resolve("Camera::FocusingSubsystem::takePicture")
+            .is_some(),
+        "Should have takePicture perform"
+    );
 }
 
 #[test]
@@ -1419,40 +1447,72 @@ part def Camera {
     // Debug: print all symbols
     println!("=== All Symbols ===");
     for sym in symbol_table.iter_symbols() {
-        if let Symbol::Usage { usage_type, subsets, .. } = sym {
-            println!("  {} (USAGE - type: {:?}, subsets: {:?})", sym.qualified_name(), usage_type, subsets);
+        if let Symbol::Usage {
+            usage_type,
+            subsets,
+            ..
+        } = sym
+        {
+            println!(
+                "  {} (USAGE - type: {:?}, subsets: {:?})",
+                sym.qualified_name(),
+                usage_type,
+                subsets
+            );
         } else {
             println!("  {} (subsets: {:?})", sym.qualified_name(), sym.subsets());
         }
     }
 
     // Verify the symbols exist
-    let camera_takepicture = resolver.resolve("Camera::takePicture")
+    let camera_takepicture = resolver
+        .resolve("Camera::takePicture")
         .expect("Should have Camera::takePicture");
-    println!("\nCamera::takePicture subsets: {:?}", camera_takepicture.subsets());
-    
-    let pt_takepicture = resolver.resolve("PictureTaking::takePicture")
+    println!(
+        "\nCamera::takePicture subsets: {:?}",
+        camera_takepicture.subsets()
+    );
+
+    let pt_takepicture = resolver
+        .resolve("PictureTaking::takePicture")
         .expect("Should have PictureTaking::takePicture");
-    println!("PictureTaking::takePicture: {:?}", pt_takepicture.qualified_name());
-    
-    let focus_symbol = resolver.resolve("PictureTaking::TakePicture::focus")
+    println!(
+        "PictureTaking::takePicture: {:?}",
+        pt_takepicture.qualified_name()
+    );
+
+    let focus_symbol = resolver
+        .resolve("PictureTaking::TakePicture::focus")
         .expect("Should have focus in TakePicture action def");
-    println!("PictureTaking::TakePicture::focus: {}", focus_symbol.qualified_name());
+    println!(
+        "PictureTaking::TakePicture::focus: {}",
+        focus_symbol.qualified_name()
+    );
 
     // Now test resolve_member - this is what the hover uses
-    let camera_scope_id = resolver.resolve("Camera")
+    let camera_scope_id = resolver
+        .resolve("Camera")
         .expect("Should have Camera")
         .scope_id();
-    
+
     println!("\n=== Testing resolve_member ===");
-    println!("Looking for 'focus' as member of {}", camera_takepicture.qualified_name());
-    
+    println!(
+        "Looking for 'focus' as member of {}",
+        camera_takepicture.qualified_name()
+    );
+
     let result = resolver.resolve_member("focus", camera_takepicture, camera_scope_id);
-    
-    assert!(result.is_some(), "resolve_member should find 'focus' through subsets relationship");
+
+    assert!(
+        result.is_some(),
+        "resolve_member should find 'focus' through subsets relationship"
+    );
     let resolved = result.unwrap();
     println!("Found: {}", resolved.qualified_name());
-    assert!(resolved.qualified_name().contains("focus"), "Resolved symbol should be 'focus'");
+    assert!(
+        resolved.qualified_name().contains("focus"),
+        "Resolved symbol should be 'focus'"
+    );
 }
 
 #[test]
@@ -1485,7 +1545,11 @@ fn test_feature_chain_redefine_indexes_correctly() {
                         for body_member in &def.body {
                             match body_member {
                                 crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) => {
-                                    println!("      Usage: {} (kind: {:?})", u.name.as_deref().unwrap_or("<anonymous>"), u.kind);
+                                    println!(
+                                        "      Usage: {} (kind: {:?})",
+                                        u.name.as_deref().unwrap_or("<anonymous>"),
+                                        u.kind
+                                    );
                                     println!("        redefines: {:?}", u.relationships.redefines);
                                     println!("        subsets: {:?}", u.relationships.subsets);
                                 }
@@ -1523,7 +1587,7 @@ fn test_feature_chain_redefine_indexes_correctly() {
     for sym in symbol_table.iter_symbols() {
         println!("  {}", sym.qualified_name());
     }
-    
+
     // Debug: print all reference targets
     println!("\n=== Reference Targets ===");
     for target in graph.targets() {
@@ -1531,27 +1595,50 @@ fn test_feature_chain_redefine_indexes_correctly() {
     }
 
     // Verify basic symbols exist
-    assert!(resolver.resolve("TimeTest::Clock").is_some(), "Should have Clock");
-    assert!(resolver.resolve("TimeTest::Clock::currentTime").is_some(), "Should have Clock::currentTime");
-    assert!(resolver.resolve("TimeTest::Transport").is_some(), "Should have Transport");
-    assert!(resolver.resolve("TimeTest::Transport::localClock").is_some(), "Should have localClock");
+    assert!(
+        resolver.resolve("TimeTest::Clock").is_some(),
+        "Should have Clock"
+    );
+    assert!(
+        resolver.resolve("TimeTest::Clock::currentTime").is_some(),
+        "Should have Clock::currentTime"
+    );
+    assert!(
+        resolver.resolve("TimeTest::Transport").is_some(),
+        "Should have Transport"
+    );
+    assert!(
+        resolver
+            .resolve("TimeTest::Transport::localClock")
+            .is_some(),
+        "Should have localClock"
+    );
 
     // Check that the feature chain reference was indexed
     // The reference to `localClock` should be indexed
     let localclock_refs = graph.get_references("localClock");
     println!("\n=== References to 'localClock' ===");
     for r in &localclock_refs {
-        println!("  source={}, chain_context={:?}", r.source_qname, r.chain_context);
+        println!(
+            "  source={}, chain_context={:?}",
+            r.source_qname, r.chain_context
+        );
     }
-    
+
     // The reference to `currentTime` should be indexed with chain_context
     let currenttime_refs = graph.get_references("currentTime");
     println!("\n=== References to 'currentTime' ===");
     for r in &currenttime_refs {
-        println!("  source={}, chain_context={:?}", r.source_qname, r.chain_context);
+        println!(
+            "  source={}, chain_context={:?}",
+            r.source_qname, r.chain_context
+        );
     }
-    
+
     // At least one reference should have chain_context set
     let has_chain_ref = currenttime_refs.iter().any(|r| r.chain_context.is_some());
-    assert!(has_chain_ref, "currentTime reference should have chain_context for feature chain resolution");
+    assert!(
+        has_chain_ref,
+        "currentTime reference should have chain_context for feature chain resolution"
+    );
 }

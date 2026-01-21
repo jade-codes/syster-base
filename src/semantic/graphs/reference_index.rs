@@ -102,7 +102,15 @@ impl ReferenceIndex {
         span: Option<Span>,
         token_type: Option<TokenType>,
     ) {
-        self.add_reference_full(source_qname, target_name, source_file, span, token_type, None, None);
+        self.add_reference_full(
+            source_qname,
+            target_name,
+            source_file,
+            span,
+            token_type,
+            None,
+            None,
+        );
     }
 
     /// Add a reference with full context including feature chain information.
@@ -115,6 +123,7 @@ impl ReferenceIndex {
     /// * `token_type` - Token type for semantic highlighting (None defaults to Type)
     /// * `chain_context` - Feature chain context if this is part of a chain (e.g., `a.b.c`)
     /// * `scope_id` - Scope ID where the reference was made (for proper resolution)
+    #[allow(clippy::too_many_arguments)]
     pub fn add_reference_full(
         &mut self,
         source_qname: &str,
@@ -125,8 +134,10 @@ impl ReferenceIndex {
         chain_context: Option<FeatureChainContext>,
         scope_id: Option<usize>,
     ) {
-        trace!("[REF_INDEX] add_reference_full: source='{}' target='{}' span={:?} chain={:?} scope={:?}",
-            source_qname, target_name, span, chain_context, scope_id);
+        trace!(
+            "[REF_INDEX] add_reference_full: source='{}' target='{}' span={:?} chain={:?} scope={:?}",
+            source_qname, target_name, span, chain_context, scope_id
+        );
         // Only add if we have both file and span
         if let (Some(file), Some(span)) = (source_file, span) {
             let info = ReferenceInfo {
@@ -329,12 +340,16 @@ impl ReferenceIndex {
     ) -> Option<(&str, &ReferenceInfo)> {
         let path = PathBuf::from(file_path);
         let mut best_match: Option<(&str, &ReferenceInfo)> = None;
-        
+
         for (target_name, entry) in &self.reverse {
             for ref_info in &entry.references {
                 if ref_info.file == path && ref_info.span.contains(position) {
-                    tracing::trace!("[REF_INDEX] Candidate at {:?}: target='{}' qualified={}", 
-                        ref_info.span, target_name, target_name.contains("::"));
+                    tracing::trace!(
+                        "[REF_INDEX] Candidate at {:?}: target='{}' qualified={}",
+                        ref_info.span,
+                        target_name,
+                        target_name.contains("::")
+                    );
                     // Prefer qualified names (containing ::) over simple names
                     match &best_match {
                         None => {
@@ -344,17 +359,25 @@ impl ReferenceIndex {
                             // If current is qualified and existing is not, prefer current
                             let current_is_qualified = target_name.contains("::");
                             let existing_is_qualified = existing_name.contains("::");
-                            
+
                             if current_is_qualified && !existing_is_qualified {
-                                tracing::trace!("[REF_INDEX] Preferring qualified '{}' over simple '{}'", 
-                                    target_name, existing_name);
+                                tracing::trace!(
+                                    "[REF_INDEX] Preferring qualified '{}' over simple '{}'",
+                                    target_name,
+                                    existing_name
+                                );
                                 best_match = Some((target_name.as_str(), ref_info));
                             }
                             // If both are qualified, prefer the longer (more specific) one
-                            else if current_is_qualified && existing_is_qualified 
-                                && target_name.len() > existing_name.len() {
-                                tracing::trace!("[REF_INDEX] Preferring longer '{}' over '{}'", 
-                                    target_name, existing_name);
+                            else if current_is_qualified
+                                && existing_is_qualified
+                                && target_name.len() > existing_name.len()
+                            {
+                                tracing::trace!(
+                                    "[REF_INDEX] Preferring longer '{}' over '{}'",
+                                    target_name,
+                                    existing_name
+                                );
                                 best_match = Some((target_name.as_str(), ref_info));
                             }
                         }
@@ -384,19 +407,37 @@ impl ReferenceIndex {
             for ref_info in &entry.references {
                 // Skip feature chain parts - they need special handling via resolve_chain_targets
                 if ref_info.chain_context.is_some() {
-                    tracing::trace!("[REF_INDEX] resolve_targets: skipping chain target='{}' file={:?}", target_name, ref_info.file);
+                    tracing::trace!(
+                        "[REF_INDEX] resolve_targets: skipping chain target='{}' file={:?}",
+                        target_name,
+                        ref_info.file
+                    );
                     continue;
                 }
-                
-                tracing::trace!("[REF_INDEX] resolve_targets: trying target='{}' file={:?} scope={:?}", target_name, ref_info.file, ref_info.scope_id);
-                if let Some(qualified_name) = resolve_fn(target_name, &ref_info.file, ref_info.scope_id) {
-                    tracing::trace!("[REF_INDEX] resolve_targets: resolved '{}' -> '{}'", target_name, qualified_name);
+
+                tracing::trace!(
+                    "[REF_INDEX] resolve_targets: trying target='{}' file={:?} scope={:?}",
+                    target_name,
+                    ref_info.file,
+                    ref_info.scope_id
+                );
+                if let Some(qualified_name) =
+                    resolve_fn(target_name, &ref_info.file, ref_info.scope_id)
+                {
+                    tracing::trace!(
+                        "[REF_INDEX] resolve_targets: resolved '{}' -> '{}'",
+                        target_name,
+                        qualified_name
+                    );
                     // Only update if the resolved name is different
                     if &qualified_name != target_name {
                         updates.push((target_name.clone(), qualified_name, ref_info.clone()));
                     }
                 } else {
-                    tracing::trace!("[REF_INDEX] resolve_targets: could not resolve '{}'", target_name);
+                    tracing::trace!(
+                        "[REF_INDEX] resolve_targets: could not resolve '{}'",
+                        target_name
+                    );
                 }
             }
         }
@@ -432,8 +473,8 @@ impl ReferenceIndex {
     /// For each part, it uses the chain context to resolve through the type hierarchy.
     ///
     /// # Arguments
-    /// * `resolve_chain_fn` - A function that takes (chain_parts, chain_index, scope_id) 
-    ///                        and returns Option<qualified_name>
+    /// * `resolve_chain_fn` - A function that takes (chain_parts, chain_index, scope_id)
+    ///   and returns Option<qualified_name>
     pub fn resolve_chain_targets<F>(&mut self, mut resolve_chain_fn: F)
     where
         F: FnMut(&[String], usize, usize) -> Option<String>,
@@ -451,7 +492,11 @@ impl ReferenceIndex {
                             scope_id,
                         ) {
                             if &qualified_name != target_name {
-                                updates.push((target_name.clone(), qualified_name, ref_info.clone()));
+                                updates.push((
+                                    target_name.clone(),
+                                    qualified_name,
+                                    ref_info.clone(),
+                                ));
                             }
                         }
                     }

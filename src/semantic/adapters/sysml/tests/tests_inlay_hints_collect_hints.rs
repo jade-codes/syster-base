@@ -57,7 +57,7 @@ fn test_collect_hints_package_traversal() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -114,7 +114,7 @@ fn test_collect_hints_nested_packages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -177,7 +177,7 @@ fn test_collect_hints_definition_element() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -241,7 +241,7 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -262,7 +262,7 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -372,7 +372,7 @@ fn test_collect_hints_usage_element() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -408,7 +408,10 @@ fn test_collect_hints_usage_element() {
 fn test_collect_hints_comment_element_ignored() {
     let symbol_table = SymbolTable::new();
 
-    let comment = Comment::new("This is a top-level comment", Some(Span::from_coords(1, 0, 1, 30)));
+    let comment = Comment::new(
+        "This is a top-level comment",
+        Some(Span::from_coords(1, 0, 1, 30)),
+    );
 
     let file = SysMLFile {
         namespace: None,
@@ -489,7 +492,7 @@ fn test_collect_hints_mixed_element_types() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -566,7 +569,7 @@ fn test_collect_hints_deeply_nested_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -644,7 +647,7 @@ fn test_collect_hints_usage_with_comment_members() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -713,7 +716,7 @@ fn test_collect_hints_package_definition_usage_hierarchy() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -786,7 +789,7 @@ fn test_collect_hints_range_filter_excludes_before() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -845,7 +848,7 @@ fn test_collect_hints_range_filter_excludes_after() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -901,7 +904,7 @@ fn test_collect_hints_range_filter_includes_in_range() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -961,7 +964,7 @@ fn test_collect_hints_range_filter_nested_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -982,7 +985,7 @@ fn test_collect_hints_range_filter_nested_usages() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1073,7 +1076,7 @@ fn test_collect_hints_range_filter_boundary_start() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1133,7 +1136,7 @@ fn test_collect_hints_range_filter_boundary_end() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1198,7 +1201,7 @@ fn test_collect_hints_multiple_packages_with_same_usage_names() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1325,7 +1328,7 @@ fn test_collect_hints_usage_without_span() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1375,7 +1378,7 @@ fn test_collect_hints_multiple_element_types_in_package() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1459,7 +1462,7 @@ fn test_collect_hints_no_range_filter() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1480,7 +1483,7 @@ fn test_collect_hints_no_range_filter() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1592,7 +1595,7 @@ fn test_collect_usage_hints_nested_usage() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1662,7 +1665,7 @@ fn test_collect_usage_hints_with_range_filter() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
@@ -1683,7 +1686,7 @@ fn test_collect_usage_hints_with_range_filter() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();

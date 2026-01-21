@@ -518,7 +518,7 @@ fn test_lookup_from_scope_definition_and_usage() {
                 subsets: Vec::new(),
                 redefines: Vec::new(),
                 performs: Vec::new(),
-            references: Vec::new(),
+                references: Vec::new(),
             },
         )
         .unwrap();
