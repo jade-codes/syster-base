@@ -1,5 +1,5 @@
-use crate::semantic::resolver::Resolver;
-use crate::semantic::workspace::{Workspace, populator::WorkspacePopulator};
+use crate::semantic::resolver::{build_export_maps, resolve_imports, Resolver};
+use crate::semantic::workspace::{populator::WorkspacePopulator, Workspace};
 use crate::syntax::SyntaxFile;
 use std::path::PathBuf;
 
@@ -16,6 +16,12 @@ impl Workspace<SyntaxFile> {
         for path in populated_paths {
             self.mark_file_populated(&path);
         }
+
+        // Phase 2: Resolve import paths to fully qualified paths
+        resolve_imports(&mut self.symbol_table);
+
+        // Phase 3: Build export maps with fixpoint iteration
+        build_export_maps(&mut self.symbol_table);
 
         // Re-resolve reference targets after population
         // This handles cross-file references that used simple names during population
@@ -38,6 +44,12 @@ impl Workspace<SyntaxFile> {
             self.mark_file_populated(&path);
         }
 
+        // Phase 2: Resolve import paths to fully qualified paths
+        resolve_imports(&mut self.symbol_table);
+
+        // Phase 3: Build export maps with fixpoint iteration
+        build_export_maps(&mut self.symbol_table);
+
         // Re-resolve reference targets after population
         self.resolve_reference_targets();
 
@@ -53,6 +65,12 @@ impl Workspace<SyntaxFile> {
         );
         populator.populate_file(path)?;
         self.mark_file_populated(path);
+
+        // Phase 2: Resolve import paths to fully qualified paths
+        resolve_imports(&mut self.symbol_table);
+
+        // Phase 3: Build export maps with fixpoint iteration
+        build_export_maps(&mut self.symbol_table);
 
         // Re-resolve reference targets for the updated file
         self.resolve_reference_targets();
@@ -78,13 +96,13 @@ impl Workspace<SyntaxFile> {
             .collect();
 
         // Resolve simple (non-chain) references
-        self.reference_index.resolve_targets(|simple_name, file| {
-            // Get the scope for this file
-            let scope_id = file_scopes.get(file).copied()?;
+        self.reference_index.resolve_targets(|simple_name, file, scope_id| {
+            // Use scope_id from reference if available, otherwise fall back to file scope
+            let scope = scope_id.or_else(|| file_scopes.get(file).copied())?;
 
             // Use the Resolver to look up the symbol in scope
             let resolver = Resolver::new(&self.symbol_table);
-            let symbol = resolver.resolve_in_scope(simple_name, scope_id)?;
+            let symbol = resolver.resolve_in_scope(simple_name, scope)?;
 
             Some(symbol.qualified_name().to_string())
         });

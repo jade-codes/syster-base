@@ -9,6 +9,7 @@ use crate::core::Span;
 use crate::semantic::types::TokenType;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use tracing::trace;
 
 /// Context for a reference that is part of a feature chain (e.g., `localClock.currentTime`).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -124,6 +125,8 @@ impl ReferenceIndex {
         chain_context: Option<FeatureChainContext>,
         scope_id: Option<usize>,
     ) {
+        trace!("[REF_INDEX] add_reference_full: source='{}' target='{}' span={:?} chain={:?} scope={:?}",
+            source_qname, target_name, span, chain_context, scope_id);
         // Only add if we have both file and span
         if let (Some(file), Some(span)) = (source_file, span) {
             let info = ReferenceInfo {
@@ -317,20 +320,50 @@ impl ReferenceIndex {
     ///
     /// # Returns
     /// A tuple of (target_name, reference_info) if found.
+    /// If multiple references match the position, prefers qualified names (containing `::`)
+    /// over simple names.
     pub fn get_full_reference_at_position(
         &self,
         file_path: &str,
         position: crate::core::Position,
     ) -> Option<(&str, &ReferenceInfo)> {
         let path = PathBuf::from(file_path);
+        let mut best_match: Option<(&str, &ReferenceInfo)> = None;
+        
         for (target_name, entry) in &self.reverse {
             for ref_info in &entry.references {
                 if ref_info.file == path && ref_info.span.contains(position) {
-                    return Some((target_name.as_str(), ref_info));
+                    tracing::trace!("[REF_INDEX] Candidate at {:?}: target='{}' qualified={}", 
+                        ref_info.span, target_name, target_name.contains("::"));
+                    // Prefer qualified names (containing ::) over simple names
+                    match &best_match {
+                        None => {
+                            best_match = Some((target_name.as_str(), ref_info));
+                        }
+                        Some((existing_name, _)) => {
+                            // If current is qualified and existing is not, prefer current
+                            let current_is_qualified = target_name.contains("::");
+                            let existing_is_qualified = existing_name.contains("::");
+                            
+                            if current_is_qualified && !existing_is_qualified {
+                                tracing::trace!("[REF_INDEX] Preferring qualified '{}' over simple '{}'", 
+                                    target_name, existing_name);
+                                best_match = Some((target_name.as_str(), ref_info));
+                            }
+                            // If both are qualified, prefer the longer (more specific) one
+                            else if current_is_qualified && existing_is_qualified 
+                                && target_name.len() > existing_name.len() {
+                                tracing::trace!("[REF_INDEX] Preferring longer '{}' over '{}'", 
+                                    target_name, existing_name);
+                                best_match = Some((target_name.as_str(), ref_info));
+                            }
+                        }
+                    }
                 }
             }
         }
-        None
+        tracing::trace!("[REF_INDEX] Final result: {:?}", best_match.map(|(n, _)| n));
+        best_match
     }
 
     /// Re-resolve simple reference targets to qualified names using the provided resolver.
@@ -339,31 +372,31 @@ impl ReferenceIndex {
     /// during population (before imports were resolved).
     ///
     /// # Arguments
-    /// * `resolve_fn` - A function that takes (simple_name, source_file) and returns Option<qualified_name>
+    /// * `resolve_fn` - A function that takes (simple_name, source_file, scope_id) and returns Option<qualified_name>
     pub fn resolve_targets<F>(&mut self, mut resolve_fn: F)
     where
-        F: FnMut(&str, &PathBuf) -> Option<String>,
+        F: FnMut(&str, &PathBuf, Option<usize>) -> Option<String>,
     {
         // Collect references that need to be re-indexed under a new target name
         let mut updates: Vec<(String, String, ReferenceInfo)> = Vec::new();
 
         for (target_name, entry) in &self.reverse {
-            // Only process simple names (no ::)
-            if target_name.contains("::") {
-                continue;
-            }
-
             for ref_info in &entry.references {
-                // Skip feature chain parts - they need special handling
+                // Skip feature chain parts - they need special handling via resolve_chain_targets
                 if ref_info.chain_context.is_some() {
+                    tracing::trace!("[REF_INDEX] resolve_targets: skipping chain target='{}' file={:?}", target_name, ref_info.file);
                     continue;
                 }
                 
-                if let Some(qualified_name) = resolve_fn(target_name, &ref_info.file) {
+                tracing::trace!("[REF_INDEX] resolve_targets: trying target='{}' file={:?} scope={:?}", target_name, ref_info.file, ref_info.scope_id);
+                if let Some(qualified_name) = resolve_fn(target_name, &ref_info.file, ref_info.scope_id) {
+                    tracing::trace!("[REF_INDEX] resolve_targets: resolved '{}' -> '{}'", target_name, qualified_name);
                     // Only update if the resolved name is different
                     if &qualified_name != target_name {
                         updates.push((target_name.clone(), qualified_name, ref_info.clone()));
                     }
+                } else {
+                    tracing::trace!("[REF_INDEX] resolve_targets: could not resolve '{}'", target_name);
                 }
             }
         }

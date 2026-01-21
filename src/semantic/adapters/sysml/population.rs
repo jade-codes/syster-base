@@ -62,6 +62,8 @@ impl<'a> SysmlAdapter<'a> {
             Element::Comment(c) => self.visit_comment(c),
             Element::Import(i) => self.visit_import(i),
             Element::Alias(a) => self.visit_alias(a),
+            Element::Dependency(dep) => self.visit_dependency(dep),
+            Element::Filter(f) => self.visit_filter(f),
         }
     }
 }

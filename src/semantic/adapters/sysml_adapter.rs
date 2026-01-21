@@ -69,18 +69,24 @@ impl<'a> SysmlAdapter<'a> {
         token_type: Option<crate::semantic::types::TokenType>,
         chain_context: Option<(Vec<String>, usize)>,
     ) {
+        use tracing::trace;
+        trace!("[ADAPTER] index_reference_with_chain_context: source='{}' target='{}' span={:?} chain={:?}",
+            source_qname, target, span, chain_context);
+        
         // Check if this is a feature chain (contains `.`) - legacy handling
         if chain_context.is_none() && target.contains('.') {
+            trace!("[ADAPTER]   -> delegating to index_feature_chain (contains '.')");
             self.index_feature_chain(source_qname, target, span, token_type);
             return;
         }
 
-        // First resolve the target (needs immutable borrow of self)
-        let resolved_target = self.resolve_reference_target(target);
+        // Store the raw target name - resolution happens at hover time using the Resolver
+        // which has access to imports, inheritance, and full scope chain
         let file = self.symbol_table.current_file().map(PathBuf::from);
         
         // Get the current scope ID for proper resolution at hover time
         let scope_id = self.symbol_table.current_scope_id();
+        trace!("[ADAPTER]   scope_id={} file={:?}", scope_id, file);
 
         // Convert chain context format
         let feature_chain_ctx = chain_context.map(|(parts, idx)| FeatureChainContext {
@@ -88,11 +94,12 @@ impl<'a> SysmlAdapter<'a> {
             chain_index: idx,
         });
 
-        // Then add to index (needs mutable borrow of reference_index)
+        // Add to index with raw name - the Resolver will resolve it at hover time
         if let Some(index) = &mut self.reference_index {
+            trace!("[ADAPTER]   -> adding to index: target='{}' scope_id={}", target, scope_id);
             index.add_reference_full(
                 source_qname,
-                &resolved_target,
+                target,  // Use raw target, not resolved
                 file.as_ref(),
                 span,
                 token_type,
@@ -178,61 +185,5 @@ impl<'a> SysmlAdapter<'a> {
             // Move offset past this part and the dot separator
             offset = part_end + 1; // +1 for the '.'
         }
-    }
-
-    /// Resolve a reference target to its full qualified name.
-    ///
-    /// Tries multiple resolution strategies:
-    /// 1. Check if target already exists as a fully qualified name
-    /// 2. Try prefixing with current namespace parts (walking up the chain)
-    fn resolve_reference_target(&self, target: &str) -> String {
-        // Strategy 1: Check if it's already a valid fully qualified name
-        if self.symbol_table.find_by_qualified_name(target).is_some() {
-            return target.to_string();
-        }
-
-        // Strategy 2: Try prefixing with current namespace, walking up the chain
-        // e.g., if we're in Outer and target is Inner::Vehicle,
-        // try Outer::Inner::Vehicle
-        let mut namespace = self.current_namespace.clone();
-        while !namespace.is_empty() {
-            let candidate = format!("{}::{}", namespace.join("::"), target);
-            if self
-                .symbol_table
-                .find_by_qualified_name(&candidate)
-                .is_some()
-            {
-                return candidate;
-            }
-            namespace.pop();
-        }
-
-        // Strategy 3: If target contains ::, try resolving just the first segment
-        // and build the full path from there
-        if let Some(first_segment) = target.split("::").next() {
-            let mut ns = self.current_namespace.clone();
-            while !ns.is_empty() {
-                let candidate_prefix = format!("{}::{}", ns.join("::"), first_segment);
-                if self
-                    .symbol_table
-                    .find_by_qualified_name(&candidate_prefix)
-                    .is_some()
-                {
-                    // Found the first segment, now build the full path
-                    let full_target = format!("{}::{}", ns.join("::"), target);
-                    if self
-                        .symbol_table
-                        .find_by_qualified_name(&full_target)
-                        .is_some()
-                    {
-                        return full_target;
-                    }
-                }
-                ns.pop();
-            }
-        }
-
-        // Fallback: return original target (unresolved references)
-        target.to_string()
     }
 }

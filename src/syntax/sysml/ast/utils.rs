@@ -63,6 +63,7 @@ pub fn is_body_rule(r: Rule) -> bool {
 pub fn is_usage_rule(r: Rule) -> bool {
     matches!(
         r,
+        // Core usages
         Rule::part_usage
             | Rule::action_usage
             | Rule::requirement_usage
@@ -71,6 +72,9 @@ pub fn is_usage_rule(r: Rule) -> bool {
             | Rule::attribute_usage
             | Rule::concern_usage
             | Rule::case_usage
+            | Rule::use_case_usage
+            | Rule::analysis_case_usage
+            | Rule::verification_case_usage
             | Rule::view_usage
             | Rule::reference_usage
             | Rule::default_reference_usage
@@ -97,18 +101,49 @@ pub fn is_usage_rule(r: Rule) -> bool {
             | Rule::individual_usage
             | Rule::directed_parameter_member
             | Rule::metadata_body_usage
-            | Rule::metadata_body_usage_member
+            // NOTE: metadata_body_usage_member is NOT included - it's just a wrapper
+            // that contains metadata_body_usage. Including it would cause early
+            // returns in visit_pair when processing the inner metadata_body_usage.
             | Rule::default_interface_end
             | Rule::state_action_usage
-            | Rule::entry_action_member
-            | Rule::do_action_member
-            | Rule::exit_action_member
             | Rule::flow_usage
             | Rule::succession_flow_usage
             | Rule::message
             | Rule::event_occurrence_usage
             | Rule::send_node
             | Rule::accept_node
+            | Rule::transition_usage
+            | Rule::target_transition_usage
+            | Rule::extended_usage
+            | Rule::requirement_constraint_usage  // require constraint {...}
+            // Control nodes (fork, join, merge, decision)
+            // NOTE: Rule::control_node is NOT included - it's a wrapper rule
+            // that contains the actual node (join_node, fork_node, etc.)
+            // Including it causes the nested node to be skipped during parsing.
+            | Rule::fork_node
+            | Rule::join_node
+            | Rule::merge_node
+            | Rule::decision_node
+            // Binding connectors
+            | Rule::binding_connector_as_usage
+            // Additional usages that were missing
+            | Rule::allocate_usage
+            | Rule::effect_behavior_usage
+            | Rule::empty_action_usage
+            | Rule::empty_usage
+            | Rule::framed_concern_usage
+            | Rule::objective_requirement_usage
+            | Rule::performed_action_usage
+            | Rule::prefix_metadata_usage
+            | Rule::rendering_usage
+            | Rule::requirement_verification_usage
+            | Rule::succession_as_usage
+            | Rule::terminate_action_usage
+            | Rule::viewpoint_usage
+            | Rule::view_rendering_usage
+            // Return and result expressions (for calc defs)
+            | Rule::return_parameter_member
+            | Rule::result_expression_member
     )
 }
 
@@ -258,31 +293,44 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         | Rule::state_action_usage
         | Rule::entry_action_member
         | Rule::do_action_member
-        | Rule::exit_action_member => UsageKind::Action,
-        Rule::requirement_usage | Rule::objective_member => UsageKind::Requirement,
+        | Rule::exit_action_member
+        | Rule::effect_behavior_usage
+        | Rule::empty_action_usage
+        | Rule::performed_action_usage
+        | Rule::terminate_action_usage => UsageKind::Action,
+        Rule::requirement_usage | Rule::objective_member | Rule::objective_requirement_usage => UsageKind::Requirement,
         Rule::port_usage => UsageKind::Port,
         Rule::item_usage => UsageKind::Item,
-        Rule::attribute_usage => UsageKind::Attribute,
-        Rule::concern_usage => UsageKind::Concern,
-        Rule::case_usage => UsageKind::Case,
+        Rule::attribute_usage 
+        | Rule::return_parameter_member
+        | Rule::result_expression_member => UsageKind::Attribute,
+        Rule::concern_usage | Rule::framed_concern_usage => UsageKind::Concern,
+        Rule::case_usage
+        | Rule::use_case_usage
+        | Rule::analysis_case_usage
+        | Rule::verification_case_usage => UsageKind::Case,
         Rule::view_usage => UsageKind::View,
+        Rule::rendering_usage | Rule::view_rendering_usage => UsageKind::Rendering,
+        Rule::viewpoint_usage => UsageKind::Viewpoint,
         Rule::enumeration_usage | Rule::enumerated_value => UsageKind::Enumeration,
         Rule::reference_usage
         | Rule::default_reference_usage
         | Rule::metadata_usage
         | Rule::directed_parameter_member
         | Rule::metadata_body_usage
-        | Rule::metadata_body_usage_member
-        | Rule::default_interface_end => UsageKind::Reference,
+        // NOTE: metadata_body_usage_member is NOT included - see is_usage_rule comment
+        | Rule::default_interface_end
+        | Rule::prefix_metadata_usage
+        | Rule::empty_usage => UsageKind::Reference,
         Rule::satisfy_requirement_usage => UsageKind::SatisfyRequirement,
         Rule::perform_action_usage => UsageKind::PerformAction,
         Rule::exhibit_state_usage => UsageKind::ExhibitState,
         Rule::include_use_case_usage => UsageKind::IncludeUseCase,
         Rule::state_usage => UsageKind::State,
-        Rule::connection_usage => UsageKind::Connection,
-        Rule::constraint_usage | Rule::assert_constraint_usage => UsageKind::Constraint,
+        Rule::connection_usage | Rule::binding_connector_as_usage => UsageKind::Connection,
+        Rule::constraint_usage | Rule::assert_constraint_usage | Rule::requirement_constraint_usage => UsageKind::Constraint,
         Rule::calculation_usage => UsageKind::Calculation,
-        Rule::allocation_usage => UsageKind::Allocation,
+        Rule::allocation_usage | Rule::allocate_usage => UsageKind::Allocation,
         Rule::interface_usage => UsageKind::Interface,
         // Occurrence-based usages
         Rule::occurrence_usage => UsageKind::Occurrence,
@@ -291,7 +339,7 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         // Actor/stakeholder are reference-like
         Rule::actor_usage | Rule::stakeholder_usage => UsageKind::Reference,
         // Flow usages
-        Rule::flow_usage | Rule::succession_flow_usage => UsageKind::Flow,
+        Rule::flow_usage | Rule::succession_flow_usage | Rule::succession_as_usage => UsageKind::Flow,
         // Message usages
         Rule::message => UsageKind::Message,
         // Event usages
@@ -299,6 +347,19 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         // Send/Accept action usages
         Rule::send_node => UsageKind::SendAction,
         Rule::accept_node => UsageKind::AcceptAction,
+        // Transition usages
+        Rule::transition_usage
+        | Rule::target_transition_usage => UsageKind::Transition,
+        // Extended usages (end with metadata, like `end #original ::> ...`)
+        Rule::extended_usage => UsageKind::Reference,
+        // Control nodes (fork, join, merge, decision) are action-like
+        // NOTE: Rule::control_node is NOT included - it's a wrapper rule
+        Rule::fork_node
+        | Rule::join_node
+        | Rule::merge_node
+        | Rule::decision_node => UsageKind::Action,
+        // Verification usages
+        Rule::requirement_verification_usage => UsageKind::Requirement,
         _ => return None,
     })
 }

@@ -4,7 +4,7 @@ mod scope;
 mod symbol;
 mod table;
 
-pub use scope::{Import, Scope};
+pub use scope::{Import, ResolvedImport, Scope};
 pub use symbol::{Symbol, SymbolId};
 pub use table::SymbolTable;
 

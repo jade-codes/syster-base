@@ -66,6 +66,8 @@ fn collect_containing_spans(element: &Element, position: Position, spans: &mut V
         Element::Comment(c) => try_push_span(&c.span, position, spans),
         Element::Import(i) => try_push_span(&i.span, position, spans),
         Element::Alias(a) => try_push_span(&a.span, position, spans),
+        Element::Dependency(dep) => try_push_span(&dep.span, position, spans),
+        Element::Filter(f) => try_push_span(&f.span, position, spans),
     }
 }
 

@@ -4,12 +4,14 @@ use pest::Parser;
 
 #[test]
 fn test_debug_typed_by_span() {
+    // Simple test for typed_by spans
     let source = r#"package Test {
     item def IgnitionCmd;
+    action def TurnVehicleOn {
+        in item ignitionCmd : IgnitionCmd;
+    }
     part def V {
-        action turnVehicleOn send ignitionCmd via p1 {
-            in ignitionCmd : IgnitionCmd;
-        }
+        perform action turnVehicleOn : TurnVehicleOn;
     }
 }"#;
 

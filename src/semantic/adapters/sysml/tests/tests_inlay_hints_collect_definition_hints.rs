@@ -78,6 +78,8 @@ fn create_usage_symbol(name: &str, type_name: Option<&str>) -> Symbol {
         documentation: None,
         subsets: Vec::new(),
         redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
     }
 }
 

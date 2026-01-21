@@ -396,6 +396,8 @@ fn test_resolve_usage_symbol() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();

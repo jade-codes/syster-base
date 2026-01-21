@@ -56,6 +56,8 @@ fn test_collect_hints_package_traversal() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -111,6 +113,8 @@ fn test_collect_hints_nested_packages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -172,6 +176,8 @@ fn test_collect_hints_definition_element() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -234,6 +240,8 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -253,6 +261,8 @@ fn test_collect_hints_definition_with_multiple_usages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -361,6 +371,8 @@ fn test_collect_hints_usage_element() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -476,6 +488,8 @@ fn test_collect_hints_mixed_element_types() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -551,6 +565,8 @@ fn test_collect_hints_deeply_nested_usages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -627,6 +643,8 @@ fn test_collect_hints_usage_with_comment_members() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -694,6 +712,8 @@ fn test_collect_hints_package_definition_usage_hierarchy() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -765,6 +785,8 @@ fn test_collect_hints_range_filter_excludes_before() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -822,6 +844,8 @@ fn test_collect_hints_range_filter_excludes_after() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -876,6 +900,8 @@ fn test_collect_hints_range_filter_includes_in_range() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -934,6 +960,8 @@ fn test_collect_hints_range_filter_nested_usages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -953,6 +981,8 @@ fn test_collect_hints_range_filter_nested_usages() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1042,6 +1072,8 @@ fn test_collect_hints_range_filter_boundary_start() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1100,6 +1132,8 @@ fn test_collect_hints_range_filter_boundary_end() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1163,6 +1197,8 @@ fn test_collect_hints_multiple_packages_with_same_usage_names() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1288,6 +1324,8 @@ fn test_collect_hints_usage_without_span() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1336,6 +1374,8 @@ fn test_collect_hints_multiple_element_types_in_package() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1418,6 +1458,8 @@ fn test_collect_hints_no_range_filter() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1437,6 +1479,8 @@ fn test_collect_hints_no_range_filter() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1547,6 +1591,8 @@ fn test_collect_usage_hints_nested_usage() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1615,6 +1661,8 @@ fn test_collect_usage_hints_with_range_filter() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1634,6 +1682,8 @@ fn test_collect_usage_hints_with_range_filter() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();

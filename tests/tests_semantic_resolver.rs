@@ -395,6 +395,8 @@ fn test_resolve_usage_symbol() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();
@@ -1190,6 +1192,10 @@ fn test_resolve_in_scope_with_import() {
     // Create another scope WITHOUT the import
     table.enter_scope();
     let scope_without_import = table.current_scope_id();
+
+    // Run import resolution phases (normally done by Workspace.populate_all)
+    syster::semantic::resolver::resolve_imports(&mut table);
+    syster::semantic::resolver::build_export_maps(&mut table);
 
     // From scope with import, should resolve "Vehicle" via import
     let resolver = Resolver::new(&table);

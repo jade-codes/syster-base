@@ -8390,6 +8390,8 @@ part cal : Calculator;
             Element::Comment(_) => println!("element[{i}] = Comment"),
             Element::Import(_) => println!("element[{i}] = Import"),
             Element::Alias(_) => println!("element[{i}] = Alias"),
+            Element::Dependency(_) => println!("element[{i}] = Dependency"),
+            Element::Filter(_) => println!("element[{i}] = Filter"),
         }
     }
 

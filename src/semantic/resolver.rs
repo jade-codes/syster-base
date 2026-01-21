@@ -1,6 +1,8 @@
+mod import_phases;
 mod import_resolver;
 mod name_resolver;
 
+pub use import_phases::{build_export_maps, resolve_imports};
 pub use name_resolver::Resolver;
 
 // Re-export import utility functions - these delegate to the syntax layer

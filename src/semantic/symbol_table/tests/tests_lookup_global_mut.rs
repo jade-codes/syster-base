@@ -262,6 +262,8 @@ fn test_lookup_global_mut_different_symbol_types() {
                 documentation: None,
                 subsets: Vec::new(),
                 redefines: Vec::new(),
+                performs: Vec::new(),
+            references: Vec::new(),
             },
         )
         .unwrap();

@@ -6,9 +6,9 @@
 
 use super::enums::{DefinitionMember, Element, UsageKind, UsageMember};
 use super::types::{
-    Alias, Comment, CrossRel, Definition, Import, MetaRel, NamespaceDeclaration, Package,
-    RedefinitionRel, ReferenceRel, Relationships, SatisfyRel, SpecializationRel, SubsettingRel,
-    SysMLFile, Usage,
+    Alias, Comment, CrossRel, Definition, Dependency, DependencyRef, Filter, Import, MetaRel,
+    NamespaceDeclaration, Package, RedefinitionRel, ReferenceRel, Relationships, SatisfyRel,
+    SpecializationRel, SubsettingRel, SysMLFile, Usage,
 };
 use super::utils::{
     extract_name_from_identification, find_in, is_body_rule, is_definition_rule, is_usage_rule,
@@ -17,6 +17,7 @@ use super::utils::{
 use crate::core::Span;
 use crate::parser::sysml::Rule;
 use pest::iterators::{Pair, Pairs};
+use tracing::trace;
 
 /// Parse error type for AST construction
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -205,6 +206,60 @@ fn collect_refs_recursive(pair: &Pair<Rule>, refs: &mut Vec<ExtractedRef>) {
                 offset = part_end + 1; // +1 for the '.'
             }
         }
+        // Handle primary_expression which may have chained access like `driver.p1`
+        // primary_expression = { base_expression ~ ("." ~ feature_chain_member ~ ...)* }
+        Rule::primary_expression => {
+            // Collect the full chain from this expression
+            let raw = pair.as_str().trim();
+            
+            // Check if this contains dots (indicating a chain)
+            if raw.contains('.') && !raw.contains("::") {
+                // This looks like a feature chain - extract with chain context
+                let base_span = pair.as_span();
+                let (base_line, base_col) = base_span.start_pos().line_col();
+                
+                // Split by dots, being careful about method calls
+                // For now, handle simple cases like `driver.p1`
+                let chain_parts: Vec<String> = raw.split('.')
+                    .map(|p| strip_quotes(p.trim()))
+                    .filter(|p| !p.is_empty() && !p.contains('('))
+                    .collect();
+                
+                if chain_parts.len() > 1 {
+                    let mut offset = 0;
+                    for (chain_index, part) in raw.split('.').enumerate() {
+                        let part = part.trim();
+                        if part.is_empty() || part.contains('(') {
+                            continue;
+                        }
+                        
+                        let part_start = offset;
+                        let part_end = part_start + part.len();
+                        let part_span = Span::from_coords(
+                            base_line - 1,
+                            base_col - 1 + part_start,
+                            base_line - 1,
+                            base_col - 1 + part_end,
+                        );
+                        
+                        let name = strip_quotes(part);
+                        refs.push(ExtractedRef {
+                            name,
+                            span: Some(part_span),
+                            chain_context: Some((chain_parts.clone(), chain_index)),
+                        });
+                        
+                        offset = part_end + 1;
+                    }
+                    return; // Don't recurse - we've handled it
+                }
+            }
+            
+            // Fall through to normal recursion for non-chain cases
+            for inner in pair.clone().into_inner() {
+                collect_refs_recursive(&inner, refs);
+            }
+        }
         Rule::qualified_name => {
             // For qualified names like `SysML::Usage`, emit as a single reference
             // Build the qualified name from parts, stripping quotes where needed
@@ -279,6 +334,29 @@ fn collect_meta_types_recursive(
             // Next sibling should be the type reference
             // We handle this by setting a flag and looking for the type in children
         }
+        // Handle "new Type()" instantiation expressions
+        // instantiation_expression = { "new" ~ owned_feature_typing ~ argument_list? }
+        Rule::instantiation_expression => {
+            // Extract the type from owned_feature_typing
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::owned_feature_typing {
+                    if let Some((target, span)) = ref_with_span_from(&inner) {
+                        metas.push(MetaRel {
+                            target,
+                            span: Some(span),
+                            chain_context: None,
+                        });
+                    }
+                }
+            }
+            // Also recurse into argument_list for any nested instantiations
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::argument_list {
+                    collect_meta_types_recursive(&inner, metas, false);
+                }
+            }
+            return; // Don't double-recurse
+        }
         Rule::type_result_member | Rule::type_reference_member | Rule::type_reference => {
             if saw_type_operator {
                 // This is the type after a meta or as operator
@@ -292,11 +370,15 @@ fn collect_meta_types_recursive(
             }
         }
         Rule::classification_expression => {
-            // Look for meta_operator or as_operator followed by type
+            // Look for meta_operator, as_operator, or classification_test_operator (@ @@ hastype istype) followed by type
             let children: Vec<_> = pair.clone().into_inner().collect();
             for (i, child) in children.iter().enumerate() {
-                if child.as_rule() == Rule::meta_operator || child.as_rule() == Rule::as_operator {
-                    // Next child should be the type
+                let child_rule = child.as_rule();
+                if child_rule == Rule::meta_operator 
+                    || child_rule == Rule::as_operator 
+                    || child_rule == Rule::classification_test_operator 
+                {
+                    // Next child should be the type reference
                     if let Some(type_child) = children.get(i + 1)
                         && let Some((target, span)) = ref_with_span_from(type_child)
                     {
@@ -324,8 +406,10 @@ fn collect_meta_types_recursive(
 /// Extract feature references from value expressions (e.g., "= 2*elapseTime.num").
 /// This finds all feature_reference_expression and feature_chain_member nodes in expressions.
 fn extract_expression_refs(pair: &Pair<Rule>) -> Vec<ExtractedRef> {
+    trace!("[PARSER] extract_expression_refs: rule={:?} text='{}'", pair.as_rule(), pair.as_str().chars().take(100).collect::<String>());
     let mut refs = Vec::new();
     collect_expression_refs_recursive(pair, &mut refs, None);
+    trace!("[PARSER] extract_expression_refs: found {} refs: {:?}", refs.len(), refs);
     refs
 }
 
@@ -335,15 +419,18 @@ fn collect_expression_refs_recursive(
     chain_base: Option<(String, Span)>,
 ) {
     let rule = pair.as_rule();
+    trace!("[PARSER] collect_expression_refs_recursive: rule={:?}", rule);
 
     match rule {
         // feature_reference_expression wraps qualified_name - extract as base reference
         Rule::feature_reference_expression => {
+            trace!("[PARSER]   feature_reference_expression found");
             // This is a starting point of a chain - extract the qualified_name
             for inner in pair.clone().into_inner() {
                 if inner.as_rule() == Rule::qualified_name {
                     let name = strip_qualified_name_quotes(inner.as_str().trim());
                     let span = to_span(inner.as_span());
+                    trace!("[PARSER]   -> extracted ref: name='{}' span={:?}", name, span);
                     refs.push(ExtractedRef {
                         name: name.clone(),
                         span: Some(span),
@@ -627,6 +714,83 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
             }
         }
 
+        // Interface endpoints - can have named endpoints like `lugNutCompositePort ::> wheel1.lugNutCompositePort`
+        // interface_end = { owned_cross_multiplicity_member? ~ (identifier ~ (::> | =>) ~ target | target) }
+        // When there's a named endpoint with ::> or =>, we need to create a nested Usage
+        Rule::interface_end_member | Rule::interface_end => {
+            // Recursively find the actual interface_end content
+            let actual_inner: Vec<_> = if pair.as_rule() == Rule::interface_end_member {
+                // interface_end_member wraps interface_end, so we need to go one level deeper
+                pair.clone().into_inner()
+                    .flat_map(|inner| inner.into_inner())
+                    .collect()
+            } else {
+                pair.clone().into_inner().collect()
+            };
+            
+            // Find identifier and what follows it
+            let mut endpoint_name: Option<(String, Span)> = None;
+            let mut has_references_op = false;
+            let mut has_crosses_op = false;
+            
+            for (i, inner) in actual_inner.iter().enumerate() {
+                match inner.as_rule() {
+                    Rule::identifier => {
+                        // Check if the next rule is references_operator or crosses_operator
+                        if i + 1 < actual_inner.len() {
+                            let next = &actual_inner[i + 1];
+                            if next.as_rule() == Rule::references_operator {
+                                endpoint_name = Some((inner.as_str().to_string(), to_span(inner.as_span())));
+                                has_references_op = true;
+                            } else if next.as_rule() == Rule::crosses_operator {
+                                endpoint_name = Some((inner.as_str().to_string(), to_span(inner.as_span())));
+                                has_crosses_op = true;
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            if let Some((name, name_span)) = endpoint_name {
+                // Create a nested Usage for the named endpoint
+                let mut nested_usage = Usage::new(
+                    UsageKind::Reference,
+                    Some(name.clone()),
+                    Relationships::default(),
+                    Vec::new(),
+                );
+                nested_usage.span = Some(name_span);
+                
+                // Extract the target reference from owned_reference_subsetting as a full chain
+                for inner in actual_inner.iter() {
+                    if inner.as_rule() == Rule::owned_reference_subsetting {
+                        // Get the full text as the reference target (e.g., "wheel1.lugNutCompositePort")
+                        let target = inner.as_str().trim().to_string();
+                        let span = to_span(inner.as_span());
+                        if has_references_op {
+                            nested_usage.relationships.references.push(
+                                super::types::ReferenceRel { target, span: Some(span), chain_context: None }
+                            );
+                        } else if has_crosses_op {
+                            nested_usage.relationships.crosses.push(
+                                super::types::CrossRel { target, span: Some(span), chain_context: None }
+                            );
+                        }
+                        break;
+                    }
+                }
+                
+                // Add to usage_members
+                ctx.usage_members.push(UsageMember::Usage(Box::new(nested_usage)));
+            } else {
+                // No named endpoint - just extract references as expression_refs
+                for extracted in all_refs_with_spans_from(pair) {
+                    ctx.expression_refs.push(extracted);
+                }
+            }
+        }
+
         // Connection endpoints - extract references from connector_end_reference
         // connector_end_reference can be:
         // - owned_feature_chain (e.g., `a.b.c`)
@@ -634,6 +798,180 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
         // - feature_reference (e.g., `causer1`)
         Rule::connector_end_member | Rule::connector_end | Rule::connector_end_reference => {
             // Extract all feature chain references from connection endpoints
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+
+        // Transition source - extract the source state/action reference
+        // transition_source_member = { owned_feature_chain | feature_reference }
+        Rule::transition_source_member => {
+            // Extract all feature chain references from transition source
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+        
+        // Transition guard expression - extract references from the condition
+        // guard_expression_member = { guard_feature_kind ~ owned_expression }
+        // e.g., "if ignitionCmd.ignitionOnOff==IgnitionOnOff::on and brakePedalDepressed"
+        Rule::guard_expression_member => {
+            // Extract meta type references from the guard expression
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the guard expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+        
+        // Transition effect behavior - extract references from the do action
+        // effect_behavior_member = { effect_feature_kind ~ effect_behavior_usage }
+        // effect_behavior_usage contains performed_action_usage or accept_node_declaration
+        // e.g., "do send new StartSignal() to controller"
+        Rule::effect_behavior_member | Rule::effect_behavior_usage | Rule::performed_action_usage => {
+            // Extract meta type references (e.g., StartSignal in "new StartSignal()")
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references (e.g., controller in "to controller")
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+        
+        // Accept node - extract via port reference AND create symbol for payload parameter
+        // accept_node_declaration = { action_node_usage_declaration? ~ accept_token ~ accept_parameter_part }
+        // accept_parameter_part = { payload_parameter_member ~ (via_token ~ node_parameter_member)? }
+        // e.g., "accept ignitionCmd:IgnitionCmd via ignitionCmdPort"
+        // Here, 'ignitionCmd' is a declaration that should become a resolvable symbol,
+        // 'IgnitionCmd' is its type, and 'ignitionCmdPort' is the via port reference.
+        Rule::accept_node_declaration | Rule::accept_parameter_part => {
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::node_parameter_member {
+                    // Extract via port as expression reference
+                    for extracted in all_refs_with_spans_from(&inner) {
+                        ctx.expression_refs.push(extracted);
+                    }
+                } else if inner.as_rule() == Rule::payload_parameter_member {
+                    // Create a symbol for the payload parameter (e.g., ignitionCmd:IgnitionCmd)
+                    // payload_parameter_member -> payload_parameter -> payload
+                    // payload = { identification? ~ payload_feature_specialization_part ~ value_part? | ... }
+                    let mut payload_name: Option<(String, crate::core::Span)> = None;
+                    let mut payload_type: Option<String> = None;
+                    
+                    // Navigate to find identification and type
+                    fn find_payload_parts(pair: &pest::iterators::Pair<'_, Rule>, name: &mut Option<(String, crate::core::Span)>, typ: &mut Option<String>) {
+                        match pair.as_rule() {
+                            Rule::identification | Rule::regular_name | Rule::short_name => {
+                                for id_inner in pair.clone().into_inner() {
+                                    if id_inner.as_rule() == Rule::identifier {
+                                        if name.is_none() {
+                                            *name = Some((id_inner.as_str().to_string(), to_span(id_inner.as_span())));
+                                        }
+                                    } else {
+                                        find_payload_parts(&id_inner, name, typ);
+                                    }
+                                }
+                            }
+                            Rule::feature_typing | Rule::owned_feature_typing => {
+                                // feature_typing = { owned_feature_typing | conjugated_port_typing }
+                                // owned_feature_typing = { conjugation_operator? ~ feature_reference }
+                                // Just get the text of the type directly
+                                if typ.is_none() {
+                                    let text = pair.as_str().trim();
+                                    if !text.is_empty() {
+                                        *typ = Some(text.to_string());
+                                    }
+                                }
+                            }
+                            _ => {
+                                for child in pair.clone().into_inner() {
+                                    find_payload_parts(&child, name, typ);
+                                }
+                            }
+                        }
+                    }
+                    
+                    find_payload_parts(&inner, &mut payload_name, &mut payload_type);
+                    
+                    if let Some((name, span)) = payload_name {
+                        // Create a nested Usage for the payload parameter
+                        let mut nested_usage = Usage::new(
+                            UsageKind::Reference,
+                            Some(name.clone()),
+                            Relationships::default(),
+                            Vec::new(),
+                        );
+                        nested_usage.span = Some(span);
+                        
+                        // Set the typed_by relationship if we found a type
+                        if let Some(type_name) = payload_type {
+                            nested_usage.relationships.typed_by = Some(type_name);
+                        }
+                        
+                        ctx.usage_members.push(UsageMember::Usage(Box::new(nested_usage)));
+                    }
+                } else if inner.as_rule() == Rule::accept_parameter_part {
+                    // Recurse into accept_parameter_part
+                    visit_pair(&inner, ctx, depth + 1, in_body);
+                } else if inner.as_rule() == Rule::action_node_usage_declaration {
+                    // Recurse to extract the name (e.g., "trigger" in "action trigger accept ...")
+                    visit_pair(&inner, ctx, depth + 1, in_body);
+                }
+            }
+        }
+        
+        // node_parameter_member is the via port reference - extract it
+        Rule::node_parameter_member => {
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+        
+        // Send node - extract references from via/to parts AND the action name
+        // send_node_declaration = { action_node_usage_declaration? ~ send_token ~ node_parameter_member ~ sender_receiver_part? }
+        // sender_receiver_part = { via_token ~ node_parameter_member ~ (to_token ~ node_parameter_member)? | ... }
+        // e.g., "action turnVehicleOn send ignitionCmd via driver.p1" - we want to extract 'turnVehicleOn' (name) and 'driver.p1' (reference)
+        Rule::send_node | Rule::send_node_declaration => {
+            // Find and extract references from sender_receiver_part (the via/to clauses)
+            // Also recurse into action_node_usage_declaration to extract the name
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::sender_receiver_part {
+                    for extracted in all_refs_with_spans_from(&inner) {
+                        ctx.expression_refs.push(extracted);
+                    }
+                } else if inner.as_rule() == Rule::action_node_usage_declaration {
+                    // Recurse to extract the name (e.g., "turnVehicleOn" in "action turnVehicleOn send ...")
+                    visit_pair(&inner, ctx, depth + 1, in_body);
+                }
+            }
+        }
+        
+        // sender_receiver_part contains the via/to port references
+        Rule::sender_receiver_part => {
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+        
+        // Transition succession - extract the target state reference
+        // transition_succession_member = { transition_succession }
+        // transition_succession = { empty_source_end_member ~ connector_end_member }
+        // The connector_end_member contains the target state reference
+        // Note: This is already handled by connector_end_member above, but adding for explicitness
+        Rule::transition_succession_member | Rule::transition_succession => {
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+        
+        // Transition target - extract the target state reference from "then X" patterns
+        // transition_target = { then_token ~ connector_end_member | guarded_target_succession | default_target_succession }
+        // Used in succession_as_usage: "first X then Y;"
+        Rule::transition_target 
+        | Rule::guarded_target_succession 
+        | Rule::default_target_succession
+        | Rule::target_succession_member => {
             for extracted in all_refs_with_spans_from(pair) {
                 ctx.expression_refs.push(extracted);
             }
@@ -648,6 +986,40 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
             ctx.relationships.meta.extend(meta_refs);
 
             // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+
+        // ====================================================================
+        // Calculation body expressions (constraints, calculations)
+        // result_expression_member = { member_prefix ~ owned_expression }
+        // ====================================================================
+        Rule::result_expression_member => {
+            // Extract meta type references from the expression
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+        
+        // ====================================================================
+        // Constraint body expressions
+        // constraint_body_part = { definition_body_item* ~ (visible_annotating_member* ~ owned_expression)? }
+        // e.g., "require constraint {massActual <= massRequired}"
+        // ====================================================================
+        Rule::constraint_body_part | Rule::constraint_body => {
+            // First, collect body items (like `in mass = m;` parameter bindings)
+            for inner in pair.clone().into_inner() {
+                visit_body_member(&inner, ctx);
+            }
+            
+            // Extract meta type references from the constraint expression
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the constraint expression
             let expr_refs = extract_expression_refs(pair);
             ctx.expression_refs.extend(expr_refs);
         }
@@ -708,6 +1080,38 @@ fn visit_body_member(pair: &Pair<Rule>, ctx: &mut ParseContext) {
             }
         }
 
+        // Element filter members - `filter @Safety;` or `filter someExpr;`
+        // element_filter_member = { visibility? ~ filter_token ~ owned_expression ~ semi_colon }
+        Rule::element_filter_member => {
+            // Extract meta type references from the expression (e.g., @Safety)
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+
+        // Expose members - `expose PartsTree::**;`
+        // expose = { (namespace_expose | membership_expose) ~ filter_package? ~ relationship_body }
+        Rule::expose | Rule::namespace_expose | Rule::membership_expose => {
+            // Expose is like import - it has a namespace reference
+            // We extract refs from imported_namespace or imported_membership
+            for inner in pair.clone().into_inner() {
+                let inner_rule = inner.as_rule();
+                if inner_rule == Rule::imported_namespace || inner_rule == Rule::imported_membership {
+                    // These contain qualified_name references
+                    let refs = all_refs_with_spans_from(&inner);
+                    for r in refs {
+                        ctx.expression_refs.push(r);
+                    }
+                } else if inner_rule == Rule::namespace_expose || inner_rule == Rule::membership_expose {
+                    // Recurse into nested expose types
+                    visit_body_member(&inner, ctx);
+                }
+            }
+        }
+
         // Imports inside definitions (e.g., `part def Camera { private import X::*; }`)
         Rule::membership_import | Rule::namespace_import => {
             if let Ok(import) = parse_import(&mut pair.clone().into_inner()) {
@@ -724,6 +1128,64 @@ fn visit_body_member(pair: &Pair<Rule>, ctx: &mut ParseContext) {
             ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
         }
 
+        // Transition usage members - extract the inner transition_usage
+        Rule::transition_usage_member | Rule::target_transition_usage_member => {
+            // Find the inner transition_usage or target_transition_usage
+            for inner in pair.clone().into_inner() {
+                let inner_rule = inner.as_rule();
+                if inner_rule == Rule::transition_usage || inner_rule == Rule::target_transition_usage {
+                    let usage = parse_usage_with_kind(inner.clone(), UsageKind::Transition);
+                    ctx.def_members
+                        .push(DefinitionMember::Usage(Box::new(usage.clone())));
+                    ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
+                    return; // Don't recurse further
+                }
+            }
+        }
+
+        // Entry/do/exit action members - extract the action name from state_action_usage
+        Rule::entry_action_member | Rule::do_action_member | Rule::exit_action_member => {
+            let usage = parse_state_action_member(pair.clone());
+            ctx.def_members
+                .push(DefinitionMember::Usage(Box::new(usage.clone())));
+            ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
+        }
+        
+        // Requirement constraint members - extract the inner constraint usage
+        // requirement_constraint_member = { member_prefix ~ requirement_constraint_kind ~ requirement_constraint_usage }
+        // e.g., "require constraint {massActual <= massRequired}"
+        Rule::requirement_constraint_member => {
+            // Find the inner requirement_constraint_usage
+            for inner in pair.clone().into_inner() {
+                let inner_rule = inner.as_rule();
+                if inner_rule == Rule::requirement_constraint_usage {
+                    let usage = parse_usage_with_kind(inner.clone(), UsageKind::Constraint);
+                    ctx.def_members
+                        .push(DefinitionMember::Usage(Box::new(usage.clone())));
+                    ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
+                    return; // Don't recurse further
+                }
+            }
+        }
+
+        // Framed concern members - parse as concern usage (creates symbol + type reference)
+        // framed_concern_member = { member_prefix ~ framed_concern_kind ~ framed_concern_usage }
+        // e.g., "frame concern vs:VehicleSafety;" or "frame vs:VehicleSafety;"
+        Rule::framed_concern_member => {
+            // Find the inner framed_concern_usage and parse it as a usage
+            for inner in pair.clone().into_inner() {
+                let inner_rule = inner.as_rule();
+                if inner_rule == Rule::framed_concern_usage {
+                    // Parse as a concern usage - this creates a symbol and extracts type references
+                    let usage = parse_usage_with_kind(inner.clone(), UsageKind::Concern);
+                    ctx.def_members
+                        .push(DefinitionMember::Usage(Box::new(usage.clone())));
+                    ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
+                    return; // Don't recurse further
+                }
+            }
+        }
+
         // Nested usages
         _ if is_usage_rule(rule) => {
             let usage = parse_usage_with_kind(
@@ -733,6 +1195,40 @@ fn visit_body_member(pair: &Pair<Rule>, ctx: &mut ParseContext) {
             ctx.def_members
                 .push(DefinitionMember::Usage(Box::new(usage.clone())));
             ctx.usage_members.push(UsageMember::Usage(Box::new(usage)));
+        }
+
+        // Result expression members (constraint/calculation bodies)
+        // result_expression_member = { member_prefix ~ owned_expression }
+        Rule::result_expression_member => {
+            // Extract meta type references from the expression
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
+        }
+
+        // View rendering members - `render asTreeDiagram;`
+        // view_rendering_member = { member_prefix ~ render_token ~ view_rendering_usage }
+        // view_rendering_usage = { owned_reference_subsetting ~ ... | ... }
+        Rule::view_rendering_member => {
+            // Extract the reference from owned_reference_subsetting (the rendering reference)
+            let refs = all_refs_with_spans_from(pair);
+            ctx.expression_refs.extend(refs);
+        }
+
+        // Value expressions within body members (e.g., metadata annotation values)
+        // value_part = { "=" ~ owned_expression }
+        // feature_value = { ("=" | ":=") ~ owned_expression }
+        Rule::value_part | Rule::feature_value => {
+            // Extract meta type references from the expression
+            let meta_refs = extract_meta_types_from_expression(pair);
+            ctx.relationships.meta.extend(meta_refs);
+
+            // Extract feature references from the expression
+            let expr_refs = extract_expression_refs(pair);
+            ctx.expression_refs.extend(expr_refs);
         }
 
         // Recurse into containers
@@ -747,6 +1243,144 @@ fn visit_body_member(pair: &Pair<Rule>, ctx: &mut ParseContext) {
 // ============================================================================
 // Public API
 // ============================================================================
+
+/// Parse an entry/do/exit action member, extracting the action name from state_action_usage
+fn parse_state_action_member(pair: Pair<Rule>) -> Usage {
+    let mut name: Option<String> = None;
+    let mut name_span: Option<Span> = None;
+    let mut expression_refs: Vec<ExtractedRef> = Vec::new();
+    let mut has_action_keyword = false;
+    let mut body_items: Vec<UsageMember> = Vec::new();
+    
+    // Check if this is a declaration (has action keyword) or a reference
+    fn extract_action_info(
+        p: &Pair<Rule>, 
+        name: &mut Option<String>, 
+        name_span: &mut Option<Span>,
+        expression_refs: &mut Vec<ExtractedRef>,
+        has_action_keyword: &mut bool,
+        body_items: &mut Vec<UsageMember>,
+    ) {
+        let rule = p.as_rule();
+        match rule {
+            Rule::state_action_usage => {
+                // state_action_usage = { action_keyword ~ (identifier ~ semi_colon | ...) | identifier ~ ... | qualified_name ~ ... }
+                // First, check if there's an action_keyword
+                let children: Vec<_> = p.clone().into_inner().collect();
+                let has_keyword = children.iter().any(|c| c.as_rule() == Rule::action_keyword);
+                *has_action_keyword = has_keyword;
+                
+                for inner in children {
+                    extract_action_info(&inner, name, name_span, expression_refs, has_action_keyword, body_items);
+                }
+            }
+            Rule::action_keyword => {
+                *has_action_keyword = true;
+            }
+            Rule::identifier if name.is_none() => {
+                let id_name = p.as_str().to_string();
+                let id_span = to_span(p.as_span());
+                
+                if *has_action_keyword {
+                    // This is a declaration like `entry action initial;`
+                    *name = Some(id_name);
+                    *name_span = Some(id_span);
+                } else {
+                    // This is a reference like `entry performSelfTest;`
+                    // Also set the name so we know what action is being performed
+                    *name = Some(id_name.clone());
+                    *name_span = Some(id_span);
+                    expression_refs.push(ExtractedRef {
+                        name: id_name,
+                        span: Some(id_span),
+                        chain_context: None,
+                    });
+                }
+            }
+            Rule::quoted_name if name.is_none() => {
+                let qname = strip_quotes(p.as_str());
+                let qspan = to_span(p.as_span());
+                
+                if *has_action_keyword {
+                    *name = Some(qname);
+                    *name_span = Some(qspan);
+                } else {
+                    *name = Some(qname.clone());
+                    *name_span = Some(qspan);
+                    expression_refs.push(ExtractedRef {
+                        name: qname,
+                        span: Some(qspan),
+                        chain_context: None,
+                    });
+                }
+            }
+            Rule::qualified_name if name.is_none() => {
+                // For qualified_name, extract the full path - always a reference
+                let parts: Vec<_> = p.clone().into_inner()
+                    .filter(|i| i.as_rule() == Rule::identifier || i.as_rule() == Rule::quoted_name)
+                    .map(|i| {
+                        if i.as_rule() == Rule::quoted_name {
+                            strip_quotes(i.as_str())
+                        } else {
+                            i.as_str().to_string()
+                        }
+                    })
+                    .collect();
+                if !parts.is_empty() {
+                    let joined = parts.join("::");
+                    *name = Some(joined.clone());
+                    *name_span = Some(to_span(p.as_span()));
+                    expression_refs.push(ExtractedRef {
+                        name: joined,
+                        span: Some(to_span(p.as_span())),
+                        chain_context: None,
+                    });
+                }
+            }
+            Rule::action_body => {
+                // Parse the action body to extract any directed parameters (in/out/inout)
+                // These contain references that need to be resolved in the context of the performed action
+                for inner in p.clone().into_inner() {
+                    if inner.as_rule() == Rule::action_body_item {
+                        // Check for directed_parameter_member (in/out/inout param)
+                        for item_inner in inner.clone().into_inner() {
+                            if item_inner.as_rule() == Rule::directed_parameter_member {
+                                // Parse this as a usage and add to body
+                                let param_usage = parse_usage_with_kind(item_inner, UsageKind::Reference);
+                                body_items.push(UsageMember::Usage(Box::new(param_usage)));
+                            }
+                        }
+                    }
+                }
+            }
+            _ => {
+                for inner in p.clone().into_inner() {
+                    extract_action_info(&inner, name, name_span, expression_refs, has_action_keyword, body_items);
+                }
+            }
+        }
+    }
+    
+    // Find state_action_usage in the member
+    for inner in pair.clone().into_inner() {
+        if inner.as_rule() == Rule::state_action_usage {
+            extract_action_info(&inner, &mut name, &mut name_span, &mut expression_refs, &mut has_action_keyword, &mut body_items);
+        }
+    }
+    
+    Usage {
+        kind: UsageKind::Action,
+        name,
+        short_name: None,
+        short_name_span: None,
+        relationships: Relationships::default(),
+        body: body_items,
+        span: name_span,
+        expression_refs,
+        is_derived: false,
+        is_const: false,
+    }
+}
 
 /// Parse a definition from a pest pair using single-pass extraction
 pub fn parse_definition(pair: Pair<Rule>) -> Result<Definition, ParseError> {
@@ -988,6 +1622,62 @@ pub fn parse_alias(pairs: &mut Pairs<Rule>) -> Result<Alias, ParseError> {
     })
 }
 
+/// Parse a dependency from a pest pair
+/// Grammar: dependency = { prefix_metadata? ~ dependency_token ~ ((identification ~ from_token) | from_token)? ~ element_reference ~ ("," ~ element_reference)* ~ to_token ~ element_reference ~ ("," ~ element_reference)* ~ relationship_body }
+pub fn parse_dependency(pair: Pair<Rule>) -> Result<Dependency, ParseError> {
+    let span = Some(to_span(pair.as_span()));
+    let mut name = None;
+    let mut name_span = None;
+    let mut sources = Vec::new();
+    let mut targets = Vec::new();
+    let mut seen_to = false;
+
+    // Handle relationship_member_element wrapper
+    let inner = if pair.as_rule() == Rule::relationship_member_element {
+        // Find the dependency inside
+        pair.into_inner()
+            .find(|p| p.as_rule() == Rule::dependency)
+            .ok_or(ParseError::no_match())?
+    } else {
+        pair
+    };
+
+    for child in inner.into_inner() {
+        match child.as_rule() {
+            Rule::identification => {
+                let (extracted_name, extracted_span) = extract_name_from_identification(child);
+                name = extracted_name;
+                name_span = extracted_span;
+            }
+            Rule::to_token => {
+                seen_to = true;
+            }
+            Rule::element_reference => {
+                let ref_span = Some(to_span(child.as_span()));
+                let ref_path = child.as_str().to_string();
+                let dep_ref = DependencyRef {
+                    path: ref_path,
+                    span: ref_span,
+                };
+                if seen_to {
+                    targets.push(dep_ref);
+                } else {
+                    sources.push(dep_ref);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    Ok(Dependency {
+        name,
+        name_span,
+        sources,
+        targets,
+        span,
+    })
+}
+
 /// Parse an element from pest pairs
 pub fn parse_element(pairs: &mut Pairs<Rule>) -> Result<Element, ParseError> {
     let mut pair = pairs.next().ok_or(ParseError::no_match())?;
@@ -1032,6 +1722,20 @@ pub fn parse_element(pairs: &mut Pairs<Rule>) -> Result<Element, ParseError> {
         }
         Rule::import => Element::Import(parse_import(&mut pair.into_inner())?),
         Rule::alias_member_element => Element::Alias(parse_alias(&mut pair.into_inner())?),
+        Rule::relationship_member_element | Rule::dependency => {
+            Element::Dependency(parse_dependency(pair)?)
+        }
+        // Element filter member: `filter @Safety;` or `filter @Safety or @Security;`
+        Rule::element_filter_member => {
+            let span = Some(to_span(pair.as_span()));
+            let meta_refs = extract_meta_types_from_expression(&pair);
+            let expression_refs = extract_expression_refs(&pair);
+            Element::Filter(Filter {
+                meta_refs,
+                expression_refs,
+                span,
+            })
+        }
         _ => return Err(ParseError::no_match()),
     })
 }
@@ -1534,5 +2238,124 @@ mod tests {
             .collect();
         assert!(names.contains(&&"energy".to_string()), "energy not found in {:?}", names);
         assert!(names.contains(&&"capacity".to_string()), "capacity not found in {:?}", names);
+    }
+
+    #[test]
+    fn test_parse_state_def_with_transitions() {
+        let input = r#"state def TestState {
+            state off;
+            state on;
+            transition initial then off;
+            transition t1 first off then on;
+        }"#;
+        
+        let pairs = crate::parser::sysml::SysMLParser::parse(Rule::state_definition, input)
+            .expect("Failed to parse state def");
+        
+        let pair = pairs.into_iter().next().unwrap();
+        let def = parse_definition(pair).unwrap();
+        
+        assert_eq!(def.name, Some("TestState".to_string()));
+        
+        // Print all body members for debugging
+        println!("State definition body members:");
+        for member in &def.body {
+            println!("  {:?}", member);
+        }
+        
+        // Find usages in the body
+        let usages: Vec<_> = def.body.iter()
+            .filter_map(|m| {
+                if let crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) = m {
+                    Some(u)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        println!("Usages found:");
+        for u in &usages {
+            println!("  name: {:?}, kind: {:?}", u.name, u.kind);
+        }
+        
+        // Should have states (off, on) and transitions (initial, t1)
+        assert!(usages.len() >= 4, "Expected at least 4 usages (2 states + 2 transitions), got {}", usages.len());
+    }
+
+    #[test]
+    fn test_parse_state_with_entry_action() {
+        let input = r#"state def TestState {
+            entry action initial;
+            state off;
+            state on;
+            entry performSelfTest;
+            do providePower;
+            exit applyParkingBrake;
+        }"#;
+        
+        let pairs = crate::parser::sysml::SysMLParser::parse(Rule::state_definition, input)
+            .expect("Failed to parse state def");
+        
+        let pair = pairs.into_iter().next().unwrap();
+        let def = parse_definition(pair).unwrap();
+        
+        assert_eq!(def.name, Some("TestState".to_string()));
+        
+        // Print all body members for debugging
+        println!("State definition body members:");
+        for member in &def.body {
+            match member {
+                crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) => {
+                    println!("  Usage: name={:?}, kind={:?}, expression_refs={:?}", u.name, u.kind, u.expression_refs);
+                }
+                crate::syntax::sysml::ast::enums::DefinitionMember::Comment(c) => {
+                    println!("  Comment: {:?}", c.content);
+                }
+                crate::syntax::sysml::ast::enums::DefinitionMember::Import(i) => {
+                    println!("  Import: {:?}", i.path);
+                }
+            }
+        }
+        
+        // Find usages in the body
+        let usages: Vec<_> = def.body.iter()
+            .filter_map(|m| {
+                if let crate::syntax::sysml::ast::enums::DefinitionMember::Usage(u) = m {
+                    Some(u)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        
+        // Should have: entry action initial, state off, state on, entry performSelfTest, do providePower, exit applyParkingBrake
+        // At minimum: 2 states (off, on)
+        assert!(usages.len() >= 2, "Expected at least 2 usages, got {}", usages.len());
+    }
+
+    #[test]
+    fn test_parse_message_with_typed_payload() {
+        let input = r#"message of ignitionCmd:IgnitionCmd from driver.turnVehicleOn to vehicle.trigger1;"#;
+        
+        let pairs = crate::parser::sysml::SysMLParser::parse(Rule::message, input)
+            .expect("Failed to parse message");
+        
+        let pair = pairs.into_iter().next().unwrap();
+        let usage = parse_usage(pair);
+        
+        println!("Message usage:");
+        println!("  name: {:?}", usage.name);
+        println!("  kind: {:?}", usage.kind);
+        println!("  typed_by: {:?}", usage.relationships.typed_by);
+        println!("  typed_by_span: {:?}", usage.relationships.typed_by_span);
+        println!("  expression_refs: {:?}", usage.expression_refs);
+        
+        // The typed payload should extract IgnitionCmd as the type
+        // Either as typed_by or in expression_refs
+        let has_ignition_cmd = usage.relationships.typed_by.as_ref().map_or(false, |t| t == "IgnitionCmd")
+            || usage.expression_refs.iter().any(|r| r.name == "IgnitionCmd");
+        
+        assert!(has_ignition_cmd, "IgnitionCmd type should be captured from message payload");
     }
 }

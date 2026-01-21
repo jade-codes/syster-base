@@ -62,6 +62,6 @@ fn collect_ranges(element: &Element, ranges: &mut Vec<FoldingRangeInfo>) {
                 ranges.push(FoldingRangeInfo::comment(*span));
             }
         }
-        Element::Import(_) | Element::Alias(_) => {}
+        Element::Import(_) | Element::Alias(_) | Element::Dependency(_) | Element::Filter(_) => {}
     }
 }

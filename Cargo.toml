@@ -1,6 +1,6 @@
 [package]
 name = "syster-base"
-version = "0.1.11-alpha"
+version = "0.1.12-alpha"
 edition = "2024"
 rust-version = "1.85"
 authors = ["jade-codes"]
@@ -22,6 +22,7 @@ unicode-ident = "1.0"
 rowan = "0.16.1"
 logos = "0.15"
 tokio-util = "0.7"
+tracing = "0.1.44"
 
 [dev-dependencies]
 once_cell = "1.21.3"

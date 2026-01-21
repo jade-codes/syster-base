@@ -95,6 +95,9 @@ impl<'a> SysmlAdapter<'a> {
             UsageKind::Event => "Event".to_string(),
             UsageKind::SendAction => "SendAction".to_string(),
             UsageKind::AcceptAction => "AcceptAction".to_string(),
+            UsageKind::Transition => "Transition".to_string(),
+            UsageKind::Rendering => "Rendering".to_string(),
+            UsageKind::Viewpoint => "Viewpoint".to_string(),
         }
     }
 
@@ -167,6 +170,9 @@ impl<'a> SysmlAdapter<'a> {
             UsageKind::Event => SemanticRole::Component,
             UsageKind::SendAction => SemanticRole::Action,
             UsageKind::AcceptAction => SemanticRole::Action,
+            UsageKind::Transition => SemanticRole::Action,
+            UsageKind::Rendering => SemanticRole::View,
+            UsageKind::Viewpoint => SemanticRole::Metadata,
         }
     }
 }

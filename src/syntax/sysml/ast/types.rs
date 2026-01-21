@@ -90,6 +90,18 @@ pub struct MetaRel {
     pub chain_context: ChainContext,
 }
 
+/// Represents an element filter member (e.g., `filter @Safety;`)
+/// Used in packages and views to filter elements by metadata.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Filter {
+    /// References in the filter expression (e.g., `@Safety`, `SysML::PartUsage`)
+    pub meta_refs: Vec<MetaRel>,
+    /// Feature references in the filter expression (e.g., `Safety::isMandatory`)
+    pub expression_refs: Vec<crate::syntax::sysml::ast::parsers::ExtractedRef>,
+    /// Span of the filter statement
+    pub span: Option<Span>,
+}
+
 /// Represents a parsed SysML file with support for multiple package declarations
 #[derive(Debug, Clone, PartialEq)]
 pub struct SysMLFile {
@@ -439,5 +451,24 @@ pub struct Alias {
     pub name: Option<String>,
     pub target: String,
     pub target_span: Option<Span>,
+    pub span: Option<Span>,
+}
+
+/// Represents a dependency relationship: `#refinement dependency X to Y::Z`
+#[derive(Debug, Clone, PartialEq)]
+pub struct Dependency {
+    pub name: Option<String>,
+    pub name_span: Option<Span>,
+    /// The source elements (before "to")
+    pub sources: Vec<DependencyRef>,
+    /// The target elements (after "to")
+    pub targets: Vec<DependencyRef>,
+    pub span: Option<Span>,
+}
+
+/// A reference in a dependency (source or target)
+#[derive(Debug, Clone, PartialEq)]
+pub struct DependencyRef {
+    pub path: String,
     pub span: Option<Span>,
 }

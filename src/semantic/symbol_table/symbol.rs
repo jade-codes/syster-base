@@ -74,6 +74,10 @@ pub enum Symbol {
         documentation: Option<String>,
         subsets: Vec<String>,
         redefines: Vec<String>,
+        /// Perform targets (e.g., from `perform startVehicle.trigger1;` nested in this usage)
+        performs: Vec<String>,
+        /// References targets (e.g., from `lugNutCompositePort ::> wheel1.lugNutCompositePort`)
+        references: Vec<String>,
     },
     Alias {
         name: String,
@@ -217,6 +221,22 @@ impl Symbol {
     pub fn redefines(&self) -> &[String] {
         match self {
             Symbol::Feature { redefines, .. } | Symbol::Usage { redefines, .. } => redefines,
+            _ => &[],
+        }
+    }
+
+    /// Returns the performs relationships for Usages (from nested perform statements)
+    pub fn performs(&self) -> &[String] {
+        match self {
+            Symbol::Usage { performs, .. } => performs,
+            _ => &[],
+        }
+    }
+
+    /// Returns the references relationships for Usages (from `::>` featured_by)
+    pub fn references(&self) -> &[String] {
+        match self {
+            Symbol::Usage { references, .. } => references,
             _ => &[],
         }
     }

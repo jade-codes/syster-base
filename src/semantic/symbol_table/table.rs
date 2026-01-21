@@ -6,7 +6,7 @@ use crate::core::operation::{EventBus, OperationResult};
 use crate::semantic::SymbolTableEvent;
 use crate::semantic::types::normalize_path;
 
-use super::scope::{Import, Scope};
+use super::scope::{Import, ResolvedImport, Scope};
 use super::symbol::Symbol;
 
 use super::symbol::SymbolId;
@@ -265,6 +265,13 @@ impl SymbolTable {
         self.symbols_by_qname.get(qualified_name).copied()
     }
 
+    /// Find a mutable symbol by its exact qualified name (data access, not resolution)
+    /// Uses O(1) index lookup.
+    pub fn find_by_qualified_name_mut(&mut self, qualified_name: &str) -> Option<&mut Symbol> {
+        let id = self.symbols_by_qname.get(qualified_name).copied()?;
+        self.get_symbol_mut(id)
+    }
+
     /// Get qualified names of all symbols defined in a specific file
     ///
     /// Returns a Vec of qualified names for the file.
@@ -278,6 +285,139 @@ impl SymbolTable {
             .flatten()
             .filter_map(|id| self.get_symbol(*id).map(|s| s.qualified_name().to_string()))
             .collect()
+    }
+
+    // ============================================================
+    // Phase 2 & 3: Import Resolution and Export Map Building
+    // ============================================================
+
+    /// Add a resolved import to a scope (Phase 2)
+    pub fn add_resolved_import(&mut self, scope_id: usize, resolved: ResolvedImport) {
+        if let Some(scope) = self.scopes.get_mut(scope_id) {
+            scope.resolved_imports.push(resolved);
+        }
+    }
+
+    /// Add an entry to a scope's export map (Phase 3)
+    pub fn add_to_export_map(&mut self, scope_id: usize, name: String, symbol_id: SymbolId) {
+        if let Some(scope) = self.scopes.get_mut(scope_id) {
+            // Don't overwrite existing entries (local symbols take precedence)
+            scope.export_map.entry(name).or_insert(symbol_id);
+        }
+    }
+
+    /// Get the resolved imports for a scope
+    pub fn get_resolved_imports(&self, scope_id: usize) -> &[ResolvedImport] {
+        self.scopes
+            .get(scope_id)
+            .map(|s| s.resolved_imports.as_slice())
+            .unwrap_or(&[])
+    }
+
+    /// Clear all export maps (called before rebuilding them)
+    pub fn clear_export_maps(&mut self) {
+        for scope in &mut self.scopes {
+            scope.export_map.clear();
+        }
+    }
+
+    /// Get the export map for a scope
+    pub fn get_export_map(&self, scope_id: usize) -> Option<&HashMap<String, SymbolId>> {
+        self.scopes.get(scope_id).map(|s| &s.export_map)
+    }
+
+    /// Look up a symbol in a scope's export map (O(1))
+    pub fn lookup_in_export_map(&self, scope_id: usize, name: &str) -> Option<&Symbol> {
+        let export_map = self.get_export_map(scope_id)?;
+        tracing::trace!("[EXPORT_MAP] lookup scope={} name='{}' export_map_keys={:?}", 
+            scope_id, name, export_map.keys().take(10).collect::<Vec<_>>());
+        let symbol_id = export_map.get(name)?;
+        let result = self.get_symbol(*symbol_id);
+        tracing::trace!("[EXPORT_MAP] -> found symbol_id={:?} symbol={:?}", 
+            symbol_id, result.map(|s| s.qualified_name()));
+        result
+    }
+
+    /// Get all children symbols of a scope (direct children only)
+    pub fn get_scope_children_symbols(&self, scope_id: usize) -> Vec<(String, SymbolId)> {
+        self.scopes
+            .get(scope_id)
+            .map(|s| s.symbols.iter().map(|(k, v)| (k.clone(), *v)).collect())
+            .unwrap_or_default()
+    }
+
+    /// Find the body scope of a namespace (package/class) by looking for
+    /// a child scope that contains symbols or imports belonging to the namespace.
+    ///
+    /// When we define `package Foo { ... }`, the package symbol's scope_id is where
+    /// Foo is defined (parent scope), but Foo's body creates a new child scope.
+    /// This method finds that body scope.
+    pub fn find_namespace_body_scope(
+        &self,
+        namespace_qname: &str,
+        definition_scope_id: usize,
+    ) -> Option<usize> {
+        let prefix = format!("{}::", namespace_qname);
+        let scope = self.scopes.get(definition_scope_id)?;
+
+        for &child_scope_id in &scope.children {
+            if let Some(child_scope) = self.scopes.get(child_scope_id) {
+                // Check if any symbol in this scope has the right prefix
+                for symbol_id in child_scope.symbols.values() {
+                    if let Some(symbol) = self.get_symbol(*symbol_id) {
+                        if symbol.qualified_name().starts_with(&prefix) {
+                            return Some(child_scope_id);
+                        }
+                    }
+                }
+            }
+        }
+
+        // If no symbols found with the prefix, check for scopes with imports
+        // that have public namespace imports - likely a package with only imports
+        for &child_scope_id in &scope.children {
+            if let Some(child_scope) = self.scopes.get(child_scope_id) {
+                // Check resolved_imports first (Phase 2 completed)
+                let has_public_namespace_resolved = child_scope
+                    .resolved_imports
+                    .iter()
+                    .any(|ri| ri.is_public && ri.is_namespace);
+
+                // Also check raw imports (Phase 2 not completed)
+                let has_public_namespace_raw = child_scope
+                    .imports
+                    .iter()
+                    .any(|i| i.is_public && i.is_namespace);
+
+                if has_public_namespace_resolved || has_public_namespace_raw {
+                    // This scope has public wildcard imports - likely the body scope
+                    // But we need to verify it's not a sibling namespace
+                    // Check if this scope has NO symbols with a different namespace prefix
+                    let has_wrong_prefix = child_scope.symbols.values().any(|id| {
+                        self.get_symbol(*id)
+                            .map(|s| {
+                                let qname = s.qualified_name();
+                                // Symbol belongs to a different namespace
+                                !qname.starts_with(&prefix)
+                                    && qname.contains("::")
+                                    && !qname.starts_with("import::")
+                            })
+                            .unwrap_or(false)
+                    });
+
+                    if !has_wrong_prefix {
+                        return Some(child_scope_id);
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Get mutable access to a scope (for phase operations)
+    pub fn get_scope_mut(&mut self, scope_id: usize) -> Option<&mut Scope> {
+        self.scopes.get_mut(scope_id)
     }
 }
 

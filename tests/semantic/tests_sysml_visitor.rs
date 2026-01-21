@@ -1224,3 +1224,89 @@ fn test_identifier_in_default_value_not_treated_as_definition() {
         "Should have exactly one 'thisPerformance' definition, got {this_perf_count}"
     );
 }
+
+#[test]
+fn test_alias_resolution_via_public_import() {
+    // This test reproduces the issue where:
+    // - ISQMechanics defines TorqueValue
+    // - ISQ does `public import ISQMechanics::*`
+    // - User defines `alias Torque for ISQ::TorqueValue`
+    // - Type reference to `Torque` should resolve through the alias to TorqueValue
+    let source = r#"
+        package ISQMechanics {
+            attribute def TorqueValue;
+        }
+        package ISQ {
+            public import ISQMechanics::*;
+        }
+        package Automotive {
+            import ISQ::*;
+            alias Torque for ISQ::TorqueValue;
+            action def DistributeTorque {
+                in driveshaftTorque : Torque;
+                out wheelToRoadTorque : Torque;
+            }
+        }
+    "#;
+    let mut pairs = SysMLParser::parse(Rule::file, source).unwrap();
+    let file = parse_file(&mut pairs).unwrap();
+
+    let mut symbol_table = SymbolTable::new();
+    let mut graph = ReferenceIndex::new();
+    let mut adapter = SysmlAdapter::with_index(&mut symbol_table, &mut graph);
+    adapter.populate(&file).unwrap();
+
+    // Run import resolution phases (normally done by Workspace.populate_all)
+    syster::semantic::resolver::resolve_imports(&mut symbol_table);
+    syster::semantic::resolver::build_export_maps(&mut symbol_table);
+
+    let resolver = Resolver::new(&symbol_table);
+
+    // 1. First verify the direct qualified name resolution works
+    let torque_value_direct = resolver.resolve_qualified("ISQMechanics::TorqueValue");
+    assert!(
+        torque_value_direct.is_some(),
+        "ISQMechanics::TorqueValue should resolve directly"
+    );
+
+    // 2. Verify ISQ::TorqueValue resolves via public re-export
+    let torque_value_via_isq = resolver.resolve_qualified("ISQ::TorqueValue");
+    assert!(
+        torque_value_via_isq.is_some(),
+        "ISQ::TorqueValue should resolve via public import from ISQMechanics"
+    );
+
+    // 3. The alias Torque should exist
+    let torque_alias = resolver.resolve_qualified("Automotive::Torque");
+    assert!(torque_alias.is_some(), "Automotive::Torque alias should exist");
+
+    // 4. Resolving the alias should give us the target TorqueValue
+    if let Some(Symbol::Alias { target, .. }) = torque_alias {
+        assert_eq!(target, "ISQ::TorqueValue", "Alias target should be ISQ::TorqueValue");
+        
+        // 5. The alias target should be resolvable
+        let resolved_target = resolver.resolve_qualified(target);
+        assert!(
+            resolved_target.is_some(),
+            "Alias target ISQ::TorqueValue should be resolvable"
+        );
+    } else {
+        panic!("Expected Torque to be an Alias symbol");
+    }
+
+    // 6. Verify there is a reference index entry for "Torque" typed_by
+    // The driveshaftTorque parameter has `typed_by: Some("Torque")`
+    // This should result in a reference being indexed
+    let driveshaft_torque = resolver.resolve_qualified("Automotive::DistributeTorque::driveshaftTorque");
+    assert!(
+        driveshaft_torque.is_some(),
+        "driveshaftTorque parameter should exist"
+    );
+
+    // Verify that there's at least one reference to Torque in the index
+    let torque_refs = graph.get_references("Automotive::Torque");
+    println!("\n=== References to Automotive::Torque ===");
+    for r in &torque_refs {
+        println!("  {} -> Automotive::Torque at {:?}", r.source_qname, r.span);
+    }
+}

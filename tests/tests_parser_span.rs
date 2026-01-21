@@ -119,7 +119,7 @@ part def Vehicle;"#;
 
     let file = parse_sysml(source);
 
-    let syster::syntax::sysml::ast::Element::Definition(def) = &file.elements[1] else {
+    let syster::syntax::sysml::ast::Element::Definition(def) = &file.elements[2] else {
         panic!("Expected Definition");
     };
     let span = def.span.expect("Definition should have span");
