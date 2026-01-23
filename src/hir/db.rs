@@ -11,17 +11,6 @@ use super::input::SourceRoot;
 use super::symbols::{extract_symbols_unified, HirSymbol};
 
 // ============================================================================
-// DATABASE TRAIT
-// ============================================================================
-
-/// The main database trait for all Salsa queries.
-///
-/// This is a marker trait. Actual inputs and queries are defined
-/// using Salsa's attribute macros below.
-#[salsa::db]
-pub trait Db: salsa::Database {}
-
-// ============================================================================
 // INPUTS
 // ============================================================================
 
@@ -62,9 +51,6 @@ impl salsa::Database for RootDatabase {
     }
 }
 
-#[salsa::db]
-impl Db for RootDatabase {}
-
 impl RootDatabase {
     /// Create a new empty database.
     pub fn new() -> Self {
@@ -77,7 +63,11 @@ impl RootDatabase {
 // ============================================================================
 
 /// Result of parsing a file.
-#[derive(Clone, Debug)]
+///
+/// Note: Eq is implemented manually because SysMLFile only derives PartialEq.
+/// For Salsa tracking, we treat ParseResults as equal if they have the same
+/// success status, errors, and AST presence (AST content equality via PartialEq).
+#[derive(Clone, Debug, PartialEq)]
 pub struct ParseResult {
     /// The parse was successful (no fatal errors).
     pub success: bool,
@@ -86,6 +76,9 @@ pub struct ParseResult {
     /// The parsed AST (if successful).
     pub ast: Option<Arc<SysMLFile>>,
 }
+
+// Manual Eq impl - safe because SysMLFile's PartialEq is reflexive
+impl Eq for ParseResult {}
 
 impl ParseResult {
     /// Create a successful parse result.
@@ -133,13 +126,14 @@ impl ParseResult {
 
 /// Parse a file and return whether it succeeded.
 ///
-/// This is a simple wrapper for now — full AST caching will come later
-/// once we refactor the AST types to be Salsa-compatible.
-pub fn parse_file(db: &dyn Db, file_text: &FileText) -> ParseResult {
+/// This is a tracked Salsa query - results are memoized and automatically
+/// invalidated when the input `FileText` changes.
+#[salsa::tracked]
+pub fn parse_file(db: &dyn salsa::Database, file_text: FileText) -> ParseResult {
     let text = file_text.text(db);
     
-    // Use the existing parser
-    let result = crate::syntax::sysml::parser::parse_with_result(text, Path::new(""));
+    // Use the existing parser (with .sysml extension to satisfy parser requirements)
+    let result = crate::syntax::sysml::parser::parse_with_result(text, Path::new("file.sysml"));
     
     if let Some(ast) = result.content {
         let errors: Vec<String> = result.errors.iter().map(|e| format!("{:?}", e)).collect();
@@ -163,9 +157,11 @@ pub fn file_symbols(file: FileId, ast: &SysMLFile) -> Vec<HirSymbol> {
 
 /// Extract symbols from a file given its text.
 ///
-/// This combines parsing + symbol extraction. Use this when you don't
-/// need the raw AST.
-pub fn file_symbols_from_text(db: &dyn Db, file: FileId, file_text: &FileText) -> Vec<HirSymbol> {
+/// This is a tracked Salsa query that combines parsing + symbol extraction.
+/// Results are memoized per-file.
+#[salsa::tracked]
+pub fn file_symbols_from_text(db: &dyn salsa::Database, file_text: FileText) -> Vec<HirSymbol> {
+    let file = file_text.file(db);
     let result = parse_file(db, file_text);
     match result.ast {
         Some(ast) => extract_symbols_unified(file, &SyntaxFile::SysML((*ast).clone())),
@@ -275,6 +271,57 @@ mod tests {
         assert!(inner_usage.is_some(), "inner usage not found");
         assert_eq!(inner_usage.unwrap().kind, SymbolKind::PartUsage);
         assert_eq!(inner_usage.unwrap().qualified_name.as_ref(), "Outer::inner");
+    }
+
+    #[test]
+    fn test_salsa_tracked_parse_query() {
+        // Test that the tracked parse_file query works through the database
+        let db = RootDatabase::new();
+        
+        let sysml = "part def Car;";
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+        
+        // Call the tracked query
+        let result = parse_file(&db, file_text);
+        assert!(result.is_ok(), "Parse failed with errors: {:?}", result.errors);
+        assert!(result.get_ast().is_some());
+    }
+
+    #[test]
+    fn test_salsa_tracked_symbols_query() {
+        // Test that the tracked file_symbols_from_text query works
+        let db = RootDatabase::new();
+        
+        let sysml = r#"
+            package Test {
+                part def Widget;
+            }
+        "#;
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+        
+        // Call the tracked query
+        let symbols = file_symbols_from_text(&db, file_text);
+        
+        assert!(!symbols.is_empty());
+        let widget = symbols.iter().find(|s| s.name.as_ref() == "Widget");
+        assert!(widget.is_some(), "Widget not found in symbols");
+        assert_eq!(widget.unwrap().kind, SymbolKind::PartDef);
+    }
+
+    #[test]
+    fn test_salsa_memoization() {
+        // Test that queries are memoized (same input returns same result)
+        let db = RootDatabase::new();
+        
+        let sysml = "part def MemoTest;";
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+        
+        // Call twice - should be memoized
+        let symbols1 = file_symbols_from_text(&db, file_text);
+        let symbols2 = file_symbols_from_text(&db, file_text);
+        
+        // Results should be equal (memoized)
+        assert_eq!(symbols1, symbols2);
     }
 }
 

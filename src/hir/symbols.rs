@@ -10,13 +10,59 @@
 use std::sync::Arc;
 
 use crate::base::FileId;
-use crate::syntax::sysml::ast::enums::{DefinitionKind, DefinitionMember, Element, UsageKind, UsageMember};
-use crate::syntax::sysml::ast::types::SysMLFile;
+use crate::syntax::sysml::ast::enums::{DefinitionKind, UsageKind};
 use crate::syntax::normalized::{
     NormalizedElement, NormalizedPackage, NormalizedDefinition, NormalizedUsage,
     NormalizedImport, NormalizedAlias, NormalizedComment, NormalizedDependency,
     NormalizedDefKind, NormalizedUsageKind, NormalizedRelationship, NormalizedRelKind,
 };
+
+/// The kind of reference - determines resolution strategy.
+///
+/// Type references (TypedBy, Specializes) resolve via scope walking.
+/// Feature references (Redefines, Subsets, References) resolve via inheritance hierarchy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum RefKind {
+    /// `: Type` - type annotation, resolves via scope
+    TypedBy,
+    /// `:> Type` for types - specialization, resolves via scope
+    Specializes,
+    /// `:>> feature` - redefinition, resolves via inheritance
+    Redefines,
+    /// `:> feature` for features - subsetting, resolves via inheritance
+    Subsets,
+    /// `::> feature` - references/featured-by, resolves via inheritance
+    References,
+    /// Reference in an expression - context dependent
+    Expression,
+    /// Other relationship types (performs, satisfies, etc.)
+    Other,
+}
+
+impl RefKind {
+    /// Returns true if this is a type reference that should resolve via scope walking.
+    pub fn is_type_reference(&self) -> bool {
+        matches!(self, RefKind::TypedBy | RefKind::Specializes)
+    }
+    
+    /// Returns true if this is a feature reference that resolves via inheritance.
+    pub fn is_feature_reference(&self) -> bool {
+        matches!(self, RefKind::Redefines | RefKind::Subsets | RefKind::References)
+    }
+    
+    /// Convert from NormalizedRelKind.
+    pub fn from_normalized(kind: NormalizedRelKind) -> Self {
+        match kind {
+            NormalizedRelKind::TypedBy => RefKind::TypedBy,
+            NormalizedRelKind::Specializes => RefKind::Specializes,
+            NormalizedRelKind::Redefines => RefKind::Redefines,
+            NormalizedRelKind::Subsets => RefKind::Subsets,
+            NormalizedRelKind::References => RefKind::References,
+            NormalizedRelKind::Expression => RefKind::Expression,
+            _ => RefKind::Other,
+        }
+    }
+}
 
 /// A type reference with its source location.
 ///
@@ -26,13 +72,15 @@ use crate::syntax::normalized::{
 /// Feature chains like `takePicture.focus` are detected at resolution time
 /// by checking if TypeRefs are adjacent (separated by a dot). This avoids
 /// storing chain metadata in the HIR layer.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TypeRef {
     /// The target type name as written in source (e.g., "Car", "focus")
     pub target: Arc<str>,
     /// The fully resolved qualified name (e.g., "Vehicle::Car", "TakePicture::focus")
     /// This is computed during the semantic resolution pass.
     pub resolved_target: Option<Arc<str>>,
+    /// The kind of reference - determines resolution strategy.
+    pub kind: RefKind,
     /// Start line (0-indexed)
     pub start_line: u32,
     /// Start column (0-indexed)
@@ -45,10 +93,11 @@ pub struct TypeRef {
 
 impl TypeRef {
     /// Create a new type reference.
-    pub fn new(target: impl Into<Arc<str>>, start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Self {
+    pub fn new(target: impl Into<Arc<str>>, kind: RefKind, start_line: u32, start_col: u32, end_line: u32, end_col: u32) -> Self {
         Self {
             target: target.into(),
             resolved_target: None,
+            kind,
             start_line,
             start_col,
             end_line,
@@ -83,7 +132,7 @@ impl TypeRef {
 }
 
 /// A type reference that can be either a simple reference or a chain.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum TypeRefKind {
     /// A simple reference like `Vehicle`
     Simple(TypeRef),
@@ -134,7 +183,7 @@ impl TypeRefKind {
 }
 
 /// A chain of type references like `engine.power.value`
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct TypeRefChain {
     /// The parts of the chain, each with its own span
     pub parts: Vec<TypeRef>,
@@ -151,7 +200,7 @@ impl TypeRefChain {
 ///
 /// This is a simplified symbol type for the new HIR layer.
 /// It captures the essential information needed for IDE features.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct HirSymbol {
     /// The simple name of the symbol
     pub name: Arc<str>,
@@ -395,6 +444,8 @@ impl SymbolKind {
 struct ExtractionContext {
     file: FileId,
     prefix: String,
+    /// Counter for generating unique anonymous scope names
+    anon_counter: u32,
 }
 
 impl ExtractionContext {
@@ -421,6 +472,12 @@ impl ExtractionContext {
             self.prefix.clear();
         }
     }
+    
+    /// Generate a unique anonymous scope name
+    fn next_anon_scope(&mut self, rel_prefix: &str, target: &str, line: u32) -> String {
+        self.anon_counter += 1;
+        format!("<{}{}#{}@L{}>", rel_prefix, target, self.anon_counter, line)
+    }
 }
 
 // ============================================================================
@@ -438,6 +495,7 @@ pub fn extract_symbols_unified(file: FileId, syntax: &crate::syntax::SyntaxFile)
     let mut context = ExtractionContext {
         file,
         prefix: String::new(),
+        anon_counter: 0,
     };
 
     match syntax {
@@ -523,6 +581,47 @@ fn extract_from_normalized_package(
     ctx.pop_scope();
 }
 
+/// Get the implicit supertype for a definition kind based on SysML kernel library.
+/// In SysML, all definitions implicitly specialize their kernel metaclass:
+/// - `part def X` implicitly specializes `Parts::Part`
+/// - `item def X` implicitly specializes `Items::Item`
+/// - `action def X` implicitly specializes `Actions::Action`
+/// etc.
+fn implicit_supertype_for_def_kind(kind: NormalizedDefKind) -> Option<&'static str> {
+    match kind {
+        NormalizedDefKind::Part => Some("Parts::Part"),
+        NormalizedDefKind::Item => Some("Items::Item"),
+        NormalizedDefKind::Action => Some("Actions::Action"),
+        NormalizedDefKind::State => Some("States::StateAction"),
+        NormalizedDefKind::Constraint => Some("Constraints::ConstraintCheck"),
+        NormalizedDefKind::Requirement => Some("Requirements::RequirementCheck"),
+        NormalizedDefKind::Calculation => Some("Calculations::Calculation"),
+        NormalizedDefKind::Port => Some("Ports::Port"),
+        NormalizedDefKind::Connection => Some("Connections::Connection"),
+        NormalizedDefKind::Interface => Some("Interfaces::Interface"),
+        NormalizedDefKind::Allocation => Some("Allocations::Allocation"),
+        NormalizedDefKind::UseCase => Some("UseCases::UseCase"),
+        NormalizedDefKind::AnalysisCase => Some("AnalysisCases::AnalysisCase"),
+        NormalizedDefKind::Attribute => Some("Attributes::AttributeValue"),
+        _ => None,
+    }
+}
+
+/// Get the implicit supertype for a usage kind based on SysML kernel library.
+/// In SysML, usages implicitly specialize their kernel metaclass base type:
+/// - `message x` implicitly specializes `Flows::Message`
+/// - `flow x` implicitly specializes `Flows::Flow`  
+/// etc.
+fn implicit_supertype_for_usage_kind(kind: NormalizedUsageKind) -> Option<&'static str> {
+    match kind {
+        NormalizedUsageKind::Flow => Some("Flows::Message"),
+        NormalizedUsageKind::Connection => Some("Connections::Connection"),
+        NormalizedUsageKind::Interface => Some("Interfaces::Interface"),
+        NormalizedUsageKind::Allocation => Some("Allocations::Allocation"),
+        _ => None,
+    }
+}
+
 fn extract_from_normalized_definition(
     symbols: &mut Vec<HirSymbol>,
     ctx: &mut ExtractionContext,
@@ -538,13 +637,21 @@ fn extract_from_normalized_definition(
     let span = span_to_info(def.span);
     let (sn_start_line, sn_start_col, sn_end_line, sn_end_col) = span_to_optional(def.short_name_span);
 
-    // Extract supertypes from relationships
-    let supertypes: Vec<Arc<str>> = def
+    // Extract explicit supertypes from relationships
+    let mut supertypes: Vec<Arc<str>> = def
         .relationships
         .iter()
         .filter(|r| matches!(r.kind, NormalizedRelKind::Specializes))
         .map(|r| Arc::from(r.target.as_str().as_ref()))
         .collect();
+    
+    // Add implicit supertypes from SysML kernel library if no explicit specialization
+    // This models the implicit inheritance: part def → Part, item def → Item, etc.
+    if supertypes.is_empty() {
+        if let Some(implicit) = implicit_supertype_for_def_kind(def.kind) {
+            supertypes.push(Arc::from(implicit));
+        }
+    }
 
     // Extract type references from relationships
     let type_refs = extract_type_refs_from_normalized(&def.relationships);
@@ -597,10 +704,46 @@ fn extract_from_normalized_usage(
                     parent.type_refs.extend(type_refs);
                 }
             }
-            // Still recurse into children for anonymous usages
+            
+            // Generate unique anonymous scope name for children
+            // Try to use relationship target for meaningful names, otherwise use generic anon
+            let line = usage.span.map(|s| s.start.line as u32).unwrap_or(0);
+            let anon_scope = usage
+                .relationships
+                .iter()
+                .find(|r| !matches!(r.kind, NormalizedRelKind::Expression))
+                .map(|r| {
+                    let prefix = match r.kind {
+                        NormalizedRelKind::Subsets => ":>",
+                        NormalizedRelKind::TypedBy => ":",
+                        NormalizedRelKind::Specializes => ":>:",
+                        NormalizedRelKind::Redefines => ":>>",
+                        NormalizedRelKind::About => "about:",
+                        NormalizedRelKind::Performs => "perform:",
+                        NormalizedRelKind::Satisfies => "satisfy:",
+                        NormalizedRelKind::Exhibits => "exhibit:",
+                        NormalizedRelKind::Includes => "include:",
+                        NormalizedRelKind::Asserts => "assert:",
+                        NormalizedRelKind::Verifies => "verify:",
+                        NormalizedRelKind::References => "ref:",
+                        NormalizedRelKind::Meta => "meta:",
+                        NormalizedRelKind::Crosses => "crosses:",
+                        NormalizedRelKind::Expression => "~",
+                    };
+                    ctx.next_anon_scope(prefix, &r.target.as_str(), line)
+                })
+                // Fallback: always create a unique scope for anonymous usages with children
+                .unwrap_or_else(|| ctx.next_anon_scope("anon", "", line));
+            
+            // Always push scope for children of anonymous usages
+            ctx.push_scope(&anon_scope);
+            
+            // Recurse into children for anonymous usages
             for child in &usage.children {
                 extract_from_normalized(symbols, ctx, child);
             }
+            
+            ctx.pop_scope();
             return;
         }
     };
@@ -611,12 +754,21 @@ fn extract_from_normalized_usage(
     let (sn_start_line, sn_start_col, sn_end_line, sn_end_col) = span_to_optional(usage.short_name_span);
 
     // Extract typing and subsetting as supertypes
-    let supertypes: Vec<Arc<str>> = usage
+    let mut supertypes: Vec<Arc<str>> = usage
         .relationships
         .iter()
         .filter(|r| matches!(r.kind, NormalizedRelKind::TypedBy | NormalizedRelKind::Subsets))
         .map(|r| Arc::from(r.target.as_str().as_ref()))
         .collect();
+    
+    // Add implicit supertypes from SysML kernel library if not already specialized
+    // This models the implicit inheritance: message → Message, flow → Flow, etc.
+    if let Some(implicit) = implicit_supertype_for_usage_kind(usage.kind) {
+        // Only add if no explicit specialization of this type
+        if !supertypes.iter().any(|s| s.contains("Message") || s.contains("Flow")) {
+            supertypes.push(Arc::from(implicit));
+        }
+    }
 
     // Extract doc comment
     let doc = usage.doc.map(|s| Arc::from(s.trim()));
@@ -697,6 +849,7 @@ fn extract_from_normalized_alias(
         vec![TypeRefKind::Simple(TypeRef {
             target: Arc::from(alias.target),
             resolved_target: None,
+            kind: RefKind::Other, // Alias targets are special
             start_line: s.start.line as u32,
             start_col: s.start.column as u32,
             end_line: s.end.line as u32,
@@ -780,12 +933,16 @@ fn extract_from_normalized_comment(
 /// Extract type references from normalized relationships.
 /// 
 /// Chains are now preserved explicitly from the normalized layer.
+/// Each TypeRef now includes its RefKind so callers can distinguish
+/// type references from feature references.
 fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -> Vec<TypeRefKind> {
     use crate::syntax::normalized::RelTarget;
     
     let mut type_refs = Vec::new();
     
     for (_rel_idx, rel) in relationships.iter().enumerate() {
+        let ref_kind = RefKind::from_normalized(rel.kind);
+        
         match &rel.target {
             RelTarget::Chain(chain) => {
                 // Emit as a TypeRefChain with individual parts
@@ -801,6 +958,7 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                     TypeRef {
                         target: Arc::from(part.name.as_str()),
                         resolved_target: None,
+                        kind: ref_kind,
                         start_line,
                         start_col,
                         end_line,
@@ -817,6 +975,7 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                     type_refs.push(TypeRefKind::Simple(TypeRef {
                         target: Arc::from(*target),
                         resolved_target: None,
+                        kind: ref_kind,
                         start_line: s.start.line as u32,
                         start_col: s.start.column as u32,
                         end_line: s.end.line as u32,
@@ -839,6 +998,7 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                             type_refs.push(TypeRefKind::Simple(TypeRef {
                                 target: Arc::from(prefix.as_str()),
                                 resolved_target: None,
+                                kind: ref_kind,
                                 start_line: s.start.line as u32,
                                 start_col: s.start.column as u32,
                                 end_line: s.end.line as u32,

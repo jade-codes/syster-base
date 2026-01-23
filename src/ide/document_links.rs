@@ -1,7 +1,7 @@
 //! Document links — clickable references to definitions.
 
 use crate::base::FileId;
-use crate::hir::{SymbolIndex, SymbolKind};
+use crate::hir::{SymbolIndex, SymbolKind, Resolver, ResolveResult};
 use std::borrow::Cow;
 
 /// A document link target.
@@ -19,6 +19,15 @@ pub struct DocumentLink {
     pub target_col: u32,
     /// Tooltip text for the link.
     pub tooltip: Cow<'static, str>,
+}
+
+/// Extract the parent scope from a qualified name.
+fn extract_scope(qualified_name: &str) -> String {
+    if let Some(pos) = qualified_name.rfind("::") {
+        qualified_name[..pos].to_string()
+    } else {
+        String::new()
+    }
 }
 
 /// Get document links for a file.
@@ -46,8 +55,21 @@ pub fn document_links(index: &SymbolIndex, file: FileId) -> Vec<DocumentLink> {
                     import_path
                 };
                 
-                // Try to resolve it to find the target definition
-                if let Some(target) = index.lookup_qualified(resolved_path) {
+                // Use scope-aware resolver to find the target
+                // The import's scope is its parent package
+                let scope = extract_scope(&sym.qualified_name);
+                let resolver = Resolver::new(index).with_scope(scope);
+                
+                let target = match resolver.resolve(resolved_path) {
+                    ResolveResult::Found(t) => Some(t),
+                    ResolveResult::Ambiguous(targets) => targets.into_iter().next(),
+                    ResolveResult::NotFound => {
+                        // Fallback to exact qualified lookup
+                        index.lookup_qualified(resolved_path).cloned()
+                    }
+                };
+                
+                if let Some(target) = target {
                     links.push(DocumentLink {
                         start_line: sym.start_line,
                         start_col: sym.start_col,
@@ -56,7 +78,7 @@ pub fn document_links(index: &SymbolIndex, file: FileId) -> Vec<DocumentLink> {
                         target_file: target.file,
                         target_line: target.start_line,
                         target_col: target.start_col,
-                        tooltip: Cow::Owned(format!("Go to {}", resolved_path)),
+                        tooltip: Cow::Owned(format!("Go to {}", target.qualified_name)),
                     });
                 }
             }

@@ -52,8 +52,7 @@ impl<'a> RelTarget<'a> {
                 RelTarget::Simple(Box::leak(name.clone().into_boxed_str()))
             }
             ExtractedRef::Chain(chain) => {
-                for (i, part) in chain.parts.iter().enumerate() {
-                }
+                // Chain parts are used directly in the clone below
                 RelTarget::Chain(chain.clone())
             }
         };

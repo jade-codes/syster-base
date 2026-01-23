@@ -759,6 +759,17 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
             }
         }
 
+        // Message event endpoints - extract feature chains from message_declaration
+        // message_declaration contains: from_token ~ message_event_member ~ to_token ~ message_event_member
+        // message_event_member contains message_event which contains owned_reference_subsetting
+        // which can be owned_feature_chain or feature_reference
+        Rule::message_event_member | Rule::message_event => {
+            // Extract all feature chain references from message event endpoints
+            for extracted in all_refs_with_spans_from(pair) {
+                ctx.expression_refs.push(extracted);
+            }
+        }
+
         // Interface endpoints - can have named endpoints like `lugNutCompositePort ::> wheel1.lugNutCompositePort`
         // interface_end = { owned_cross_multiplicity_member? ~ (identifier ~ (::> | =>) ~ target | target) }
         // When there's a named endpoint with ::> or =>, we need to create a nested Usage
@@ -1560,6 +1571,12 @@ fn parse_usage_with_kind(pair: Pair<Rule>, kind: UsageKind) -> Usage {
             simple_name.to_string()
         })
     });
+    
+    // For anonymous usages, use the redefines span as the symbol span
+    // This ensures hover/go-to-definition works for `:>> name` syntax
+    let span = ctx.name_span.or_else(|| {
+        ctx.relationships.redefines.first().and_then(|r| r.span())
+    });
 
     Usage {
         kind,
@@ -1568,7 +1585,7 @@ fn parse_usage_with_kind(pair: Pair<Rule>, kind: UsageKind) -> Usage {
         short_name_span: ctx.short_name_span,
         relationships: ctx.relationships,
         body: ctx.usage_members,
-        span: ctx.name_span,
+        span,
         is_derived: ctx.is_derived,
         is_const: ctx.is_const,
         expression_refs: ctx.expression_refs,

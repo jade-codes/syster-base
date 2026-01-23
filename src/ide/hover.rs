@@ -67,11 +67,16 @@ pub fn hover(
             let resolver = index.resolver_for_scope(scope);
             
             match resolver.resolve(&_target_name) {
-                ResolveResult::Found(sym) => Some(sym),
-                ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
+                ResolveResult::Found(sym) => {
+                    Some(sym)
+                }
+                ResolveResult::Ambiguous(syms) => {
+                    syms.into_iter().next()
+                }
                 ResolveResult::NotFound => {
                     // Try qualified name directly
-                    index.lookup_qualified(&_target_name).cloned()
+                    let result = index.lookup_qualified(&_target_name).cloned();
+                    result
                 }
             }
         };
@@ -149,6 +154,17 @@ fn build_hover_content(symbol: &HirSymbol, index: &SymbolIndex) -> String {
 fn build_signature(symbol: &HirSymbol) -> String {
     let kind_str = symbol.kind.display();
     
+    // Build name with short name alias if present
+    let name_with_alias = if let Some(ref short) = symbol.short_name {
+        if short.as_ref() != symbol.name.as_ref() {
+            format!("<{}> {}", short, symbol.name)
+        } else {
+            symbol.name.to_string()
+        }
+    } else {
+        symbol.name.to_string()
+    };
+    
     match symbol.kind {
         // Definitions
         SymbolKind::PartDef | SymbolKind::ItemDef | SymbolKind::ActionDef |
@@ -158,7 +174,7 @@ fn build_signature(symbol: &HirSymbol) -> String {
         SymbolKind::UseCaseDef | SymbolKind::AnalysisCaseDef | SymbolKind::ConcernDef |
         SymbolKind::ViewDef | SymbolKind::ViewpointDef | SymbolKind::RenderingDef |
         SymbolKind::EnumerationDef => {
-            let mut sig = format!("{} {}", kind_str, symbol.name);
+            let mut sig = format!("{} {}", kind_str, name_with_alias);
             if !symbol.supertypes.is_empty() {
                 sig.push_str(" :> ");
                 sig.push_str(&symbol.supertypes.join(", "));
@@ -172,7 +188,7 @@ fn build_signature(symbol: &HirSymbol) -> String {
         SymbolKind::InterfaceUsage | SymbolKind::AllocationUsage | SymbolKind::RequirementUsage |
         SymbolKind::ConstraintUsage | SymbolKind::StateUsage | SymbolKind::CalculationUsage |
         SymbolKind::ReferenceUsage | SymbolKind::OccurrenceUsage | SymbolKind::FlowUsage => {
-            let mut sig = format!("{} {}", kind_str, symbol.name);
+            let mut sig = format!("{} {}", kind_str, name_with_alias);
             if !symbol.supertypes.is_empty() {
                 sig.push_str(" : ");
                 sig.push_str(&symbol.supertypes[0].as_ref());
@@ -181,7 +197,7 @@ fn build_signature(symbol: &HirSymbol) -> String {
         }
         
         // Package
-        SymbolKind::Package => format!("package {}", symbol.name),
+        SymbolKind::Package => format!("package {}", name_with_alias),
         
         // Import
         SymbolKind::Import => format!("import {}", symbol.name),
@@ -189,14 +205,14 @@ fn build_signature(symbol: &HirSymbol) -> String {
         // Alias
         SymbolKind::Alias => {
             if !symbol.supertypes.is_empty() {
-                format!("alias {} for {}", symbol.name, symbol.supertypes[0])
+                format!("alias {} for {}", name_with_alias, symbol.supertypes[0])
             } else {
-                format!("alias {}", symbol.name)
+                format!("alias {}", name_with_alias)
             }
         }
         
         // Other
-        SymbolKind::Comment | SymbolKind::Other | SymbolKind::Dependency => symbol.name.to_string(),
+        SymbolKind::Comment | SymbolKind::Other | SymbolKind::Dependency => name_with_alias,
     }
 }
 
@@ -261,18 +277,32 @@ fn symbol_size(symbol: &HirSymbol) -> u32 {
 /// Returns the target type name, the TypeRef containing the position,
 /// and the symbol that contains this type_ref (for scope resolution).
 fn find_type_ref_at_position<'a>(index: &'a SymbolIndex, file: FileId, line: u32, col: u32) -> Option<(Arc<str>, &'a TypeRef, Option<&'a HirSymbol>)> {
-    use crate::hir::TypeRefKind;
-    
     let symbols = index.symbols_in_file(file);
     
     for symbol in symbols {
         for (_idx, type_ref_kind) in symbol.type_refs.iter().enumerate() {
+            // Debug: print all type_refs for message symbols on line 780
+            if cfg!(debug_assertions) && symbol.name.contains("ignitionCmd") && line == 780 {
+                eprintln!("[HOVER DEBUG] Checking symbol '{}' type_ref at line={} col={}", 
+                    symbol.name, line, col);
+                for tr in type_ref_kind.as_refs() {
+                    eprintln!("[HOVER DEBUG]   TypeRef: target='{}' span={}:{}-{}:{} contains={} resolved_target={:?}", 
+                        tr.target, tr.start_line, tr.start_col, tr.end_line, tr.end_col,
+                        tr.contains(line, col), tr.resolved_target);
+                }
+            }
+            
             let contains = type_ref_kind.contains(line, col);
             
             if contains {
                 // Find which part contains the position
                 if let Some((_part_idx, tr)) = type_ref_kind.part_at(line, col) {
+                    if cfg!(debug_assertions) && symbol.name.contains("ignitionCmd") && line == 780 {
+                        eprintln!("[HOVER DEBUG]   FOUND! part_at returned target='{}' resolved_target={:?}", tr.target, tr.resolved_target);
+                    }
                     return Some((tr.target.clone(), tr, Some(symbol)));
+                } else if cfg!(debug_assertions) && symbol.name.contains("ignitionCmd") {
+                    eprintln!("[HOVER DEBUG]   contains=true but part_at returned None!");
                 }
             }
         }
@@ -296,6 +326,10 @@ mod tests {
             start_col: 0,
             end_line: line,
             end_col: 20,
+            short_name_start_line: None,
+            short_name_start_col: None,
+            short_name_end_line: None,
+            short_name_end_col: None,
             doc: None,
             supertypes: Vec::new(),
             type_refs: Vec::new(),

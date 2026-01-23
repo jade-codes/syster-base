@@ -270,6 +270,7 @@ fn symbol_size(symbol: &HirSymbol) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::RefKind;
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, file: u32, line: u32) -> HirSymbol {
         HirSymbol {
@@ -282,6 +283,10 @@ mod tests {
             start_col: 0,
             end_line: line,
             end_col: 10,
+            short_name_start_line: None,
+            short_name_start_col: None,
+            short_name_end_line: None,
+            short_name_end_col: None,
             doc: None,
             supertypes: Vec::new(),
             type_refs: Vec::new(),
@@ -301,11 +306,11 @@ mod tests {
         // Usages with type_refs (this is how references are found)
         let mut engine_usage1 = make_symbol("engine", "Car::engine", SymbolKind::PartUsage, 0, 10);
         engine_usage1.supertypes = vec![Arc::from("Engine")];
-        engine_usage1.type_refs = vec![TypeRefKind::Simple(TypeRef::new("Engine", 10, 15, 10, 21))];
+        engine_usage1.type_refs = vec![TypeRefKind::Simple(TypeRef::new("Engine", RefKind::TypedBy, 10, 15, 10, 21))];
         
         let mut engine_usage2 = make_symbol("motor", "Truck::motor", SymbolKind::PartUsage, 1, 5);
         engine_usage2.supertypes = vec![Arc::from("Engine")];
-        engine_usage2.type_refs = vec![TypeRefKind::Simple(TypeRef::new("Engine", 5, 12, 5, 18))];
+        engine_usage2.type_refs = vec![TypeRefKind::Simple(TypeRef::new("Engine", RefKind::TypedBy, 5, 12, 5, 18))];
         
         index.add_file(FileId::new(0), vec![engine_def, engine_usage1]);
         index.add_file(FileId::new(1), vec![engine_usage2]);
