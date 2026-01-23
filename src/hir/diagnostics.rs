@@ -127,10 +127,16 @@ impl Diagnostic {
 
 /// Standard diagnostic codes for semantic errors.
 ///
-/// These codes are reserved for future semantic checks. Currently only
-/// some are used, but the full set is defined for consistency.
+/// ## Error Code Ranges
+///
+/// - **E0001-E0099**: Semantic analysis errors (symbol resolution, type checking, validation)
+/// - **W0001-W0099**: Warnings (unused, deprecated, conventions)
 #[allow(dead_code)]
 pub mod codes {
+    // ========================================================================
+    // SEMANTIC ERRORS (E0001-E0099)
+    // ========================================================================
+
     /// Undefined reference (name not found).
     pub const UNDEFINED_REFERENCE: &str = "E0001";
     /// Ambiguous reference (multiple candidates).
@@ -141,10 +147,28 @@ pub mod codes {
     pub const DUPLICATE_DEFINITION: &str = "E0004";
     /// Missing required element.
     pub const MISSING_REQUIRED: &str = "E0005";
-    /// Invalid specialization.
+    /// Invalid specialization relationship.
     pub const INVALID_SPECIALIZATION: &str = "E0006";
-    /// Circular dependency.
+    /// Circular dependency detected.
     pub const CIRCULAR_DEPENDENCY: &str = "E0007";
+    /// Invalid type.
+    pub const INVALID_TYPE: &str = "E0008";
+    /// Invalid redefinition.
+    pub const INVALID_REDEFINITION: &str = "E0009";
+    /// Invalid subsetting relationship.
+    pub const INVALID_SUBSETTING: &str = "E0010";
+    /// Constraint violation.
+    pub const CONSTRAINT_VIOLATION: &str = "E0011";
+    /// Feature used in invalid context.
+    pub const INVALID_FEATURE_CONTEXT: &str = "E0012";
+    /// Cannot instantiate abstract element.
+    pub const ABSTRACT_INSTANTIATION: &str = "E0013";
+    /// Invalid import statement.
+    pub const INVALID_IMPORT: &str = "E0014";
+
+    // ========================================================================
+    // WARNINGS (W0001-W0099)
+    // ========================================================================
 
     /// Unused symbol.
     pub const UNUSED_SYMBOL: &str = "W0001";

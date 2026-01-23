@@ -7,7 +7,7 @@
 //! The normalized types capture the essential structure needed for symbol
 //! extraction while abstracting away language-specific details.
 
-use crate::core::Span;
+use crate::syntax::Span;
 
 use crate::syntax::sysml::ast::parsers::ExtractedRef;
 use crate::syntax::sysml::ast::types::FeatureChain;

@@ -5,21 +5,24 @@
 //! ```
 //! CLI/LSP (Delivery)
 //!       ↓
-//! Project/Workspace
+//! Project/IDE
 //!       ↓
-//! Semantic
+//! HIR (Semantic)
+//!       ↓
+//! Syntax (AST)
 //!       ↓
 //! Parser
 //!       ↓
-//! Core
+//! Base (Foundation)
 //! ```
 //!
 //! Dependency Rules:
-//! - core → no imports (only std)
-//! - parser → only core
-//! - semantic → core, parser
-//! - project → core, parser, semantic, syntax
-//! - syntax → core, parser (AST definitions only)
+//! - base → no imports (only std + external crates)
+//! - parser → only base
+//! - syntax → base, parser
+//! - hir → base, parser, syntax
+//! - ide → base, parser, syntax, hir
+//! - project → base, parser, syntax, hir, ide
 //! - CLI/LSP → everything
 //! - No layer depends on CLI/LSP
 
@@ -29,34 +32,32 @@ use std::path::Path;
 use tests_architecture_helpers::*;
 
 #[test]
-fn test_core_layer_has_no_dependencies() {
-    let violations = collect_layer_violations(Path::new("src/core"), &[], "core");
+fn test_base_layer_has_no_dependencies() {
+    let violations = collect_layer_violations(Path::new("src/base"), &[], "base");
     assert!(
         violations.is_empty(),
-        "\n❌ Core layer should not depend on any other crate modules (only std).\nViolations:\n{}\n",
+        "\n❌ Base layer should not depend on any other crate modules (only std).\nViolations:\n{}\n",
         violations.join("\n")
     );
 }
 
 #[test]
-fn test_parser_layer_only_depends_on_core() {
-    let violations = collect_layer_violations(Path::new("src/parser"), &["core"], "parser");
+fn test_parser_layer_only_depends_on_base() {
+    let violations = collect_layer_violations(Path::new("src/parser"), &["base"], "parser");
     assert!(
         violations.is_empty(),
-        "\n❌ Parser layer should only depend on core.\nViolations:\n{}\n",
+        "\n❌ Parser layer should only depend on base.\nViolations:\n{}\n",
         violations.join("\n")
     );
 }
-
-// NOTE: semantic layer tests removed - semantic module was deleted
 
 #[test]
 fn test_syntax_layer_has_minimal_dependencies() {
     let violations =
-        collect_layer_violations(Path::new("src/syntax"), &["core", "parser"], "syntax");
+        collect_layer_violations(Path::new("src/syntax"), &["base", "parser"], "syntax");
     assert!(
         violations.is_empty(),
-        "\n❌ Syntax layer should only depend on core and parser.\nViolations:\n{}\n",
+        "\n❌ Syntax layer should only depend on base and parser.\nViolations:\n{}\n",
         violations.join("\n")
     );
 }
@@ -65,12 +66,12 @@ fn test_syntax_layer_has_minimal_dependencies() {
 fn test_project_layer_dependencies() {
     let violations = collect_layer_violations(
         Path::new("src/project"),
-        &["core", "parser", "syntax", "ide"],
+        &["base", "parser", "syntax", "hir", "ide"],
         "project",
     );
     assert!(
         violations.is_empty(),
-        "\n❌ Project layer should only depend on core, parser, syntax, and ide.\nViolations:\n{}\n",
+        "\n❌ Project layer should only depend on base, parser, syntax, hir, and ide.\nViolations:\n{}\n",
         violations.join("\n")
     );
 }
@@ -99,12 +100,12 @@ fn test_no_layer_depends_on_cli() {
 #[test]
 fn test_show_architecture_violations_summary() {
     let layers = vec![
-        ("core", vec![], "src/core"),
-        ("parser", vec!["core"], "src/parser"),
-        ("syntax", vec!["core", "parser"], "src/syntax"),
+        ("base", vec![], "src/base"),
+        ("parser", vec!["base"], "src/parser"),
+        ("syntax", vec!["base", "parser"], "src/syntax"),
         (
             "project",
-            vec!["core", "parser", "syntax", "ide"],
+            vec!["base", "parser", "syntax", "hir", "ide"],
             "src/project",
         ),
     ];
@@ -132,10 +133,10 @@ fn test_show_architecture_violations_summary() {
 
 // NOTE: test_semantic_layer_only_adapters_import_syntax removed - semantic module was deleted
 
-/// Verifies that all required constants are defined in core/constants.rs
+/// Verifies that all required constants are defined in base/constants.rs
 #[test]
-fn test_core_constants_defined() {
-    let content = read_required_file(Path::new("src/core/constants.rs"));
+fn test_base_constants_defined() {
+    let content = read_required_file(Path::new("src/base/constants.rs"));
 
     let required_constants = [
         "pub const REL_SATISFY",
@@ -155,7 +156,7 @@ fn test_core_constants_defined() {
 
     assert!(
         missing.is_empty(),
-        "\n❌ Missing required constants in core/constants.rs:\n{}\n",
+        "\n❌ Missing required constants in parser/constants.rs:\n{}\n",
         format_violation_list(&missing)
     );
 }

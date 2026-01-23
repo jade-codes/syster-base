@@ -1,5 +1,5 @@
 use super::enums::{FeatureDirectionKind, VisibilityKind};
-use crate::core::Span;
+use crate::syntax::Span;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Element {

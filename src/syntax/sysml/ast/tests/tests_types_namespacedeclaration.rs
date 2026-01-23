@@ -2,7 +2,7 @@
 #![allow(clippy::panic)]
 
 use super::super::*;
-use crate::core::Span;
+use crate::syntax::Span;
 
 // ============================================================================
 // NamespaceDeclaration struct tests
@@ -22,8 +22,8 @@ fn test_namespacedeclaration_creation() {
 #[test]
 fn test_namespacedeclaration_with_span() {
     let span = Span {
-        start: crate::core::span::Position { line: 1, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 1, column: 0 },
+        end: crate::syntax::Position {
             line: 1,
             column: 13,
         },
@@ -95,16 +95,16 @@ fn test_namespacedeclaration_not_eq_different_name() {
 #[test]
 fn test_namespacedeclaration_not_eq_different_span() {
     let span1 = Span {
-        start: crate::core::span::Position { line: 1, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 1, column: 0 },
+        end: crate::syntax::Position {
             line: 1,
             column: 10,
         },
     };
 
     let span2 = Span {
-        start: crate::core::span::Position { line: 2, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 2, column: 0 },
+        end: crate::syntax::Position {
             line: 2,
             column: 10,
         },

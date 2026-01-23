@@ -34,6 +34,7 @@ mod references;
 mod selection;
 mod semantic_tokens;
 mod symbols;
+pub mod text_utils;
 
 pub use analysis::{Analysis, AnalysisHost};
 pub use completion::{CompletionItem, CompletionKind, completions};
@@ -46,3 +47,4 @@ pub use references::{Reference, ReferenceResult, find_references};
 pub use selection::{SelectionRange, selection_ranges};
 pub use semantic_tokens::{SemanticToken, TokenType, semantic_tokens};
 pub use symbols::{SymbolInfo, document_symbols, workspace_symbols};
+pub use text_utils::{extract_qualified_name_at_cursor, extract_word_at_cursor};

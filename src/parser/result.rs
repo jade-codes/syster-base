@@ -1,4 +1,4 @@
-use super::Position;
+use crate::base::Position;
 
 /// Result of parsing a file with detailed error information
 #[derive(Debug)]

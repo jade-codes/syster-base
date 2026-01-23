@@ -1,4 +1,4 @@
-use crate::core::constants::SUPPORTED_EXTENSIONS;
+use crate::base::constants::SUPPORTED_EXTENSIONS;
 use std::fs;
 use std::path::PathBuf;
 

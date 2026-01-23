@@ -2,7 +2,7 @@
 #![allow(clippy::panic)]
 
 use super::super::*;
-use crate::core::Span;
+use crate::syntax::Span;
 
 // ============================================================================
 // Usage struct tests
@@ -51,11 +51,11 @@ fn test_usage_new_constructor() {
 #[test]
 fn test_usage_with_span() {
     let span = Span {
-        start: crate::core::span::Position {
+        start: crate::syntax::Position {
             line: 5,
             column: 10,
         },
-        end: crate::core::span::Position {
+        end: crate::syntax::Position {
             line: 5,
             column: 20,
         },
@@ -589,19 +589,19 @@ fn test_usage_with_special_characters_in_name() {
 #[test]
 fn test_usage_multiple_spans() {
     let name_span = Span {
-        start: crate::core::span::Position { line: 1, column: 5 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 1, column: 5 },
+        end: crate::syntax::Position {
             line: 1,
             column: 15,
         },
     };
 
     let type_span = Span {
-        start: crate::core::span::Position {
+        start: crate::syntax::Position {
             line: 1,
             column: 17,
         },
-        end: crate::core::span::Position {
+        end: crate::syntax::Position {
             line: 1,
             column: 25,
         },

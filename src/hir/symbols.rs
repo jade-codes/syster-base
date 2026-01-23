@@ -1191,7 +1191,7 @@ struct SpanInfo {
 }
 
 /// Convert an optional Span to SpanInfo.
-fn span_to_info(span: Option<crate::core::Span>) -> SpanInfo {
+fn span_to_info(span: Option<crate::syntax::Span>) -> SpanInfo {
     match span {
         Some(s) => SpanInfo {
             start_line: s.start.line as u32,
@@ -1205,7 +1205,7 @@ fn span_to_info(span: Option<crate::core::Span>) -> SpanInfo {
 
 /// Convert an optional span to the 4 Option<u32> fields for short_name_span.
 fn span_to_optional(
-    span: Option<crate::core::Span>,
+    span: Option<crate::syntax::Span>,
 ) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
     match span {
         Some(s) => (

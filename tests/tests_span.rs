@@ -1,4 +1,4 @@
-use syster::core::{Position, Span};
+use syster::{Position, Span};
 
 #[test]
 fn test_span_contains_position() {

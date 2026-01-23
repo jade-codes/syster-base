@@ -11,7 +11,7 @@ use super::utils::{
     extract_direction, extract_flags, find_identifier_span, find_name, is_classifier_rule,
     to_classifier_kind, to_span,
 };
-use crate::core::Span;
+use crate::syntax::Span;
 use crate::parser::kerml::Rule;
 use crate::syntax::kerml::model::types::Documentation;
 use pest::iterators::{Pair, Pairs};

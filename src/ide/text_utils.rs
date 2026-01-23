@@ -45,7 +45,7 @@ pub fn find_word_boundaries(chars: &[char], position: usize) -> Option<(usize, u
 ///
 /// # Example
 /// ```
-/// use syster::core::text_utils::extract_word_at_cursor;
+/// use syster::ide::text_utils::extract_word_at_cursor;
 ///
 /// let line = "let foo = bar";
 /// assert_eq!(extract_word_at_cursor(line, 4), Some("foo".to_string()));
@@ -77,7 +77,7 @@ fn is_qualified_name_character(c: char) -> bool {
 ///
 /// # Example
 /// ```
-/// use syster::core::text_utils::extract_qualified_name_at_cursor;
+/// use syster::ide::text_utils::extract_qualified_name_at_cursor;
 ///
 /// let line = "import ISQ::MassValue;";
 /// assert_eq!(extract_qualified_name_at_cursor(line, 7), Some("ISQ::MassValue".to_string()));

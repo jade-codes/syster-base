@@ -9,26 +9,25 @@
 //!   ↓
 //! hir     → Semantic model with Salsa queries  
 //!   ↓
-//! ast     → Typed syntax tree wrappers
+//! syntax  → AST types, Span/Position
 //!   ↓
-//! parser  → Lexer + parser (pest for now, hand-written later)
+//! parser  → Lexer + parser + constants
 //!   ↓
-//! base    → Primitives (FileId, Span, Name interning)
+//! base    → Primitives (FileId, Name interning, TextRange)
 //! ```
-//!
-//! ## Legacy Modules (being replaced)
-//!
-//! - `core` - old primitives → moving to `base`
-//! - `syntax` - old AST → moving to `ast`  
-//! - `semantic` - old analysis → moving to `hir`
-//! - `project` - workspace management → moving to `hir`
 
 // ============================================================================
-// NEW ARCHITECTURE (Phase 1)
+// MODULES (dependency order: base → parser → syntax → hir → ide)
 // ============================================================================
 
-/// Foundation types: FileId, Span, Name interning
+/// Foundation types: FileId, Name interning, TextRange
 pub mod base;
+
+/// Parser: pest grammars, ParseResult, file extensions
+pub mod parser;
+
+/// Syntax: AST types, Span/Position, traits
+pub mod syntax;
 
 /// High-level IR: Salsa-based semantic model
 pub mod hir;
@@ -36,21 +35,11 @@ pub mod hir;
 /// IDE features: completion, hover, goto-definition, find-references
 pub mod ide;
 
-// Placeholder modules (to be implemented)
-// pub mod parser2;  // New hand-written parser
-// pub mod ast2;     // New typed syntax wrappers
-
-// ============================================================================
-// LEGACY MODULES (to be deprecated)
-// ============================================================================
-
-pub mod core;
-pub mod parser;
+/// Project management: workspace loading, stdlib
 pub mod project;
-pub mod syntax;
 
 // Re-export commonly needed items
 pub use parser::keywords;
 
-// Re-export new foundation types
-pub use base::{FileId, Interner, LineCol, LineIndex, Name, TextRange, TextSize};
+// Re-export foundation types
+pub use base::{FileId, Interner, LineCol, LineIndex, Name, Position, Span, TextRange, TextSize};

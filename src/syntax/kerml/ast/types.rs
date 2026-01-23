@@ -1,7 +1,7 @@
 use super::enums::{
     ClassifierKind, ClassifierMember, Element, FeatureDirection, FeatureMember, ImportKind,
 };
-use crate::core::Span;
+use crate::syntax::Span;
 pub use crate::syntax::kerml::model::types::Comment;
 
 #[derive(Debug, Clone, PartialEq)]

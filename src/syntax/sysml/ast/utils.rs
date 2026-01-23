@@ -2,7 +2,7 @@
 //!
 //! This module provides helper functions used by the parsers for AST construction.
 
-use crate::{core::Span, parser::sysml::Rule};
+use crate::{parser::sysml::Rule, syntax::Span};
 use pest::iterators::Pair;
 
 use super::enums::{DefinitionKind, UsageKind};
@@ -198,7 +198,7 @@ pub fn find_in<'a>(pair: &Pair<'a, Rule>, rule: Rule) -> Option<Pair<'a, Rule>> 
 /// - `myName` → returns ("myName", span of myName)
 pub fn extract_name_from_identification(
     pair: Pair<Rule>,
-) -> (Option<String>, Option<crate::core::Span>) {
+) -> (Option<String>, Option<crate::syntax::Span>) {
     let inner: Vec<_> = pair.into_inner().collect();
 
     // Look for regular_name first (preferred)
@@ -257,9 +257,9 @@ pub fn extract_full_identification(
     pair: Pair<Rule>,
 ) -> (
     Option<String>,
-    Option<crate::core::Span>,
+    Option<crate::syntax::Span>,
     Option<String>,
-    Option<crate::core::Span>,
+    Option<crate::syntax::Span>,
 ) {
     let inner: Vec<_> = pair.into_inner().collect();
     let mut short_name = None;

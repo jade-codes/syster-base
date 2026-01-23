@@ -1,4 +1,5 @@
-use crate::core::{ParseError, ParseResult, get_extension, load_file, validate_extension};
+use crate::parser::{ParseError, ParseResult};
+use crate::parser::{get_extension, load_file, validate_extension};
 use crate::syntax::sysml::ast::{SysMLFile, parse_file};
 use pest::Parser;
 use std::path::{Path, PathBuf};

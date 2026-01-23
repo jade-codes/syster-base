@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
 use super::super::*;
-use crate::core::ParseErrorKind;
+use crate::parser::ParseErrorKind;
 use crate::syntax::SyntaxFile;
 use std::path::PathBuf;
 

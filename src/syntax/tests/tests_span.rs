@@ -1,4 +1,4 @@
-use crate::core::{Position, Span};
+use crate::syntax::{Position, Span};
 
 #[test]
 fn test_span_contains_position() {

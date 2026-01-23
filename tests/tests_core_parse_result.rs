@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use syster::core::parse_result::{ParseError, ParseErrorKind, ParseResult};
+use syster::parser::{ParseError, ParseErrorKind, ParseResult};
 
 // Simple test struct to use with ParseResult
 #[allow(dead_code)]

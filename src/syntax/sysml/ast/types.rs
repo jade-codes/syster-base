@@ -1,6 +1,6 @@
 use super::enums::{DefinitionKind, DefinitionMember, Element, UsageKind, UsageMember};
 use super::parsers::ExtractedRef;
-use crate::core::Span;
+use crate::syntax::Span;
 
 // ============================================================================
 // FEATURE CHAIN TYPES (for proper chain resolution)
@@ -354,7 +354,7 @@ pub struct Relationships {
     /// Feature typing (: or "typed by")
     pub typed_by: Option<String>,
     /// Span of the type reference (if typed_by is set)
-    pub typed_by_span: Option<crate::core::Span>,
+    pub typed_by_span: Option<crate::syntax::Span>,
     /// References (::> or "references")
     pub references: Vec<ReferenceRel>,
     /// Crosses (=> or "crosses")  

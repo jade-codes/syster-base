@@ -67,7 +67,7 @@ impl AnalysisHost {
     /// Set the content of a file, parsing it and storing the result.
     ///
     /// Returns parse errors if any.
-    pub fn set_file_content(&mut self, path: &str, content: &str) -> Vec<crate::core::ParseError> {
+    pub fn set_file_content(&mut self, path: &str, content: &str) -> Vec<crate::parser::ParseError> {
         use crate::syntax::parser::parse_with_result;
         use std::path::Path;
 

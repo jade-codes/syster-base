@@ -371,7 +371,7 @@ fn test_parse_with_result_syntax_error() {
     let error = &result.errors[0];
     assert_eq!(
         error.kind,
-        crate::core::ParseErrorKind::SyntaxError,
+        crate::parser::ParseErrorKind::SyntaxError,
         "Expected syntax error kind"
     );
 }

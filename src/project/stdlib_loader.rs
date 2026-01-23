@@ -1,6 +1,6 @@
 mod loader;
 
-use crate::core::constants::STDLIB_DIR;
+use crate::base::constants::STDLIB_DIR;
 use crate::ide::AnalysisHost;
 use std::path::PathBuf;
 

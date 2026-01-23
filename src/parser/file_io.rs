@@ -1,5 +1,5 @@
-use crate::core::ParseError;
-use crate::core::constants::SUPPORTED_EXTENSIONS;
+use crate::base::constants::SUPPORTED_EXTENSIONS;
+use crate::parser::ParseError;
 use std::fs;
 use std::path::{Path, PathBuf};
 

@@ -14,7 +14,7 @@ use super::utils::{
     extract_full_identification, extract_name_from_identification, find_in, is_body_rule,
     is_definition_rule, is_usage_rule, to_def_kind, to_usage_kind,
 };
-use crate::core::Span;
+use crate::syntax::Span;
 use crate::parser::sysml::Rule;
 use pest::iterators::{Pair, Pairs};
 
@@ -980,14 +980,14 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
                     // Create a symbol for the payload parameter (e.g., ignitionCmd:IgnitionCmd)
                     // payload_parameter_member -> payload_parameter -> payload
                     // payload = { identification? ~ payload_feature_specialization_part ~ value_part? | ... }
-                    let mut payload_name: Option<(String, crate::core::Span)> = None;
-                    let mut payload_type: Option<(String, crate::core::Span)> = None;
+                    let mut payload_name: Option<(String, crate::syntax::Span)> = None;
+                    let mut payload_type: Option<(String, crate::syntax::Span)> = None;
 
                     // Navigate to find identification and type
                     fn find_payload_parts(
                         pair: &pest::iterators::Pair<'_, Rule>,
-                        name: &mut Option<(String, crate::core::Span)>,
-                        typ: &mut Option<(String, crate::core::Span)>,
+                        name: &mut Option<(String, crate::syntax::Span)>,
+                        typ: &mut Option<(String, crate::syntax::Span)>,
                     ) {
                         match pair.as_rule() {
                             Rule::identification | Rule::regular_name | Rule::short_name => {

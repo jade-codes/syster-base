@@ -2,7 +2,7 @@
 #![allow(clippy::panic)]
 
 use super::super::*;
-use crate::core::Span;
+use crate::syntax::Span;
 
 // ============================================================================
 // Comment struct tests
@@ -19,8 +19,8 @@ fn test_comment_creation() {
 #[test]
 fn test_comment_with_span() {
     let span = Span {
-        start: crate::core::span::Position { line: 1, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 1, column: 0 },
+        end: crate::syntax::Position {
             line: 1,
             column: 22,
         },
@@ -89,16 +89,16 @@ fn test_comment_not_eq_different_content() {
 #[test]
 fn test_comment_not_eq_different_span() {
     let span1 = Span {
-        start: crate::core::span::Position { line: 1, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 1, column: 0 },
+        end: crate::syntax::Position {
             line: 1,
             column: 10,
         },
     };
 
     let span2 = Span {
-        start: crate::core::span::Position { line: 2, column: 0 },
-        end: crate::core::span::Position {
+        start: crate::syntax::Position { line: 2, column: 0 },
+        end: crate::syntax::Position {
             line: 2,
             column: 10,
         },
