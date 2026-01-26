@@ -483,7 +483,9 @@ impl SymbolKind {
             UsageKind::Allocation => Self::AllocationUsage,
             UsageKind::Requirement | UsageKind::SatisfyRequirement => Self::RequirementUsage,
             UsageKind::Constraint => Self::ConstraintUsage,
-            UsageKind::State | UsageKind::ExhibitState | UsageKind::Transition => Self::StateUsage,
+            UsageKind::State { is_parallel: _ }
+            | UsageKind::ExhibitState { is_parallel: _ }
+            | UsageKind::Transition => Self::StateUsage,
             UsageKind::Calculation => Self::CalculationUsage,
             UsageKind::Reference => Self::ReferenceUsage,
             UsageKind::Occurrence

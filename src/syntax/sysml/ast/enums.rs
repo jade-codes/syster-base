@@ -63,14 +63,18 @@ pub enum UsageKind {
     // Domain-specific usage types
     SatisfyRequirement,
     PerformAction,
-    ExhibitState,
+    ExhibitState {
+        is_parallel: bool,
+    },
     IncludeUseCase,
     // Reference usages (parameters with direction like `in`, `out`, `inout`)
     Reference,
     // Additional usage types
     Constraint,
     Calculation,
-    State,
+    State {
+        is_parallel: bool,
+    },
     Connection,
     Interface,
     Allocation,

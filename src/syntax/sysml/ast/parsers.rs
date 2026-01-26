@@ -1381,7 +1381,7 @@ fn visit_body_member_single<'a>(
         _ if is_usage_rule(rule) => {
             let usage = parse_usage_with_kind(
                 pair.clone(),
-                to_usage_kind(rule).unwrap_or(UsageKind::Reference),
+                to_usage_kind(pair).unwrap_or(UsageKind::Reference),
             );
             ctx.def_members
                 .push(DefinitionMember::Usage(Box::new(usage.clone())));
@@ -1652,7 +1652,7 @@ fn parse_usage_with_kind(pair: Pair<Rule>, kind: UsageKind) -> Usage {
 
 /// Parse a usage, inferring kind from the rule
 pub fn parse_usage(pair: Pair<Rule>) -> Usage {
-    let kind = to_usage_kind(pair.as_rule()).unwrap_or(UsageKind::Reference);
+    let kind = to_usage_kind(&pair).unwrap_or(UsageKind::Reference);
     parse_usage_with_kind(pair, kind)
 }
 

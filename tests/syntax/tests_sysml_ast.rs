@@ -5,11 +5,13 @@
 //! structure of the resulting AST.
 
 #![allow(clippy::unwrap_used)]
+use rstest::rstest;
 
 use std::path::PathBuf;
 use syster::project::file_loader;
 use syster::syntax::sysml::ast::Element;
 use syster::syntax::sysml::ast::enums::DefinitionKind;
+use syster::syntax::sysml::ast::enums::UsageKind;
 
 #[test]
 fn test_parse_attribute_def_from_stdlib() {
@@ -111,4 +113,60 @@ fn test_parse_abstract_attribute_def() {
         def.is_abstract,
         "Should be marked as abstract - THIS IS THE BUG!"
     );
+}
+
+#[rstest]
+#[case("", "")]
+#[case("", "parallel")]
+#[case("exhibit", "")]
+#[case("exhibit", "parallel")]
+fn test_parsing_state_usage_parallel_attribute(
+    #[case] exhibit_prefix: &str,
+    #[case] parallel_modifier: &str,
+) {
+    let is_parallel_expected = parallel_modifier == "parallel";
+    let is_exhibit_usage_expected = exhibit_prefix == "exhibit";
+
+    let input = exhibit_prefix.to_owned()
+        + r#" state parallelStates "#
+        + parallel_modifier
+        + r#" {
+                state operatingStates {
+                    state on;
+                    state off;
+                }
+                state monitoringStates {
+                    state healthy;
+                    state unhealthy;
+                }
+            }
+    "#;
+
+    let path = PathBuf::from("test.sysml");
+    let parse_result = file_loader::parse_with_result(&input, &path);
+    let language_file = parse_result.content.expect("Parse should succeed");
+
+    let file = match language_file {
+        syster::syntax::SyntaxFile::SysML(f) => f,
+        _ => panic!("Expected SysML file"),
+    };
+
+    assert_eq!(file.elements.len(), 1);
+
+    let usage = match &file.elements[0] {
+        Element::Usage(usage) => usage,
+        _ => panic!("Expected Usage"),
+    };
+
+    match usage.kind {
+        UsageKind::ExhibitState { is_parallel } => {
+            assert!(is_exhibit_usage_expected);
+            assert_eq!(is_parallel, is_parallel_expected);
+        }
+        UsageKind::State { is_parallel } => {
+            assert!(!is_exhibit_usage_expected);
+            assert_eq!(is_parallel, is_parallel_expected);
+        }
+        _ => panic!("Expected ExhibitState"),
+    }
 }
