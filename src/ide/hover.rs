@@ -202,7 +202,9 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::ViewDef
         | SymbolKind::ViewpointDef
         | SymbolKind::RenderingDef
-        | SymbolKind::EnumerationDef => {
+        | SymbolKind::EnumerationDef
+        | SymbolKind::MetaclassDef
+        | SymbolKind::InteractionDef => {
             let mut sig = format!("{} {}", kind_str, name_with_alias);
             if !symbol.supertypes.is_empty() {
                 sig.push_str(" :> ");

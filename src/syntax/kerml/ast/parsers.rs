@@ -4,8 +4,8 @@
 
 use super::enums::{ClassifierMember, Element, FeatureMember, ImportKind};
 use super::types::{
-    Annotation, Classifier, Comment, Feature, Import, KerMLFile, NamespaceDeclaration, Package,
-    Redefinition, Specialization, Subsetting, TypingRelationship,
+    Annotation, Classifier, Comment, Feature, Import, KerMLFile, Package, Redefinition,
+    Specialization, Subsetting, TypingRelationship,
 };
 use super::utils::{
     extract_direction, extract_flags, find_identifier_span, find_name, is_classifier_rule,
@@ -68,7 +68,13 @@ fn extract_classifier_members(pair: &Pair<Rule>, members: &mut Vec<ClassifierMem
                 }
             }
         }
-        Rule::feature => {
+        Rule::feature
+        | Rule::step
+        | Rule::connector
+        | Rule::binding_connector
+        | Rule::succession
+        | Rule::item_flow
+        | Rule::succession_item_flow => {
             members.push(ClassifierMember::Feature(parse_feature(pair.clone())));
         }
         Rule::parameter_membership | Rule::return_parameter_membership => {
@@ -389,24 +395,40 @@ pub fn parse_import(pest: &mut Pairs<Rule>) -> Result<Import, ParseError> {
     let mut path = String::new();
     let mut path_span = None;
     let mut is_recursive = false;
+    let mut is_public = false;
     let mut span = None;
 
     for pair in pest {
-        if pair.as_rule() == Rule::imported_reference {
-            span = Some(to_span(pair.as_span()));
-            // imported_reference contains element_reference and optional import_kind
-            for child in pair.into_inner() {
-                match child.as_rule() {
-                    Rule::element_reference => {
-                        path = child.as_str().to_string();
-                        path_span = Some(to_span(child.as_span()));
+        match pair.as_rule() {
+            Rule::import_prefix => {
+                // Check for visibility_kind in import_prefix
+                for child in pair.into_inner() {
+                    if child.as_rule() == Rule::visibility_kind {
+                        is_public = child.as_str().trim() == "public";
                     }
-                    Rule::import_kind => {
-                        is_recursive = child.as_str().contains("**");
-                    }
-                    _ => {}
                 }
             }
+            Rule::imported_reference => {
+                span = Some(to_span(pair.as_span()));
+                // imported_reference contains element_reference and optional import_kind
+                for child in pair.into_inner() {
+                    match child.as_rule() {
+                        Rule::element_reference => {
+                            path = child.as_str().to_string();
+                            path_span = Some(to_span(child.as_span()));
+                        }
+                        Rule::import_kind => {
+                            let kind_str = child.as_str();
+                            is_recursive = kind_str.contains("**");
+                            // Append the import kind suffix to the path for wildcard imports
+                            // E.g., "Source" + "::*" -> "Source::*"
+                            path.push_str(kind_str);
+                        }
+                        _ => {}
+                    }
+                }
+            }
+            _ => {}
         }
     }
 
@@ -414,7 +436,7 @@ pub fn parse_import(pest: &mut Pairs<Rule>) -> Result<Import, ParseError> {
         path,
         path_span,
         is_recursive,
-        is_public: false, // Will be overridden by parse_element if public
+        is_public,
         kind: ImportKind::Normal,
         span,
     })
@@ -423,11 +445,11 @@ pub fn parse_import(pest: &mut Pairs<Rule>) -> Result<Import, ParseError> {
 /// Parse an element from pest pairs
 pub fn parse_element(pest: &mut Pairs<Rule>) -> Result<Element, ParseError> {
     let mut pair = pest.next().ok_or(ParseError::no_match())?;
-    let mut is_public = false;
+    let mut _is_public = false;
 
     // Capture visibility prefix
     if pair.as_rule() == Rule::visibility_kind {
-        is_public = pair.as_str().trim() == "public";
+        _is_public = pair.as_str().trim() == "public";
         pair = pest.next().ok_or(ParseError::no_match())?;
     }
 
@@ -457,9 +479,8 @@ pub fn parse_element(pest: &mut Pairs<Rule>) -> Result<Element, ParseError> {
             span: Some(to_span(pair.as_span())),
         }),
         Rule::import => {
-            let mut import = parse_import(&mut pair.into_inner())?;
-            import.is_public = is_public;
-            Element::Import(import)
+            // is_public is now extracted from import_prefix inside parse_import
+            Element::Import(parse_import(&mut pair.into_inner())?)
         }
 
         _ => return Err(ParseError::no_match()),
@@ -474,28 +495,17 @@ pub fn parse_file(pest: &mut Pairs<Rule>) -> Result<KerMLFile, ParseError> {
     }
 
     let mut elements = Vec::new();
-    let mut namespace = None;
 
     for pair in model.into_inner() {
         if pair.as_rule() == Rule::namespace_element
             && let Ok(element) = parse_element(&mut pair.into_inner())
         {
-            if let Element::Package(ref pkg) = element
-                && namespace.is_none()
-                && pkg.elements.is_empty()
-                && let Some(ref name) = pkg.name
-            {
-                namespace = Some(NamespaceDeclaration {
-                    name: name.clone(),
-                    span: pkg.span,
-                });
-            }
             elements.push(element);
         }
     }
 
     Ok(KerMLFile {
-        namespace,
+        namespace: None,
         elements,
     })
 }

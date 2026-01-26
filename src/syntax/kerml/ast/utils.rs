@@ -120,6 +120,7 @@ pub fn is_classifier_rule(r: Rule) -> bool {
             | Rule::association
             | Rule::association_structure
             | Rule::metaclass
+            | Rule::interaction
     )
 }
 
@@ -136,6 +137,7 @@ pub fn to_classifier_kind(rule: Rule) -> Result<ClassifierKind, ParseError> {
         Rule::association => ClassifierKind::Association,
         Rule::association_structure => ClassifierKind::AssociationStructure,
         Rule::metaclass => ClassifierKind::Metaclass,
+        Rule::interaction => ClassifierKind::Interaction,
         _ => return Err(ParseError::no_match()),
     })
 }

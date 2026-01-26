@@ -177,6 +177,7 @@ pub enum NormalizedDefKind {
     Function,
     Association,
     Metaclass,
+    Interaction,
     // Fallback
     Other,
 }
@@ -459,6 +460,7 @@ impl<'a> NormalizedDefinition<'a> {
             ClassifierKind::Association => NormalizedDefKind::Association,
             ClassifierKind::AssociationStructure => NormalizedDefKind::Association,
             ClassifierKind::Metaclass => NormalizedDefKind::Metaclass,
+            ClassifierKind::Interaction => NormalizedDefKind::Interaction,
             // Type and Classifier are treated as Class (closest equivalent)
             ClassifierKind::Type | ClassifierKind::Classifier => NormalizedDefKind::Class,
         };

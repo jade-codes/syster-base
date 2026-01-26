@@ -1,7 +1,7 @@
-/// Test for supporting multiple packages per file (Issue #10)
+/// Test for supporting multiple packages per file
 ///
 /// This test verifies that SysML files can contain multiple package declarations
-/// and that all packages are properly tracked in the AST.
+/// and that all packages are properly tracked as elements.
 use std::path::Path;
 use syster::syntax::sysml::parser::parse_content;
 
@@ -18,25 +18,16 @@ fn test_multiple_packages_in_single_file() {
 
     let sysml_file = result.unwrap();
 
-    // Should track all namespace declarations, not just the first one
+    // All packages should be in elements
     assert_eq!(
-        sysml_file.namespaces.len(),
+        sysml_file.elements.len(),
         3,
-        "Should find all 3 package declarations"
+        "Should find all 3 package elements"
     );
-
-    // Verify each package name
-    assert_eq!(sysml_file.namespaces[0].name, "Vehicle");
-    assert_eq!(sysml_file.namespaces[1].name, "Engine");
-    assert_eq!(sysml_file.namespaces[2].name, "Transmission");
-
-    // Backward compatibility: namespace field should still contain the first package
-    assert!(sysml_file.namespace.is_some());
-    assert_eq!(sysml_file.namespace.as_ref().unwrap().name, "Vehicle");
 }
 
 #[test]
-fn test_single_package_backward_compatibility() {
+fn test_single_package() {
     let input = "package SinglePackage;";
 
     let result = parse_content(input, Path::new("test.sysml"));
@@ -44,13 +35,8 @@ fn test_single_package_backward_compatibility() {
 
     let sysml_file = result.unwrap();
 
-    // Single package case
-    assert_eq!(sysml_file.namespaces.len(), 1);
-    assert_eq!(sysml_file.namespaces[0].name, "SinglePackage");
-
-    // namespace field should still work
-    assert!(sysml_file.namespace.is_some());
-    assert_eq!(sysml_file.namespace.as_ref().unwrap().name, "SinglePackage");
+    // Single package should be in elements
+    assert_eq!(sysml_file.elements.len(), 1);
 }
 
 #[test]
@@ -62,7 +48,6 @@ fn test_no_packages() {
 
     let sysml_file = result.unwrap();
 
-    // No packages
-    assert_eq!(sysml_file.namespaces.len(), 0);
-    assert!(sysml_file.namespace.is_none());
+    // Part should be in elements
+    assert_eq!(sysml_file.elements.len(), 1);
 }

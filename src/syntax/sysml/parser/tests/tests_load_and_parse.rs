@@ -227,10 +227,6 @@ fn test_load_and_parse_ast_construction() {
     assert!(result.is_ok(), "Should successfully construct AST");
 
     let sysml_file = result.unwrap();
-    // Should have namespace and elements
-    assert!(
-        sysml_file.namespace.is_some(),
-        "Should have namespace declaration"
-    );
+    // Should have elements (package and part def)
     assert!(!sysml_file.elements.is_empty(), "Should have elements");
 }

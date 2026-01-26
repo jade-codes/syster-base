@@ -247,16 +247,13 @@ fn test_parse_content_with_package() {
     );
 
     let kerml_file = result.unwrap();
-    // An empty package becomes a namespace declaration
+    // An empty package is just a package element, not a namespace declaration
+    // (this prevents the duplicate symbol bug where Empty::Empty appeared instead of Empty)
     assert!(
-        kerml_file.namespace.is_some(),
-        "Expected namespace to be present"
+        kerml_file.namespace.is_none(),
+        "Empty packages should not create namespace declarations"
     );
-    assert_eq!(
-        kerml_file.namespace.unwrap().name,
-        "MyPackage",
-        "Expected correct namespace name"
-    );
+    assert_eq!(kerml_file.elements.len(), 1, "Expected one package element");
 }
 
 // ============================================================================

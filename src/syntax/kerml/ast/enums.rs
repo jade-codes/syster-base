@@ -25,6 +25,7 @@ pub enum ClassifierKind {
     Association,
     AssociationStructure,
     Metaclass,
+    Interaction,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -329,7 +329,7 @@ fn test_parse_content_mixed_line_endings() {
 
 #[test]
 fn test_parse_content_multiple_packages() {
-    // Test parsing multiple packages (issue #10 compatibility)
+    // Test parsing multiple packages
     let content = r#"
         package Vehicle;
         package Engine;
@@ -342,9 +342,9 @@ fn test_parse_content_multiple_packages() {
 
     let sysml_file = result.unwrap();
     assert_eq!(
-        sysml_file.namespaces.len(),
+        sysml_file.elements.len(),
         3,
-        "Should track all package declarations"
+        "Should have all package elements"
     );
 }
 

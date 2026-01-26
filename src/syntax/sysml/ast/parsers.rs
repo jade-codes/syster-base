@@ -7,8 +7,8 @@
 use super::enums::{DefinitionMember, Element, UsageKind, UsageMember};
 use super::types::{
     Alias, Comment, CrossRel, Definition, Dependency, DependencyRef, Filter, Import, MetaRel,
-    NamespaceDeclaration, Package, RedefinitionRel, ReferenceRel, Relationships, SatisfyRel,
-    SpecializationRel, SubsettingRel, SysMLFile, Usage,
+    Package, RedefinitionRel, ReferenceRel, Relationships, SatisfyRel, SpecializationRel,
+    SubsettingRel, SysMLFile, Usage,
 };
 use super::utils::{
     extract_full_identification, extract_name_from_identification, find_in, is_body_rule,
@@ -1993,8 +1993,6 @@ pub fn parse_file(pairs: &mut Pairs<Rule>) -> Result<SysMLFile, ParseError> {
     }
 
     let mut elements = Vec::new();
-    let mut namespace = None;
-    let mut namespaces = Vec::new();
 
     // Grammar structure: model = { SOI ~ root_namespace ~ EOI }
     // root_namespace = { package_body_element* }
@@ -2006,24 +2004,6 @@ pub fn parse_file(pairs: &mut Pairs<Rule>) -> Result<SysMLFile, ParseError> {
                 // body_element is package_body_element, which contains the actual element
                 // We need to iterate its inner to get the actual rule (package, import, etc.)
                 if let Ok(element) = parse_element(&mut body_element.into_inner()) {
-                    // Track all package declarations (Issue #10)
-                    if let Element::Package(ref pkg) = element
-                        && pkg.elements.is_empty()
-                        && let Some(ref name) = pkg.name
-                    {
-                        let ns = NamespaceDeclaration {
-                            name: name.clone(),
-                            span: pkg.span,
-                        };
-
-                        // Keep first namespace for backward compatibility
-                        if namespace.is_none() {
-                            namespace = Some(ns.clone());
-                        }
-
-                        // Collect all namespaces
-                        namespaces.push(ns);
-                    }
                     elements.push(element);
                 }
             }
@@ -2031,8 +2011,8 @@ pub fn parse_file(pairs: &mut Pairs<Rule>) -> Result<SysMLFile, ParseError> {
     }
 
     Ok(SysMLFile {
-        namespace,
-        namespaces,
+        namespace: None,
+        namespaces: Vec::new(),
         elements,
     })
 }

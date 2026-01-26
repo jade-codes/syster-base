@@ -54,7 +54,9 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::ViewDef
             | SymbolKind::ViewpointDef
             | SymbolKind::RenderingDef
-            | SymbolKind::EnumerationDef => TokenType::Type,
+            | SymbolKind::EnumerationDef
+            | SymbolKind::MetaclassDef
+            | SymbolKind::InteractionDef => TokenType::Type,
             // All usage types
             SymbolKind::PartUsage
             | SymbolKind::ItemUsage

@@ -1209,15 +1209,32 @@ impl SymbolIndex {
                         .get_mut(scope)
                         .expect("scope must exist");
 
+                    // Copy direct definitions (always visible)
                     for (name, qname) in target_vis.direct_defs() {
                         vis.add_import(name.clone(), qname.clone());
                     }
+
+                    // Only copy imports that come from publicly re-exported namespaces
+                    // Private imports should NOT be transitively visible
+                    let public_reexports = target_vis.public_reexports();
                     for (name, qname) in target_vis.imports() {
-                        vis.add_import(name.clone(), qname.clone());
+                        // Check if this import comes from a publicly re-exported namespace
+                        let is_from_public_reexport = public_reexports.iter().any(|ns| {
+                            qname.starts_with(ns.as_ref())
+                                && (qname.len() == ns.len()
+                                    || qname.as_bytes().get(ns.len()) == Some(&b':'))
+                        });
+                        if is_from_public_reexport {
+                            vis.add_import(name.clone(), qname.clone());
+                        }
                     }
 
                     if is_public {
                         vis.add_public_reexport(Arc::from(resolved_target.as_str()));
+                        // Also propagate the target's public reexports for transitive chains
+                        for reexport in public_reexports {
+                            vis.add_public_reexport(reexport.clone());
+                        }
                     }
                 }
 
@@ -1386,6 +1403,8 @@ impl SymbolKind {
                 | SymbolKind::ViewpointDef
                 | SymbolKind::RenderingDef
                 | SymbolKind::EnumerationDef
+                | SymbolKind::MetaclassDef
+                | SymbolKind::InteractionDef
         )
     }
 

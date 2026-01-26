@@ -413,6 +413,8 @@ pub enum SymbolKind {
     ViewpointDef,
     RenderingDef,
     EnumerationDef,
+    MetaclassDef,
+    InteractionDef,
     // Usages
     PartUsage,
     ItemUsage,
@@ -518,6 +520,8 @@ impl SymbolKind {
             Self::ViewpointDef => "Viewpoint def",
             Self::RenderingDef => "Rendering def",
             Self::EnumerationDef => "Enum def",
+            Self::MetaclassDef => "Metaclass def",
+            Self::InteractionDef => "Interaction def",
             Self::PartUsage => "Part",
             Self::ItemUsage => "Item",
             Self::ActionUsage => "Action",
@@ -569,7 +573,8 @@ impl SymbolKind {
             NormalizedDefKind::Behavior => Self::ActionDef,
             NormalizedDefKind::Function => Self::CalculationDef,
             NormalizedDefKind::Association => Self::ConnectionDef,
-            NormalizedDefKind::Metaclass => Self::Other,
+            NormalizedDefKind::Metaclass => Self::MetaclassDef,
+            NormalizedDefKind::Interaction => Self::InteractionDef,
             NormalizedDefKind::Other => Self::Other,
         }
     }
