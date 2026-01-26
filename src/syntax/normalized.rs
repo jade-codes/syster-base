@@ -526,9 +526,9 @@ impl<'a> NormalizedUsage<'a> {
                 NormalizedUsageKind::Requirement
             }
             UsageKind::Constraint => NormalizedUsageKind::Constraint,
-            UsageKind::State | UsageKind::ExhibitState | UsageKind::Transition => {
-                NormalizedUsageKind::State
-            }
+            UsageKind::State { is_parallel: _ }
+            | UsageKind::ExhibitState { is_parallel: _ }
+            | UsageKind::Transition => NormalizedUsageKind::State,
             UsageKind::Calculation => NormalizedUsageKind::Calculation,
             UsageKind::Reference => NormalizedUsageKind::Reference,
             UsageKind::Occurrence

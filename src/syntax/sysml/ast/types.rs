@@ -713,7 +713,7 @@ impl Usage {
         match self.kind {
             UsageKind::SatisfyRequirement
             | UsageKind::PerformAction
-            | UsageKind::ExhibitState
+            | UsageKind::ExhibitState { is_parallel: _ }
             | UsageKind::IncludeUseCase => {
                 if let Some(ref typed_by) = self.relationships.typed_by {
                     Some((typed_by.as_str(), self.relationships.typed_by_span))
