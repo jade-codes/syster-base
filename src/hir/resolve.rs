@@ -826,6 +826,22 @@ impl SymbolIndex {
     /// Tries direct lookup, then searches inherited members from supertypes,
     /// then checks chain-based relationships (perform, exhibit, satisfy, etc.).
     pub fn find_member_in_scope(&self, type_scope: &str, member_name: &str) -> Option<HirSymbol> {
+        let mut visited = std::collections::HashSet::new();
+        self.find_member_in_scope_impl(type_scope, member_name, &mut visited)
+    }
+
+    /// Internal implementation with cycle detection.
+    fn find_member_in_scope_impl(
+        &self,
+        type_scope: &str,
+        member_name: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Option<HirSymbol> {
+        // Cycle detection
+        if !visited.insert(type_scope.to_string()) {
+            return None;
+        }
+
         // Strategy 1: Direct qualified lookup
         let direct_qname = format!("{}::{}", type_scope, member_name);
         if let Some(sym) = self.lookup_qualified(&direct_qname) {
@@ -847,9 +863,9 @@ impl SymbolIndex {
                 // Resolve the supertype name
                 let parent_scope = Self::parent_scope(type_scope).unwrap_or("");
                 if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
-                    // Recursively search in the supertype
+                    // Recursively search in the supertype (with visited set)
                     if let Some(found) =
-                        self.find_member_in_scope(&super_sym.qualified_name, member_name)
+                        self.find_member_in_scope_impl(&super_sym.qualified_name, member_name, visited)
                     {
                         return Some(found);
                     }
