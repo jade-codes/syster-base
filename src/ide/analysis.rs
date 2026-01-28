@@ -33,6 +33,7 @@ use super::{
 ///
 /// Apply changes via `set_file_content()` and `remove_file()`,
 /// then get a consistent snapshot via `analysis()`.
+#[derive(Clone)]
 pub struct AnalysisHost {
     /// Parsed files stored directly (no Workspace dependency)
     files: HashMap<PathBuf, SyntaxFile>,
