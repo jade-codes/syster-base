@@ -772,13 +772,14 @@ pub fn check_file(index: &SymbolIndex, file: FileId) -> Vec<Diagnostic> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hir::SymbolKind;
+    use crate::hir::{SymbolKind, new_element_id};
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, file: u32) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(file),
             start_line: 0,

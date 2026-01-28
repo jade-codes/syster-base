@@ -478,6 +478,12 @@ impl Element {
         self
     }
 
+    /// Set the qualified name.
+    pub fn with_qualified_name(mut self, qualified_name: impl Into<Arc<str>>) -> Self {
+        self.qualified_name = Some(qualified_name.into());
+        self
+    }
+
     /// Set the short name.
     pub fn with_short_name(mut self, short_name: impl Into<Arc<str>>) -> Self {
         self.short_name = Some(short_name.into());

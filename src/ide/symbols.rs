@@ -115,12 +115,14 @@ pub fn document_symbols(index: &SymbolIndex, file: FileId) -> Vec<SymbolInfo> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(name: &str, qname: &str, kind: SymbolKind, line: u32) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qname),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(0),
             start_line: line,

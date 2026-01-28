@@ -204,6 +204,7 @@ mod reader {
             let mut xmi_id: Option<String> = None;
             let mut xmi_type: Option<String> = None;
             let mut name: Option<String> = None;
+            let mut qualified_name: Option<String> = None;
             let mut short_name: Option<String> = None;
             let mut element_id: Option<String> = None;
             let mut is_abstract = false;
@@ -231,6 +232,7 @@ mod reader {
                     "xmi:id" | "id" => xmi_id = Some(value),
                     "xmi:type" | "xsi:type" | "type" => xmi_type = Some(value),
                     "name" | "declaredName" => name = Some(value),
+                    "qualifiedName" => qualified_name = Some(value),
                     "shortName" | "declaredShortName" => short_name = Some(value),
                     "elementId" => element_id = Some(value),
                     "isAbstract" => is_abstract = value == "true",
@@ -241,13 +243,8 @@ mod reader {
                     // Relationship source/target references
                     "source" | "relatedElement" | "subclassifier" | "typedFeature" 
                     | "redefiningFeature" | "subsettingFeature" => source_ref = Some(value),
-                    "target" | "superclassifier" | "type" | "redefinedFeature" 
-                    | "subsettedFeature" | "general" | "specific" => {
-                        // Only set as target if not already the element type
-                        if key != "type" || xmi_type.is_none() {
-                            target_ref = Some(value);
-                        }
-                    }
+                    "target" | "superclassifier" | "redefinedFeature" 
+                    | "subsettedFeature" | "general" | "specific" => target_ref = Some(value),
                     _ => {
                         // Store other attributes for roundtrip
                         if !key.starts_with("xmlns") && !key.starts_with("xmi:version") {
@@ -272,6 +269,9 @@ mod reader {
 
                 if let Some(n) = name {
                     element.name = Some(Arc::from(n.as_str()));
+                }
+                if let Some(qn) = qualified_name {
+                    element.qualified_name = Some(Arc::from(qn.as_str()));
                 }
                 if let Some(sn) = short_name {
                     element.short_name = Some(Arc::from(sn.as_str()));
@@ -431,7 +431,7 @@ use reader::XmiReader;
 #[cfg(feature = "interchange")]
 mod writer {
     use super::*;
-    use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, BytesText, Event};
+    use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
     use quick_xml::Writer;
     use std::io::Cursor;
 
@@ -488,6 +488,9 @@ mod writer {
 
             if let Some(ref name) = element.name {
                 elem_start.push_attribute(("name", name.as_ref()));
+            }
+            if let Some(ref qualified_name) = element.qualified_name {
+                elem_start.push_attribute(("qualifiedName", qualified_name.as_ref()));
             }
             if let Some(ref short_name) = element.short_name {
                 elem_start.push_attribute(("shortName", short_name.as_ref()));
@@ -682,16 +685,19 @@ impl XmiWriter {
 // ============================================================================
 
 /// Convert an XMI type string to ElementKind.
+#[allow(dead_code)]
 pub fn element_kind_from_xmi(xmi_type: &str) -> ElementKind {
     ElementKind::from_xmi_type(xmi_type)
 }
 
 /// Convert an ElementKind to XMI type string.
+#[allow(dead_code)]
 pub fn element_kind_to_xmi(kind: ElementKind) -> &'static str {
     kind.xmi_type()
 }
 
 /// Convert a relationship XMI type to RelationshipKind.
+#[allow(dead_code)]
 pub fn relationship_kind_from_xmi(xmi_type: &str) -> Option<RelationshipKind> {
     let type_name = xmi_type.split(':').last().unwrap_or(xmi_type);
     match type_name {

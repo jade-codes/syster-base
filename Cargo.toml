@@ -34,6 +34,7 @@ parking_lot = "0.12.5"
 salsa = "0.18"
 thiserror = "2"
 indexmap = "2"
+uuid = { version = "1", features = ["v4"] }
 
 # Interchange format support (optional)
 quick-xml = { version = "0.37", optional = true }

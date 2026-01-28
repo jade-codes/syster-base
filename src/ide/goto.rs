@@ -338,6 +338,7 @@ fn extract_scope(qualified_name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(
         name: &str,
@@ -350,6 +351,7 @@ mod tests {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(file),
             start_line: line,

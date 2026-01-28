@@ -55,5 +55,5 @@ pub use resolve::{ResolveResult, Resolver, SymbolIndex};
 pub use source::FileSet;
 pub use symbols::{
     HirRelationship, HirSymbol, RefKind, RelationshipKind, SymbolKind, TypeRef, TypeRefChain,
-    TypeRefKind, extract_symbols_unified,
+    TypeRefKind, extract_symbols_unified, new_element_id,
 };

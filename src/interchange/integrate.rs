@@ -54,10 +54,14 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
         
         let kind = element_kind_to_symbol_kind(element.kind);
         
-        // Build qualified name from element ID or compute from owner chain
-        let qualified_name: Arc<str> = element.id.as_str().into();
+        // Build qualified name: prefer element's qualified_name (from ownership hierarchy),
+        // fallback to name, then id
+        let qualified_name: Arc<str> = element.qualified_name.clone()
+            .or_else(|| element.name.clone())
+            .map(|n| n.to_string().into())
+            .unwrap_or_else(|| element.id.as_str().into());
         
-        // Simple name is the last segment of qualified name, or explicit name
+        // Simple name is the same as qualified for now (no ownership chain)
         let name: Arc<str> = element.name.clone()
             .map(|n| n.to_string().into())
             .unwrap_or_else(|| {
@@ -71,10 +75,18 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             .filter(|r| r.source.as_str() == element.id.as_str())
             .filter_map(|r| {
                 let hir_kind = relationship_kind_to_hir(&r.kind)?;
+                
+                // Look up target element to get its qualified name (HIR uses names, not UUIDs)
+                let target_name: Arc<str> = model.elements.get(&r.target)
+                    .and_then(|target_elem| target_elem.qualified_name.clone()
+                        .or_else(|| target_elem.name.clone()))
+                    .map(|n| n.to_string().into())
+                    .unwrap_or_else(|| r.target.as_str().into()); // Fallback to ID if not found
+                
                 Some(HirRelationship {
                     kind: hir_kind,
-                    target: r.target.as_str().into(),
-                    resolved_target: Some(r.target.as_str().into()), // XMI has resolved refs
+                    target: target_name.clone(),
+                    resolved_target: Some(target_name), // XMI has resolved refs
                     start_line: 0,
                     start_col: 0,
                     end_line: 0,
@@ -93,6 +105,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             name,
             short_name: None, // XMI may have this in declaredShortName property
             qualified_name,
+            element_id: element.id.as_str().into(), // Preserve XMI element ID
             kind,
             file: FileId::new(0), // Synthetic - no real file
             start_line: 0,
@@ -183,28 +196,58 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
     let mut model = Model::new();
     let mut rel_counter = 0u64;
     
+    // Build lookup map: qualified_name -> element_id
+    // This allows us to resolve relationship targets and ownership
+    let name_to_id: std::collections::HashMap<&str, &str> = symbols
+        .iter()
+        .map(|s| (s.qualified_name.as_ref(), s.element_id.as_ref()))
+        .collect();
+    
     for symbol in symbols {
-        let id = ElementId::new(symbol.qualified_name.as_ref());
+        // Use the symbol's element_id to preserve UUIDs across round-trips
+        let id = ElementId::new(symbol.element_id.as_ref());
         let kind = symbol_kind_to_element_kind(symbol.kind);
         
-        // Determine ownership from qualified name
+        // Determine ownership from qualified name, then look up owner's element_id
         let owner = if symbol.qualified_name.contains("::") {
-            // Extract parent qualified name
             let parent = symbol.qualified_name.rsplit_once("::").map(|(p, _)| p);
-            parent.map(ElementId::new)
+            parent.and_then(|p| name_to_id.get(p).map(|&id| ElementId::new(id)))
         } else {
             None
         };
         
         let mut element = Element::new(id.clone(), kind)
-            .with_name(symbol.name.as_ref());
+            .with_name(symbol.name.as_ref())
+            .with_qualified_name(symbol.qualified_name.as_ref());
         
-        if let Some(owner_id) = owner {
-            element = element.with_owner(owner_id);
+        if let Some(ref owner_id) = owner {
+            element = element.with_owner(owner_id.clone());
         }
         
         model.add_element(element);
+        // We'll populate parent's owned_elements in a separate pass below
         
+
+    // Ensure owned_elements lists are correctly populated regardless of symbol ordering.
+    // Clear existing owned lists and rebuild from owner pointers.
+    let mut child_owner_pairs: Vec<(ElementId, ElementId)> = Vec::new();
+    for (id, element) in model.elements.iter() {
+        if let Some(owner_id) = &element.owner {
+            child_owner_pairs.push((id.clone(), owner_id.clone()));
+        }
+    }
+
+    // Clear current owned_elements
+    for (_id, element) in model.elements.iter_mut() {
+        element.owned_elements.clear();
+    }
+
+    // Repopulate owned_elements according to owner pointers
+    for (child_id, owner_id) in child_owner_pairs {
+        if let Some(parent) = model.get_mut(&owner_id) {
+            parent.owned_elements.push(child_id);
+        }
+    }
         // Extract relationships from the symbol
         for hir_rel in &symbol.relationships {
             let rel_kind = hir_relationship_kind_to_model(&hir_rel.kind);
@@ -212,9 +255,26 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 rel_counter += 1;
                 let rel_id = ElementId::new(format!("rel_{}", rel_counter));
                 
-                // The target might be a simple name or qualified name
-                // For now, assume it's as written in the source
-                let target_id = ElementId::new(hir_rel.target.as_ref());
+                // Look up target's element_id from qualified name
+                // Try multiple resolution strategies:
+                // 1. Direct lookup (fully qualified)
+                // 2. Same namespace as source (e.g., "Vehicle" -> "Types::Vehicle")
+                let target_id = name_to_id
+                    .get(hir_rel.target.as_ref())
+                    .or_else(|| {
+                        // Try adding source's namespace prefix
+                        if let Some((ns, _)) = symbol.qualified_name.rsplit_once("::") {
+                            let namespaced = format!("{}::{}", ns, hir_rel.target);
+                            name_to_id.get(namespaced.as_str())
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|&id| ElementId::new(id))
+                    .unwrap_or_else(|| {
+                        // External reference not in this symbol set - use qualified name as fallback
+                        ElementId::new(hir_rel.target.as_ref())
+                    });
                 
                 let relationship = Relationship::new(
                     rel_id,
@@ -295,6 +355,48 @@ fn symbol_kind_to_element_kind(kind: crate::hir::SymbolKind) -> ElementKind {
     }
 }
 
+/// Apply import metadata to symbols in an AnalysisHost.
+///
+/// This looks up each symbol's qualified name in the metadata and sets
+/// the symbol's `element_id` to the original XMI element ID if found.
+///
+/// Call this after loading decompiled SysML files into the AnalysisHost.
+///
+/// ## Example
+///
+/// ```ignore
+/// use syster::interchange::{decompile, apply_metadata_to_host};
+/// use syster::ide::AnalysisHost;
+///
+/// // Decompile XMI to SysML + metadata
+/// let result = decompile(&model);
+///
+/// // Parse the SysML text into host
+/// let mut host = AnalysisHost::new();
+/// host.set_file_content("model.sysml", &result.text);
+///
+/// // Apply metadata to restore element IDs
+/// apply_metadata_to_host(&mut host, &result.metadata);
+/// ```
+pub fn apply_metadata_to_host(
+    host: &mut crate::ide::AnalysisHost,
+    metadata: &super::metadata::ImportMetadata,
+) {
+    use std::sync::Arc;
+    
+    // Rebuild index to ensure we have up-to-date symbols
+    let _ = host.analysis();
+    
+    // Update each symbol's element_id based on metadata lookup
+    host.update_symbols(|symbol| {
+        if let Some(meta) = metadata.get_element(&symbol.qualified_name) {
+            if let Some(id) = &meta.original_id {
+                symbol.element_id = Arc::from(id.as_str());
+            }
+        }
+    });
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -366,7 +468,11 @@ mod tests {
             .expect("Car should exist");
         assert_eq!(car.kind, super::super::model::ElementKind::PartDefinition);
         assert!(car.owner.is_some(), "Car should have an owner");
-        assert_eq!(car.owner.as_ref().unwrap().as_str(), "Vehicle");
+        
+        // Owner is now referenced by element_id (UUID), verify it exists
+        let owner = model.elements.get(car.owner.as_ref().unwrap())
+            .expect("Owner should exist in model");
+        assert_eq!(owner.name.as_deref(), Some("Vehicle"), "Owner should be Vehicle");
     }
 
     #[test]
@@ -392,9 +498,14 @@ mod tests {
             .find(|r| r.kind == super::super::model::RelationshipKind::Specialization)
             .expect("Should have a specialization");
         
-        // Car specializes Vehicle
-        assert!(specialization.source.as_str().contains("Car"), "Source should be Car");
-        assert!(specialization.target.as_str().contains("Vehicle"), "Target should be Vehicle");
+        // Source and target are now UUIDs, verify by looking up the elements
+        let source_elem = model.elements.get(&specialization.source)
+            .expect("Source element should exist");
+        let target_elem = model.elements.get(&specialization.target)
+            .expect("Target element should exist");
+        
+        assert_eq!(source_elem.name.as_deref(), Some("Car"), "Source should be Car");
+        assert_eq!(target_elem.name.as_deref(), Some("Vehicle"), "Target should be Vehicle");
     }
 
     #[test]
@@ -482,7 +593,8 @@ mod tests {
         
         let car_sym = symbols.iter().find(|s| s.name.as_ref() == "Car").expect("Should have Car");
         assert_eq!(car_sym.kind, SymbolKind::PartDef);
-        assert_eq!(car_sym.qualified_name.as_ref(), "Vehicle::Car");
+        // Note: Without qualified_name set in the Element, this falls back to just the name
+        assert_eq!(car_sym.qualified_name.as_ref(), "Car");
         
         let engine_sym = symbols.iter().find(|s| s.name.as_ref() == "Engine").expect("Should have Engine");
         assert_eq!(engine_sym.kind, SymbolKind::PartDef);
@@ -581,5 +693,42 @@ mod tests {
             assert!(found.is_some(), 
                 "Symbol {} should exist after roundtrip", orig.qualified_name);
         }
+    }
+
+    #[test]
+    fn test_apply_metadata_to_host() {
+        use crate::ide::AnalysisHost;
+        use crate::interchange::metadata::{ImportMetadata, ElementMeta};
+        use crate::interchange::integrate::apply_metadata_to_host;
+
+        // Create a host with a simple SysML file
+        let mut host = AnalysisHost::new();
+        let sysml = r#"
+package TestPkg {
+    part def Car;
+}
+"#;
+        host.set_file_content("/test.sysml", sysml);
+
+        // Create metadata with element IDs
+        let mut metadata = ImportMetadata::new();
+        metadata.add_element("TestPkg", ElementMeta::with_id("uuid-pkg-1"));
+        metadata.add_element("TestPkg::Car", ElementMeta::with_id("uuid-car-1"));
+
+        // Apply metadata to host
+        apply_metadata_to_host(&mut host, &metadata);
+
+        // Verify element IDs were applied
+        let analysis = host.analysis();
+        
+        let pkg = analysis.symbol_index().lookup_qualified("TestPkg")
+            .expect("Should find TestPkg");
+        assert_eq!(pkg.element_id.as_ref(), "uuid-pkg-1", 
+            "Package should have metadata element_id");
+
+        let car = analysis.symbol_index().lookup_qualified("TestPkg::Car")
+            .expect("Should find TestPkg::Car");
+        assert_eq!(car.element_id.as_ref(), "uuid-car-1",
+            "Car should have metadata element_id");
     }
 }

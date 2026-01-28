@@ -9,6 +9,8 @@
 
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::base::FileId;
 use crate::syntax::normalized::{
     NormalizedAlias, NormalizedComment, NormalizedDefKind, NormalizedDefinition,
@@ -16,6 +18,11 @@ use crate::syntax::normalized::{
     NormalizedRelKind, NormalizedRelationship, NormalizedUsage, NormalizedUsageKind,
 };
 use crate::syntax::sysml::ast::enums::{DefinitionKind, UsageKind};
+
+/// Generate a new unique element ID for XMI interchange.
+pub fn new_element_id() -> Arc<str> {
+    Uuid::new_v4().to_string().into()
+}
 
 /// The kind of reference - determines resolution strategy.
 ///
@@ -360,6 +367,9 @@ pub struct HirSymbol {
     pub short_name: Option<Arc<str>>,
     /// The fully qualified name
     pub qualified_name: Arc<str>,
+    /// Unique element ID for XMI interchange.
+    /// Generated at parse time for all symbols, preserved on import/export.
+    pub element_id: Arc<str>,
     /// What kind of symbol this is
     pub kind: SymbolKind,
     /// The file containing this symbol
@@ -736,6 +746,7 @@ fn extract_from_normalized_package(
         name: Arc::from(name.as_str()),
         short_name: pkg.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Package,
         file: ctx.file,
         start_line: span.start_line,
@@ -878,6 +889,7 @@ fn extract_from_normalized_definition(
         name: Arc::from(name.as_str()),
         short_name: def.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind,
         file: ctx.file,
         start_line: span.start_line,
@@ -974,6 +986,7 @@ fn extract_from_normalized_usage(
                 name: Arc::from(anon_scope.as_str()),
                 short_name: None,
                 qualified_name: Arc::from(qualified_name.as_str()),
+                element_id: new_element_id(),
                 kind,
                 start_line: span.start_line,
                 start_col: span.start_col,
@@ -1042,6 +1055,7 @@ fn extract_from_normalized_usage(
         name: Arc::from(name.as_str()),
         short_name: usage.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind,
         file: ctx.file,
         start_line: span.start_line,
@@ -1080,6 +1094,7 @@ fn extract_from_normalized_import(
         name: Arc::from(path),
         short_name: None, // Imports don't have short names
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Import,
         file: ctx.file,
         start_line: span.start_line,
@@ -1130,6 +1145,7 @@ fn extract_from_normalized_alias(
         name: Arc::from(name.as_str()),
         short_name: alias.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Alias,
         file: ctx.file,
         start_line: span.start_line,
@@ -1184,6 +1200,7 @@ fn extract_from_normalized_comment(
         name: Arc::from(name.as_str()),
         short_name: comment.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Comment,
         file: ctx.file,
         start_line: span.start_line,
@@ -1324,6 +1341,7 @@ fn extract_from_normalized_dependency(
             name: Arc::from(name),
             short_name: dep.short_name.map(Arc::from),
             qualified_name: Arc::from(qualified_name.as_str()),
+            element_id: new_element_id(),
             kind: SymbolKind::Dependency,
             file: ctx.file,
             start_line: span.start_line,
@@ -1349,6 +1367,7 @@ fn extract_from_normalized_dependency(
             name: Arc::from("<anonymous-dependency>"),
             short_name: None,
             qualified_name: Arc::from(format!("{}::<anonymous-dependency>", ctx.prefix)),
+            element_id: new_element_id(),
             kind: SymbolKind::Dependency,
             file: ctx.file,
             start_line: span.start_line,
