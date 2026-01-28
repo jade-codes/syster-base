@@ -17,6 +17,7 @@
 //! - [`SymbolIndex`] - Global index with all symbols + pre-computed visibility maps
 //! - [`Resolver`] - Query-time resolution using visibility maps
 
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -188,8 +189,8 @@ pub type SymbolIdx = usize;
 pub struct SymbolIndex {
     /// The single source of truth for all symbols.
     symbols: Vec<HirSymbol>,
-    /// Index by qualified name -> symbol index.
-    by_qualified_name: HashMap<Arc<str>, SymbolIdx>,
+    /// Index by qualified name -> symbol index (IndexMap preserves insertion order).
+    by_qualified_name: IndexMap<Arc<str>, SymbolIdx>,
     /// Index by simple name -> symbol indices (may have multiple).
     by_simple_name: HashMap<Arc<str>, Vec<SymbolIdx>>,
     /// Index by short name (alias) -> symbol indices (for lookups like `kg` -> `SI::kilogram`).
@@ -272,7 +273,7 @@ impl SymbolIndex {
                     let sname = symbol.name.clone();
                     let short = symbol.short_name.clone();
 
-                    self.by_qualified_name.remove(&qname);
+                    self.by_qualified_name.shift_remove(&qname);
                     self.definitions.remove(&qname);
 
                     // Remove from simple name index
@@ -312,6 +313,18 @@ impl SymbolIndex {
             .get(name)
             .copied()
             .and_then(move |idx| self.symbols.get_mut(idx))
+    }
+
+    /// Apply a function to all symbols (mutable).
+    ///
+    /// Used to update symbol properties like element_id after loading metadata.
+    pub fn update_all_symbols<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut HirSymbol),
+    {
+        for symbol in &mut self.symbols {
+            f(symbol);
+        }
     }
 
     /// Look up all symbols with a simple name (also checks short names/aliases).
@@ -1825,12 +1838,14 @@ impl<'a> Resolver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, file: u32) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(file),
             start_line: 0,

@@ -66,12 +66,12 @@ fn test_syntax_layer_has_minimal_dependencies() {
 fn test_project_layer_dependencies() {
     let violations = collect_layer_violations(
         Path::new("src/project"),
-        &["base", "parser", "syntax", "hir", "ide"],
+        &["base", "parser", "syntax", "hir", "ide", "interchange"],
         "project",
     );
     assert!(
         violations.is_empty(),
-        "\n❌ Project layer should only depend on base, parser, syntax, hir, and ide.\nViolations:\n{}\n",
+        "\n❌ Project layer should only depend on base, parser, syntax, hir, ide, and interchange.\nViolations:\n{}\n",
         violations.join("\n")
     );
 }
@@ -105,7 +105,7 @@ fn test_show_architecture_violations_summary() {
         ("syntax", vec!["base", "parser"], "src/syntax"),
         (
             "project",
-            vec!["base", "parser", "syntax", "hir", "ide"],
+            vec!["base", "parser", "syntax", "hir", "ide", "interchange"],
             "src/project",
         ),
     ];
