@@ -139,6 +139,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             type_refs: Vec::new(),
             is_public: true, // Default to public for imported symbols
             view_data: None,
+            metadata_annotations: Vec::new(),
         };
 
         symbols.push(symbol);
