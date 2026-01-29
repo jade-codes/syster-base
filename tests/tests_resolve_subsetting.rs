@@ -20,13 +20,14 @@
 use std::sync::Arc;
 use syster::base::FileId;
 use syster::hir::SymbolIndex;
-use syster::hir::{HirSymbol, SymbolKind, TypeRefKind};
+use syster::hir::{HirSymbol, SymbolKind, TypeRefKind, new_element_id};
 
 fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&str>) -> HirSymbol {
     HirSymbol {
         name: Arc::from(name),
         short_name: None,
         qualified_name: Arc::from(qualified),
+        element_id: new_element_id(),
         kind,
         file: FileId::new(0),
         start_line: 0,
@@ -42,6 +43,7 @@ fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&s
         relationships: Vec::new(),
         type_refs: Vec::new(),
         is_public: false,
+        view_data: None,
         metadata_annotations: Vec::new(),
     }
 }
@@ -58,6 +60,7 @@ fn make_symbol_with_type_refs(
         name: Arc::from(name),
         short_name: None,
         qualified_name: Arc::from(qualified),
+        element_id: new_element_id(),
         kind,
         file: FileId::new(0),
         start_line: 0,
@@ -73,6 +76,7 @@ fn make_symbol_with_type_refs(
         relationships: Vec::new(),
         type_refs,
         is_public: false,
+        view_data: None,
         metadata_annotations: Vec::new(),
     }
 }

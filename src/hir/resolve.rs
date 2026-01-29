@@ -17,6 +17,7 @@
 //! - [`SymbolIndex`] - Global index with all symbols + pre-computed visibility maps
 //! - [`Resolver`] - Query-time resolution using visibility maps
 
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -188,8 +189,8 @@ pub type SymbolIdx = usize;
 pub struct SymbolIndex {
     /// The single source of truth for all symbols.
     symbols: Vec<HirSymbol>,
-    /// Index by qualified name -> symbol index.
-    by_qualified_name: HashMap<Arc<str>, SymbolIdx>,
+    /// Index by qualified name -> symbol index (IndexMap preserves insertion order).
+    by_qualified_name: IndexMap<Arc<str>, SymbolIdx>,
     /// Index by simple name -> symbol indices (may have multiple).
     by_simple_name: HashMap<Arc<str>, Vec<SymbolIdx>>,
     /// Index by short name (alias) -> symbol indices (for lookups like `kg` -> `SI::kilogram`).
@@ -320,7 +321,7 @@ impl SymbolIndex {
                     let sname = symbol.name.clone();
                     let short = symbol.short_name.clone();
 
-                    self.by_qualified_name.remove(&qname);
+                    self.by_qualified_name.shift_remove(&qname);
                     self.definitions.remove(&qname);
 
                     // Remove from simple name index
@@ -360,6 +361,18 @@ impl SymbolIndex {
             .get(name)
             .copied()
             .and_then(move |idx| self.symbols.get_mut(idx))
+    }
+
+    /// Apply a function to all symbols (mutable).
+    ///
+    /// Used to update symbol properties like element_id after loading metadata.
+    pub fn update_all_symbols<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut HirSymbol),
+    {
+        for symbol in &mut self.symbols {
+            f(symbol);
+        }
     }
 
     /// Look up all symbols with a simple name (also checks short names/aliases).
@@ -874,6 +887,22 @@ impl SymbolIndex {
     /// Tries direct lookup, then searches inherited members from supertypes,
     /// then checks chain-based relationships (perform, exhibit, satisfy, etc.).
     pub fn find_member_in_scope(&self, type_scope: &str, member_name: &str) -> Option<HirSymbol> {
+        let mut visited = std::collections::HashSet::new();
+        self.find_member_in_scope_impl(type_scope, member_name, &mut visited)
+    }
+
+    /// Internal implementation with cycle detection.
+    fn find_member_in_scope_impl(
+        &self,
+        type_scope: &str,
+        member_name: &str,
+        visited: &mut std::collections::HashSet<String>,
+    ) -> Option<HirSymbol> {
+        // Cycle detection
+        if !visited.insert(type_scope.to_string()) {
+            return None;
+        }
+
         // Strategy 1: Direct qualified lookup
         let direct_qname = format!("{}::{}", type_scope, member_name);
         if let Some(sym) = self.lookup_qualified(&direct_qname) {
@@ -895,10 +924,12 @@ impl SymbolIndex {
                 // Resolve the supertype name
                 let parent_scope = Self::parent_scope(type_scope).unwrap_or("");
                 if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
-                    // Recursively search in the supertype
-                    if let Some(found) =
-                        self.find_member_in_scope(&super_sym.qualified_name, member_name)
-                    {
+                    // Recursively search in the supertype (with visited set)
+                    if let Some(found) = self.find_member_in_scope_impl(
+                        &super_sym.qualified_name,
+                        member_name,
+                        visited,
+                    ) {
                         return Some(found);
                     }
                 }
@@ -1583,6 +1614,7 @@ impl SymbolKind {
 
 /// Result of resolving a reference.
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ResolveResult {
     /// Successfully resolved to a single symbol.
     Found(HirSymbol),
@@ -1936,12 +1968,14 @@ impl<'a> Resolver<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, file: u32) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(file),
             start_line: 0,
@@ -1957,6 +1991,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         }
     }

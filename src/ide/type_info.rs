@@ -116,7 +116,7 @@ pub fn find_type_ref_at_position(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hir::{RefKind, SymbolKind};
+    use crate::hir::{RefKind, SymbolKind, new_element_id};
 
     fn make_symbol_with_type_ref(
         name: &str,
@@ -129,6 +129,7 @@ mod tests {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(0),
             start_line: line,
@@ -151,6 +152,7 @@ mod tests {
                 20,
             ))],
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         }
     }
@@ -164,6 +166,7 @@ mod tests {
             name: Arc::from("Engine"),
             short_name: None,
             qualified_name: Arc::from("Engine"),
+            element_id: new_element_id(),
             kind: SymbolKind::PartDef,
             file: FileId::new(0),
             start_line: 0,
@@ -179,6 +182,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         };
 
@@ -209,6 +213,7 @@ mod tests {
             name: Arc::from("Car"),
             short_name: None,
             qualified_name: Arc::from("Car"),
+            element_id: new_element_id(),
             kind: SymbolKind::PartDef,
             file: FileId::new(0),
             start_line: 0,
@@ -224,6 +229,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         };
 

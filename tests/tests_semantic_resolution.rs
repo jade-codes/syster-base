@@ -7,7 +7,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
-use syster::hir::{ResolveResult, Resolver, SymbolIndex, check_file};
+use syster::hir::{ResolveResult, Resolver, SymbolIndex, check_file, new_element_id};
 use syster::ide::AnalysisHost;
 
 fn get_examples_dir() -> PathBuf {
@@ -390,6 +390,7 @@ fn test_short_name_visibility_via_import() {
             HirSymbol {
                 name: Arc::from("SI"),
                 qualified_name: Arc::from("SI"),
+                element_id: new_element_id(),
                 kind: SymbolKind::Package,
                 file: FileId::new(0),
                 start_line: 0,
@@ -406,12 +407,14 @@ fn test_short_name_visibility_via_import() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             HirSymbol {
                 name: Arc::from("kilogram"),
                 short_name: Some(Arc::from("kg")), // <-- This is the alias!
                 qualified_name: Arc::from("SI::kilogram"),
+                element_id: new_element_id(),
                 kind: SymbolKind::AttributeUsage,
                 file: FileId::new(0),
                 start_line: 1,
@@ -427,6 +430,7 @@ fn test_short_name_visibility_via_import() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
         ],
@@ -439,6 +443,7 @@ fn test_short_name_visibility_via_import() {
             HirSymbol {
                 name: Arc::from("User"),
                 qualified_name: Arc::from("User"),
+                element_id: new_element_id(),
                 kind: SymbolKind::Package,
                 file: FileId::new(1),
                 start_line: 0,
@@ -455,11 +460,13 @@ fn test_short_name_visibility_via_import() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             HirSymbol {
                 name: Arc::from("SI::*"),
                 qualified_name: Arc::from("User::import:SI::*"),
+                element_id: new_element_id(),
                 kind: SymbolKind::Import,
                 file: FileId::new(1),
                 start_line: 1,
@@ -476,6 +483,7 @@ fn test_short_name_visibility_via_import() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
         ],
@@ -564,6 +572,7 @@ fn test_usage_inherits_type_members() {
             HirSymbol {
                 name: Arc::from("MissionContext"),
                 qualified_name: Arc::from("MissionContext"),
+                element_id: new_element_id(),
                 kind: SymbolKind::Package,
                 file: FileId::new(0),
                 start_line: 0,
@@ -580,12 +589,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Definition: TransportPassenger
             HirSymbol {
                 name: Arc::from("TransportPassenger"),
                 qualified_name: Arc::from("MissionContext::TransportPassenger"),
+                element_id: new_element_id(),
                 kind: SymbolKind::UseCaseDef,
                 file: FileId::new(0),
                 start_line: 1,
@@ -602,12 +613,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Member of definition: getInVehicle_a
             HirSymbol {
                 name: Arc::from("getInVehicle_a"),
                 qualified_name: Arc::from("MissionContext::TransportPassenger::getInVehicle_a"),
+                element_id: new_element_id(),
                 kind: SymbolKind::ActionUsage, // usage inside definition
                 file: FileId::new(0),
                 start_line: 2,
@@ -624,12 +637,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Usage: transportPassenger : TransportPassenger
             HirSymbol {
                 name: Arc::from("transportPassenger"),
                 qualified_name: Arc::from("MissionContext::transportPassenger"),
+                element_id: new_element_id(),
                 kind: SymbolKind::ActionUsage, // usage
                 file: FileId::new(0),
                 start_line: 10,
@@ -646,12 +661,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Nested member: driverGetInVehicle (references getInVehicle_a)
             HirSymbol {
                 name: Arc::from("driverGetInVehicle"),
                 qualified_name: Arc::from("MissionContext::transportPassenger::driverGetInVehicle"),
+                element_id: new_element_id(),
                 kind: SymbolKind::ActionUsage,
                 file: FileId::new(0),
                 start_line: 11,
@@ -668,12 +685,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Nested action 'a' inside transportPassenger (no type annotation)
             HirSymbol {
                 name: Arc::from("a"),
                 qualified_name: Arc::from("MissionContext::transportPassenger::a"),
+                element_id: new_element_id(),
                 kind: SymbolKind::ActionUsage,
                 file: FileId::new(0),
                 start_line: 12,
@@ -690,12 +709,14 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
             // Action inside 'a' that references getInVehicle_a
             HirSymbol {
                 name: Arc::from("nestedAction"),
                 qualified_name: Arc::from("MissionContext::transportPassenger::a::nestedAction"),
+                element_id: new_element_id(),
                 kind: SymbolKind::ActionUsage,
                 file: FileId::new(0),
                 start_line: 13,
@@ -712,6 +733,7 @@ fn test_usage_inherits_type_members() {
                 type_refs: vec![],
                 doc: None,
                 is_public: true,
+view_data: None,
                 metadata_annotations: vec![],
             },
         ],

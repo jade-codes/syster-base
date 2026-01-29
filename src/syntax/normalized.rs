@@ -69,7 +69,8 @@ pub enum NormalizedElement<'a> {
     Alias(NormalizedAlias<'a>),
     Comment(NormalizedComment<'a>),
     Dependency(NormalizedDependency<'a>),
-    Filter(NormalizedFilter),
+    Filter(NormalizedFilter<'a>),
+    Expose(NormalizedExpose<'a>),
 }
 
 /// A normalized package with its children.
@@ -150,12 +151,19 @@ pub struct NormalizedDependency<'a> {
     pub span: Option<Span>,
 }
 
-/// A normalized filter statement (e.g., `filter @Safety;`).
-/// Filters restrict which elements are visible from wildcard imports.
+/// A normalized filter (filters elements by metadata or expression).
 #[derive(Debug, Clone)]
-pub struct NormalizedFilter {
+pub struct NormalizedFilter<'a> {
     /// Simple metadata type names that elements must have (e.g., ["Safety", "Approved"])
-    pub metadata_refs: Vec<String>,
+    pub metadata_refs: Vec<&'a str>,
+    pub span: Option<Span>,
+}
+
+/// A normalized expose relationship (makes elements visible in a view).
+#[derive(Debug, Clone)]
+pub struct NormalizedExpose<'a> {
+    pub import_path: &'a str,
+    pub is_recursive: bool, // true for ::**, false for ::* or none
     pub span: Option<Span>,
 }
 
@@ -212,6 +220,9 @@ pub enum NormalizedUsageKind {
     Reference,
     Occurrence,
     Flow,
+    View,
+    Viewpoint,
+    Rendering,
     // KerML: features are treated as usages
     Feature,
     // Fallback
@@ -413,15 +424,25 @@ impl<'a> NormalizedDefinition<'a> {
         let mut children = Vec::new();
         let mut doc = None;
 
+        // Check if this is a view definition to handle expose relationships
+        let is_view = matches!(kind, NormalizedDefKind::View);
+
         for member in &def.body {
             match member {
                 DefinitionMember::Usage(usage) => {
                     children.push(NormalizedElement::Usage(NormalizedUsage::from_sysml(usage)));
                 }
                 DefinitionMember::Import(import) => {
-                    children.push(NormalizedElement::Import(NormalizedImport::from_sysml(
-                        import,
-                    )));
+                    // If this is a view definition, treat imports as expose relationships
+                    if is_view {
+                        children.push(NormalizedElement::Expose(NormalizedExpose::from_sysml(
+                            import,
+                        )));
+                    } else {
+                        children.push(NormalizedElement::Import(NormalizedImport::from_sysml(
+                            import,
+                        )));
+                    }
                 }
                 DefinitionMember::Comment(comment) => {
                     // Check for doc comment
@@ -541,6 +562,9 @@ impl<'a> NormalizedUsage<'a> {
             | UsageKind::Snapshot
             | UsageKind::Timeslice => NormalizedUsageKind::Occurrence,
             UsageKind::Flow | UsageKind::Message => NormalizedUsageKind::Flow,
+            UsageKind::View => NormalizedUsageKind::View,
+            UsageKind::Viewpoint => NormalizedUsageKind::Viewpoint,
+            UsageKind::Rendering => NormalizedUsageKind::Rendering,
             _ => NormalizedUsageKind::Other,
         };
 
@@ -772,27 +796,6 @@ impl<'a> NormalizedAlias<'a> {
     }
 }
 
-impl NormalizedFilter {
-    fn from_sysml(filter: &crate::syntax::sysml::ast::types::Filter) -> Self {
-        // Extract simple metadata type names from meta_refs
-        // e.g., @Safety -> "Safety", @Pkg::Safety -> "Safety"
-        let metadata_refs = filter
-            .meta_refs
-            .iter()
-            .map(|meta_rel| {
-                let target = meta_rel.target();
-                // Get simple name (last part after ::)
-                target.rsplit("::").next().unwrap_or(&target).to_string()
-            })
-            .collect();
-
-        Self {
-            metadata_refs,
-            span: filter.span,
-        }
-    }
-}
-
 impl<'a> NormalizedComment<'a> {
     fn from_sysml(comment: &'a crate::syntax::sysml::ast::types::Comment) -> Self {
         let about = comment
@@ -848,6 +851,44 @@ impl<'a> NormalizedDependency<'a> {
             sources,
             targets,
             span: dep.span,
+        }
+    }
+}
+
+impl<'a> NormalizedFilter<'a> {
+    fn from_sysml(filter: &'a crate::syntax::sysml::ast::types::Filter) -> Self {
+        // Extract metadata references from the filter
+        let metadata_refs: Vec<&'a str> = filter
+            .meta_refs
+            .iter()
+            .map(|meta_rel| {
+                // Get the target name from the MetaRel
+                let target = meta_rel.target();
+                // Leak the string to get a 'static reference
+                // This is needed because we need &'a str but target() returns String
+                let leaked: &'static str = Box::leak(target.into_boxed_str());
+                leaked as &'a str
+            })
+            .collect();
+
+        Self {
+            metadata_refs,
+            span: filter.span,
+        }
+    }
+}
+
+impl<'a> NormalizedExpose<'a> {
+    fn from_sysml(import: &'a crate::syntax::sysml::ast::types::Import) -> Self {
+        // Determine if this is a recursive import (::**)
+        let path = import.path.as_str();
+        let is_recursive = path.ends_with("::**");
+
+        // Use the full path for now
+        Self {
+            import_path: path,
+            is_recursive,
+            span: import.span,
         }
     }
 }
