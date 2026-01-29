@@ -1,7 +1,7 @@
 //! Integration tests for official SysML v2 XMI files.
 //!
 //! This test uses the official SysML v2 library XMI files from the GitHub repository.
-//! 
+//!
 //! To run these tests, first clone the official repository:
 //!   git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release
 //!
@@ -10,15 +10,20 @@
 //!
 //! If the repository is not cloned, the tests will be skipped.
 
+#[cfg(feature = "interchange")]
 use std::collections::HashMap;
+#[cfg(feature = "interchange")]
 use std::fs;
+#[cfg(feature = "interchange")]
 use std::path::{Path, PathBuf};
+#[cfg(feature = "interchange")]
 use std::process::Command;
 
 #[cfg(feature = "interchange")]
 use syster::interchange::{ModelFormat, Xmi};
 
 /// Possible locations for the official SysML v2 repository
+#[cfg(feature = "interchange")]
 const REPO_LOCATIONS: &[&str] = &[
     "/tmp/sysml-v2-release",
     "target/test-data/sysml-v2-release",
@@ -27,12 +32,11 @@ const REPO_LOCATIONS: &[&str] = &[
 ];
 
 /// XMI library subdirectories within the repo
-const XMI_SUBDIRS: &[&str] = &[
-    "sysml.library.xmi",
-    "sysml.library.xmi.implied",
-];
+#[cfg(feature = "interchange")]
+const XMI_SUBDIRS: &[&str] = &["sysml.library.xmi", "sysml.library.xmi.implied"];
 
 /// Find the official repository or clone it
+#[cfg(feature = "interchange")]
 fn find_or_clone_repo() -> Option<PathBuf> {
     // Check existing locations
     for loc in REPO_LOCATIONS {
@@ -52,7 +56,8 @@ fn find_or_clone_repo() -> Option<PathBuf> {
         let result = Command::new("git")
             .args([
                 "clone",
-                "--depth", "1",
+                "--depth",
+                "1",
                 "--filter=blob:none",
                 "--sparse",
                 "https://github.com/Systems-Modeling/SysML-v2-Release.git",
@@ -93,6 +98,8 @@ fn find_or_clone_repo() -> Option<PathBuf> {
 }
 
 /// Count XMI files in a directory recursively
+#[cfg(feature = "interchange")]
+#[allow(dead_code)]
 fn count_xmi_files(path: &Path) -> usize {
     let mut count = 0;
     if let Ok(entries) = fs::read_dir(path) {
@@ -111,6 +118,7 @@ fn count_xmi_files(path: &Path) -> usize {
 }
 
 /// Collect all XMI files from a directory
+#[cfg(feature = "interchange")]
 fn collect_xmi_files(path: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     if let Ok(entries) = fs::read_dir(path) {
@@ -137,7 +145,9 @@ fn test_official_xmi_roundtrip() {
             eprintln!("\n=== SKIPPED ===");
             eprintln!("SysML v2 repository not found.");
             eprintln!("To run this test, clone the official repository:");
-            eprintln!("  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release");
+            eprintln!(
+                "  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release"
+            );
             return;
         }
     };
@@ -162,11 +172,7 @@ fn test_official_xmi_roundtrip() {
     let mut results = TestResults::default();
 
     for file_path in &files {
-        let file_name = file_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
         // Read original file
         let original_bytes = match fs::read(file_path) {
@@ -233,17 +239,12 @@ fn test_official_xmi_roundtrip() {
             .filter_map(|e| e.name.as_ref().map(|n| n.to_string()))
             .collect();
 
-        let names_match = names1.len() == names2.len()
-            && names1.iter().all(|n| names2.contains(n));
+        let names_match = names1.len() == names2.len() && names1.iter().all(|n| names2.contains(n));
 
         if !names_match {
             results.add_warning(
                 &file_name,
-                format!(
-                    "Named element count: {} → {}",
-                    names1.len(),
-                    names2.len()
-                ),
+                format!("Named element count: {} → {}", names1.len(), names2.len()),
             );
         }
 
@@ -268,10 +269,7 @@ fn test_official_xmi_roundtrip() {
         if abstract_count1 != abstract_count2 {
             results.add_warning(
                 &file_name,
-                format!(
-                    "Abstract count: {} → {}",
-                    abstract_count1, abstract_count2
-                ),
+                format!("Abstract count: {} → {}", abstract_count1, abstract_count2),
             );
         }
 
@@ -283,7 +281,10 @@ fn test_official_xmi_roundtrip() {
                 if elem1.name != elem2.name {
                     results.add_warning(
                         &file_name,
-                        format!("Name mismatch for {}: {:?} → {:?}", elem1.id, elem1.name, elem2.name),
+                        format!(
+                            "Name mismatch for {}: {:?} → {:?}",
+                            elem1.id, elem1.name, elem2.name
+                        ),
                     );
                     content_match = false;
                 }
@@ -291,7 +292,10 @@ fn test_official_xmi_roundtrip() {
                 if elem1.kind != elem2.kind {
                     results.add_warning(
                         &file_name,
-                        format!("Kind mismatch for {}: {:?} → {:?}", elem1.id, elem1.kind, elem2.kind),
+                        format!(
+                            "Kind mismatch for {}: {:?} → {:?}",
+                            elem1.id, elem1.kind, elem2.kind
+                        ),
                     );
                     content_match = false;
                 }
@@ -299,7 +303,10 @@ fn test_official_xmi_roundtrip() {
                 if elem1.is_abstract != elem2.is_abstract {
                     results.add_warning(
                         &file_name,
-                        format!("isAbstract mismatch for {}: {} → {}", elem1.id, elem1.is_abstract, elem2.is_abstract),
+                        format!(
+                            "isAbstract mismatch for {}: {} → {}",
+                            elem1.id, elem1.is_abstract, elem2.is_abstract
+                        ),
                     );
                     content_match = false;
                 }
@@ -315,7 +322,10 @@ fn test_official_xmi_roundtrip() {
                 if elem1.owner != elem2.owner {
                     results.add_warning(
                         &file_name,
-                        format!("owner mismatch for {}: {:?} → {:?}", elem1.id, elem1.owner, elem2.owner),
+                        format!(
+                            "owner mismatch for {}: {:?} → {:?}",
+                            elem1.id, elem1.owner, elem2.owner
+                        ),
                     );
                     content_match = false;
                 }
@@ -323,7 +333,12 @@ fn test_official_xmi_roundtrip() {
                 if elem1.properties.len() != elem2.properties.len() {
                     results.add_warning(
                         &file_name,
-                        format!("properties count mismatch for {}: {} → {}", elem1.id, elem1.properties.len(), elem2.properties.len()),
+                        format!(
+                            "properties count mismatch for {}: {} → {}",
+                            elem1.id,
+                            elem1.properties.len(),
+                            elem2.properties.len()
+                        ),
                     );
                     content_match = false;
                 }
@@ -377,7 +392,10 @@ fn test_xmi_write_stability() {
         }
     }
 
-    eprintln!("\nTesting XMI write stability for {} files...\n", files.len());
+    eprintln!(
+        "\nTesting XMI write stability for {} files...\n",
+        files.len()
+    );
 
     let xmi = Xmi::default();
     let mut stable = 0;
@@ -403,7 +421,12 @@ fn test_xmi_write_stability() {
         if write1 == write2 {
             stable += 1;
         } else {
-            eprintln!("  ✗ {}: Write output differs ({} vs {} bytes)", file_name, write1.len(), write2.len());
+            eprintln!(
+                "  ✗ {}: Write output differs ({} vs {} bytes)",
+                file_name,
+                write1.len(),
+                write2.len()
+            );
             unstable += 1;
         }
     }
@@ -433,7 +456,10 @@ fn test_xmi_roundtrip_convergence() {
         }
     }
 
-    eprintln!("\nTesting XMI roundtrip convergence for {} files...\n", files.len());
+    eprintln!(
+        "\nTesting XMI roundtrip convergence for {} files...\n",
+        files.len()
+    );
 
     let xmi = Xmi::default();
     let mut converged = 0;
@@ -469,13 +495,21 @@ fn test_xmi_roundtrip_convergence() {
         // Check if output converged
         if write1 == write2 {
             converged += 1;
-            eprintln!("  ✓ {} (converged at {} bytes, original {} bytes)", 
-                file_name, write1.len(), original_bytes.len());
+            eprintln!(
+                "  ✓ {} (converged at {} bytes, original {} bytes)",
+                file_name,
+                write1.len(),
+                original_bytes.len()
+            );
         } else {
             not_converged += 1;
             size_diffs.push((file_name.clone(), write1.len(), write2.len()));
-            eprintln!("  ✗ {}: Did not converge ({} → {} bytes)", 
-                file_name, write1.len(), write2.len());
+            eprintln!(
+                "  ✗ {}: Did not converge ({} → {} bytes)",
+                file_name,
+                write1.len(),
+                write2.len()
+            );
         }
     }
 
@@ -523,18 +557,17 @@ fn test_official_xmi_to_jsonld_roundtrip() {
         return;
     }
 
-    eprintln!("\nTesting XMI → JSON-LD → XMI roundtrip for {} files...\n", files.len());
+    eprintln!(
+        "\nTesting XMI → JSON-LD → XMI roundtrip for {} files...\n",
+        files.len()
+    );
 
     let xmi = Xmi::default();
     let jsonld = JsonLd::default();
     let mut results = TestResults::default();
 
     for file_path in &files {
-        let file_name = file_path
-            .file_name()
-            .unwrap()
-            .to_string_lossy()
-            .to_string();
+        let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
 
         // Read original XMI
         let original_bytes = match fs::read(file_path) {
@@ -596,6 +629,7 @@ fn test_official_xmi_to_jsonld_roundtrip() {
     }
 }
 
+#[cfg(feature = "interchange")]
 #[derive(Default)]
 struct TestResults {
     success_count: usize,
@@ -605,6 +639,7 @@ struct TestResults {
     details: Vec<String>,
 }
 
+#[cfg(feature = "interchange")]
 impl TestResults {
     fn add_success(&mut self, file: &str, count: usize) {
         self.success_count += 1;

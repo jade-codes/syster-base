@@ -309,6 +309,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
         }
     }
 

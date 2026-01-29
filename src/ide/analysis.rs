@@ -148,22 +148,21 @@ impl AnalysisHost {
     pub fn rebuild_index(&mut self) {
         // First, update cache with all current symbols' IDs
         for symbol in self.symbol_index.all_symbols() {
-            if !symbol.element_id.as_ref().is_empty() 
-                && !symbol.element_id.starts_with("00000000-0000-0000-0000") {
-                self.element_id_cache.insert(
-                    symbol.qualified_name.clone(), 
-                    symbol.element_id.clone()
-                );
+            if !symbol.element_id.as_ref().is_empty()
+                && !symbol.element_id.starts_with("00000000-0000-0000-0000")
+            {
+                self.element_id_cache
+                    .insert(symbol.qualified_name.clone(), symbol.element_id.clone());
             }
         }
-        
+
         // Build file ID map from file paths
         self.file_id_map.clear();
         self.file_path_map.clear();
 
         // Reserve FileId(0) for imported symbols (XMI, etc.)
         let imported_file_id = FileId::new(0);
-        
+
         for (i, path) in self.files.keys().enumerate() {
             let path_str = path.to_string_lossy().to_string();
             // Start from 1 to avoid collision with imported symbols
@@ -174,9 +173,11 @@ impl AnalysisHost {
 
         // Build symbol index directly from parsed files
         let mut new_index = SymbolIndex::new();
-        
+
         // First, preserve imported symbols from FileId(0)
-        let imported_symbols: Vec<_> = self.symbol_index.symbols_in_file(imported_file_id)
+        let imported_symbols: Vec<_> = self
+            .symbol_index
+            .symbols_in_file(imported_file_id)
             .into_iter()
             .cloned()
             .collect();
@@ -189,14 +190,14 @@ impl AnalysisHost {
             if let Some(&file_id) = self.file_id_map.get(&path_str) {
                 // Extract symbols using unified extraction (handles both SysML and KerML)
                 let mut symbols = extract_symbols_unified(file_id, syntax_file);
-                
+
                 // Preserve element IDs from cache (survives removal/re-add)
                 for symbol in &mut symbols {
                     if let Some(cached_id) = self.element_id_cache.get(&symbol.qualified_name) {
                         symbol.element_id = cached_id.clone();
                     }
                 }
-                
+
                 new_index.add_file(file_id, symbols);
             }
         }
@@ -277,20 +278,18 @@ impl AnalysisHost {
     #[cfg(feature = "interchange")]
     pub fn add_symbols_from_model(&mut self, symbols: Vec<crate::hir::HirSymbol>) {
         use crate::base::FileId;
-        
+
         // Use a synthetic file ID for imported symbols
         let synthetic_file = FileId::new(0);
-        
+
         // Add to cache for persistence
         for symbol in &symbols {
             if !symbol.element_id.as_ref().is_empty() {
-                self.element_id_cache.insert(
-                    symbol.qualified_name.clone(),
-                    symbol.element_id.clone(),
-                );
+                self.element_id_cache
+                    .insert(symbol.qualified_name.clone(), symbol.element_id.clone());
             }
         }
-        
+
         // Add all symbols at once
         self.symbol_index.add_file(synthetic_file, symbols);
         self.index_dirty = false; // Symbols already extracted

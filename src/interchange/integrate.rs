@@ -21,10 +21,12 @@
 //! let xmi_bytes = Xmi.write(&model)?;
 //! ```
 
-use crate::hir::{RootDatabase, HirSymbol, SymbolKind, HirRelationship, RelationshipKind as HirRelKind};
+use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
 use crate::base::FileId;
+use crate::hir::{
+    HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
+};
 use std::sync::Arc;
-use super::model::{Model, Element, ElementId, ElementKind, Relationship, RelationshipKind};
 
 /// Convert a RootDatabase to a standalone Model for interchange.
 ///
@@ -45,44 +47,58 @@ pub fn model_from_database(_db: &RootDatabase) -> Model {
 /// the analysis pipeline.
 pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
     let mut symbols = Vec::new();
-    
+
     for element in model.elements.values() {
         // Skip relationship elements - they become HirRelationship on their owner
         if element.kind.is_relationship() {
             continue;
         }
-        
+
         let kind = element_kind_to_symbol_kind(element.kind);
-        
+
         // Build qualified name: prefer element's qualified_name (from ownership hierarchy),
         // fallback to name, then id
-        let qualified_name: Arc<str> = element.qualified_name.clone()
+        let qualified_name: Arc<str> = element
+            .qualified_name
+            .clone()
             .or_else(|| element.name.clone())
             .map(|n| n.to_string().into())
             .unwrap_or_else(|| element.id.as_str().into());
-        
+
         // Simple name is the same as qualified for now (no ownership chain)
-        let name: Arc<str> = element.name.clone()
+        let name: Arc<str> = element
+            .name
+            .clone()
             .map(|n| n.to_string().into())
             .unwrap_or_else(|| {
-                qualified_name.rsplit("::").next()
+                qualified_name
+                    .rsplit("::")
+                    .next()
                     .unwrap_or(qualified_name.as_ref())
                     .into()
             });
-        
+
         // Collect relationships where this element is the source
-        let relationships: Vec<HirRelationship> = model.relationships.iter()
+        let relationships: Vec<HirRelationship> = model
+            .relationships
+            .iter()
             .filter(|r| r.source.as_str() == element.id.as_str())
             .filter_map(|r| {
                 let hir_kind = relationship_kind_to_hir(&r.kind)?;
-                
+
                 // Look up target element to get its qualified name (HIR uses names, not UUIDs)
-                let target_name: Arc<str> = model.elements.get(&r.target)
-                    .and_then(|target_elem| target_elem.qualified_name.clone()
-                        .or_else(|| target_elem.name.clone()))
+                let target_name: Arc<str> = model
+                    .elements
+                    .get(&r.target)
+                    .and_then(|target_elem| {
+                        target_elem
+                            .qualified_name
+                            .clone()
+                            .or_else(|| target_elem.name.clone())
+                    })
                     .map(|n| n.to_string().into())
                     .unwrap_or_else(|| r.target.as_str().into()); // Fallback to ID if not found
-                
+
                 Some(HirRelationship {
                     kind: hir_kind,
                     target: target_name.clone(),
@@ -94,13 +110,14 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
                 })
             })
             .collect();
-        
+
         // Extract supertypes from specialization relationships
-        let supertypes: Vec<Arc<str>> = relationships.iter()
+        let supertypes: Vec<Arc<str>> = relationships
+            .iter()
             .filter(|r| r.kind == HirRelKind::Specializes)
             .map(|r| r.target.clone())
             .collect();
-        
+
         let symbol = HirSymbol {
             name,
             short_name: None, // XMI may have this in declaredShortName property
@@ -121,11 +138,12 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             relationships,
             type_refs: Vec::new(),
             is_public: true, // Default to public for imported symbols
+            view_data: None,
         };
-        
+
         symbols.push(symbol);
     }
-    
+
     symbols
 }
 
@@ -182,7 +200,9 @@ fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
         ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
         ElementKind::FlowConnectionUsage => SymbolKind::FlowUsage,
         // Other
-        ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => SymbolKind::Import,
+        ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
+            SymbolKind::Import
+        }
         ElementKind::Comment | ElementKind::Documentation => SymbolKind::Comment,
         _ => SymbolKind::Other,
     }
@@ -195,19 +215,19 @@ fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
 pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
     let mut model = Model::new();
     let mut rel_counter = 0u64;
-    
+
     // Build lookup map: qualified_name -> element_id
     // This allows us to resolve relationship targets and ownership
     let name_to_id: std::collections::HashMap<&str, &str> = symbols
         .iter()
         .map(|s| (s.qualified_name.as_ref(), s.element_id.as_ref()))
         .collect();
-    
+
     for symbol in symbols {
         // Use the symbol's element_id to preserve UUIDs across round-trips
         let id = ElementId::new(symbol.element_id.as_ref());
         let kind = symbol_kind_to_element_kind(symbol.kind);
-        
+
         // Determine ownership from qualified name, then look up owner's element_id
         let owner = if symbol.qualified_name.contains("::") {
             let parent = symbol.qualified_name.rsplit_once("::").map(|(p, _)| p);
@@ -215,46 +235,45 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         } else {
             None
         };
-        
+
         let mut element = Element::new(id.clone(), kind)
             .with_name(symbol.name.as_ref())
             .with_qualified_name(symbol.qualified_name.as_ref());
-        
+
         if let Some(ref owner_id) = owner {
             element = element.with_owner(owner_id.clone());
         }
-        
+
         model.add_element(element);
         // We'll populate parent's owned_elements in a separate pass below
-        
 
-    // Ensure owned_elements lists are correctly populated regardless of symbol ordering.
-    // Clear existing owned lists and rebuild from owner pointers.
-    let mut child_owner_pairs: Vec<(ElementId, ElementId)> = Vec::new();
-    for (id, element) in model.elements.iter() {
-        if let Some(owner_id) = &element.owner {
-            child_owner_pairs.push((id.clone(), owner_id.clone()));
+        // Ensure owned_elements lists are correctly populated regardless of symbol ordering.
+        // Clear existing owned lists and rebuild from owner pointers.
+        let mut child_owner_pairs: Vec<(ElementId, ElementId)> = Vec::new();
+        for (id, element) in model.elements.iter() {
+            if let Some(owner_id) = &element.owner {
+                child_owner_pairs.push((id.clone(), owner_id.clone()));
+            }
         }
-    }
 
-    // Clear current owned_elements
-    for (_id, element) in model.elements.iter_mut() {
-        element.owned_elements.clear();
-    }
-
-    // Repopulate owned_elements according to owner pointers
-    for (child_id, owner_id) in child_owner_pairs {
-        if let Some(parent) = model.get_mut(&owner_id) {
-            parent.owned_elements.push(child_id);
+        // Clear current owned_elements
+        for (_id, element) in model.elements.iter_mut() {
+            element.owned_elements.clear();
         }
-    }
+
+        // Repopulate owned_elements according to owner pointers
+        for (child_id, owner_id) in child_owner_pairs {
+            if let Some(parent) = model.get_mut(&owner_id) {
+                parent.owned_elements.push(child_id);
+            }
+        }
         // Extract relationships from the symbol
         for hir_rel in &symbol.relationships {
             let rel_kind = hir_relationship_kind_to_model(&hir_rel.kind);
             if let Some(rel_kind) = rel_kind {
                 rel_counter += 1;
                 let rel_id = ElementId::new(format!("rel_{}", rel_counter));
-                
+
                 // Look up target's element_id from qualified name
                 // Try multiple resolution strategies:
                 // 1. Direct lookup (fully qualified)
@@ -275,18 +294,13 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         // External reference not in this symbol set - use qualified name as fallback
                         ElementId::new(hir_rel.target.as_ref())
                     });
-                
-                let relationship = Relationship::new(
-                    rel_id,
-                    rel_kind,
-                    id.clone(),
-                    target_id,
-                );
+
+                let relationship = Relationship::new(rel_id, rel_kind, id.clone(), target_id);
                 model.add_relationship(relationship);
             }
         }
     }
-    
+
     model
 }
 
@@ -383,10 +397,10 @@ pub fn apply_metadata_to_host(
     metadata: &super::metadata::ImportMetadata,
 ) {
     use std::sync::Arc;
-    
+
     // Rebuild index to ensure we have up-to-date symbols
     let _ = host.analysis();
-    
+
     // Update each symbol's element_id based on metadata lookup
     host.update_symbols(|symbol| {
         if let Some(meta) = metadata.get_element(&symbol.qualified_name) {
@@ -408,14 +422,23 @@ mod tests {
         // TDD Step 1: Write a failing test
         // Given an empty database with no files
         let db = RootDatabase::new();
-        
+
         // When we convert to a model
         let model = model_from_database(&db);
-        
+
         // Then the model should be empty
-        assert!(model.elements.is_empty(), "Empty database should produce empty model");
-        assert!(model.roots.is_empty(), "Empty database should have no root elements");
-        assert!(model.relationships.is_empty(), "Empty database should have no relationships");
+        assert!(
+            model.elements.is_empty(),
+            "Empty database should produce empty model"
+        );
+        assert!(
+            model.roots.is_empty(),
+            "Empty database should have no root elements"
+        );
+        assert!(
+            model.relationships.is_empty(),
+            "Empty database should have no relationships"
+        );
     }
 
     #[test]
@@ -424,21 +447,24 @@ mod tests {
         let db = RootDatabase::new();
         let sysml = "package TestPackage;";
         let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
-        
+
         // Extract symbols (this populates the database via Salsa queries)
         let symbols = file_symbols_from_text(&db, file_text);
         assert!(!symbols.is_empty(), "Should have parsed the package");
-        
+
         // When we convert to a model
         let model = model_from_symbols(&symbols);
-        
+
         // Then the model should have one package element
         assert_eq!(model.elements.len(), 1, "Should have one element");
         assert_eq!(model.roots.len(), 1, "Should have one root element");
-        
+
         // The element should be a Package with the correct name
         let root_id = &model.roots[0];
-        let element = model.elements.get(root_id).expect("Root element should exist");
+        let element = model
+            .elements
+            .get(root_id)
+            .expect("Root element should exist");
         assert_eq!(element.kind, super::super::model::ElementKind::Package);
         assert_eq!(element.name.as_deref(), Some("TestPackage"));
     }
@@ -454,25 +480,33 @@ mod tests {
             }
         "#;
         let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
-        
+
         let symbols = file_symbols_from_text(&db, file_text);
         let model = model_from_symbols(&symbols);
-        
+
         // Should have: Vehicle (package), Car (part def), Engine (part def)
         assert_eq!(model.elements.len(), 3, "Should have 3 elements");
         assert_eq!(model.roots.len(), 1, "Should have one root (Vehicle)");
-        
+
         // Check that Car is owned by Vehicle
-        let car = model.elements.values()
+        let car = model
+            .elements
+            .values()
             .find(|e| e.name.as_deref() == Some("Car"))
             .expect("Car should exist");
         assert_eq!(car.kind, super::super::model::ElementKind::PartDefinition);
         assert!(car.owner.is_some(), "Car should have an owner");
-        
+
         // Owner is now referenced by element_id (UUID), verify it exists
-        let owner = model.elements.get(car.owner.as_ref().unwrap())
+        let owner = model
+            .elements
+            .get(car.owner.as_ref().unwrap())
             .expect("Owner should exist in model");
-        assert_eq!(owner.name.as_deref(), Some("Vehicle"), "Owner should be Vehicle");
+        assert_eq!(
+            owner.name.as_deref(),
+            Some("Vehicle"),
+            "Owner should be Vehicle"
+        );
     }
 
     #[test]
@@ -486,52 +520,70 @@ mod tests {
             }
         "#;
         let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
-        
+
         let symbols = file_symbols_from_text(&db, file_text);
         let model = model_from_symbols(&symbols);
-        
+
         // Should have relationships
         assert!(!model.relationships.is_empty(), "Should have relationships");
-        
+
         // Find the specialization from Car to Vehicle
-        let specialization = model.relationships.iter()
+        let specialization = model
+            .relationships
+            .iter()
             .find(|r| r.kind == super::super::model::RelationshipKind::Specialization)
             .expect("Should have a specialization");
-        
+
         // Source and target are now UUIDs, verify by looking up the elements
-        let source_elem = model.elements.get(&specialization.source)
+        let source_elem = model
+            .elements
+            .get(&specialization.source)
             .expect("Source element should exist");
-        let target_elem = model.elements.get(&specialization.target)
+        let target_elem = model
+            .elements
+            .get(&specialization.target)
             .expect("Target element should exist");
-        
-        assert_eq!(source_elem.name.as_deref(), Some("Car"), "Source should be Car");
-        assert_eq!(target_elem.name.as_deref(), Some("Vehicle"), "Target should be Vehicle");
+
+        assert_eq!(
+            source_elem.name.as_deref(),
+            Some("Car"),
+            "Source should be Car"
+        );
+        assert_eq!(
+            target_elem.name.as_deref(),
+            Some("Vehicle"),
+            "Target should be Vehicle"
+        );
     }
 
     #[test]
     fn test_roundtrip_through_xmi() {
-        use super::super::{Xmi, ModelFormat};
-        
+        use super::super::{ModelFormat, Xmi};
+
         // Given a database with a simple model (just the root package)
         let db = RootDatabase::new();
         let sysml = "package Vehicles;";
         let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
-        
+
         let symbols = file_symbols_from_text(&db, file_text);
         let model = model_from_symbols(&symbols);
-        
+
         // Verify our model has what we expect
         assert_eq!(model.elements.len(), 1, "Should have one package");
-        
+
         // When we write to XMI and read back
         let xmi_bytes = Xmi.write(&model).expect("Should write XMI");
         let roundtrip_model = Xmi.read(&xmi_bytes).expect("Should read XMI");
-        
+
         // Then the element count should match (at least the roots)
-        assert!(!roundtrip_model.elements.is_empty(), 
-            "Should have at least one element after roundtrip");
-        assert!(!roundtrip_model.roots.is_empty(),
-            "Should have at least one root after roundtrip");
+        assert!(
+            !roundtrip_model.elements.is_empty(),
+            "Should have at least one element after roundtrip"
+        );
+        assert!(
+            !roundtrip_model.roots.is_empty(),
+            "Should have at least one root after roundtrip"
+        );
     }
 
     // ========== symbols_from_model() tests ==========
@@ -540,10 +592,10 @@ mod tests {
     fn test_symbols_from_empty_model() {
         // Given an empty model
         let model = Model::new();
-        
+
         // When we convert to symbols
         let symbols = symbols_from_model(&model);
-        
+
         // Then we should get no symbols
         assert!(symbols.is_empty(), "Empty model should produce no symbols");
     }
@@ -555,10 +607,10 @@ mod tests {
         let pkg = Element::new(ElementId::new("TestPackage"), ElementKind::Package)
             .with_name("TestPackage");
         model.add_element(pkg);
-        
+
         // When we convert to symbols
         let symbols = symbols_from_model(&model);
-        
+
         // Then we should get one symbol
         assert_eq!(symbols.len(), 1, "Should have one symbol");
         assert_eq!(symbols[0].name.as_ref(), "TestPackage");
@@ -570,33 +622,42 @@ mod tests {
     fn test_symbols_from_model_with_part_definitions() {
         // Given a model with part definitions
         let mut model = Model::new();
-        
-        let pkg = Element::new(ElementId::new("Vehicle"), ElementKind::Package)
-            .with_name("Vehicle");
+
+        let pkg =
+            Element::new(ElementId::new("Vehicle"), ElementKind::Package).with_name("Vehicle");
         model.add_element(pkg);
-        
+
         let car = Element::new(ElementId::new("Vehicle::Car"), ElementKind::PartDefinition)
             .with_name("Car")
             .with_owner(ElementId::new("Vehicle"));
         model.add_element(car);
-        
-        let engine = Element::new(ElementId::new("Vehicle::Engine"), ElementKind::PartDefinition)
-            .with_name("Engine")
-            .with_owner(ElementId::new("Vehicle"));
+
+        let engine = Element::new(
+            ElementId::new("Vehicle::Engine"),
+            ElementKind::PartDefinition,
+        )
+        .with_name("Engine")
+        .with_owner(ElementId::new("Vehicle"));
         model.add_element(engine);
-        
+
         // When we convert to symbols
         let symbols = symbols_from_model(&model);
-        
+
         // Then we should get 3 symbols with correct kinds
         assert_eq!(symbols.len(), 3, "Should have 3 symbols");
-        
-        let car_sym = symbols.iter().find(|s| s.name.as_ref() == "Car").expect("Should have Car");
+
+        let car_sym = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "Car")
+            .expect("Should have Car");
         assert_eq!(car_sym.kind, SymbolKind::PartDef);
         // Note: Without qualified_name set in the Element, this falls back to just the name
         assert_eq!(car_sym.qualified_name.as_ref(), "Car");
-        
-        let engine_sym = symbols.iter().find(|s| s.name.as_ref() == "Engine").expect("Should have Engine");
+
+        let engine_sym = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "Engine")
+            .expect("Should have Engine");
         assert_eq!(engine_sym.kind, SymbolKind::PartDef);
     }
 
@@ -604,15 +665,14 @@ mod tests {
     fn test_symbols_from_model_with_relationships() {
         // Given a model with specialization: Car :> Vehicle
         let mut model = Model::new();
-        
+
         let vehicle = Element::new(ElementId::new("Vehicle"), ElementKind::PartDefinition)
             .with_name("Vehicle");
         model.add_element(vehicle);
-        
-        let car = Element::new(ElementId::new("Car"), ElementKind::PartDefinition)
-            .with_name("Car");
+
+        let car = Element::new(ElementId::new("Car"), ElementKind::PartDefinition).with_name("Car");
         model.add_element(car);
-        
+
         // Add specialization relationship
         let rel = Relationship::new(
             ElementId::new("rel_1"),
@@ -621,19 +681,27 @@ mod tests {
             ElementId::new("Vehicle"),
         );
         model.add_relationship(rel);
-        
+
         // When we convert to symbols
         let symbols = symbols_from_model(&model);
-        
+
         // Then Car should have a specialization relationship
-        let car_sym = symbols.iter().find(|s| s.name.as_ref() == "Car").expect("Should have Car");
-        assert!(!car_sym.relationships.is_empty(), "Car should have relationships");
-        
-        let spec_rel = car_sym.relationships.iter()
+        let car_sym = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "Car")
+            .expect("Should have Car");
+        assert!(
+            !car_sym.relationships.is_empty(),
+            "Car should have relationships"
+        );
+
+        let spec_rel = car_sym
+            .relationships
+            .iter()
             .find(|r| r.kind == HirRelKind::Specializes)
             .expect("Should have specialization");
         assert_eq!(spec_rel.target.as_ref(), "Vehicle");
-        
+
         // Should also be in supertypes
         assert!(car_sym.supertypes.iter().any(|s| s.as_ref() == "Vehicle"));
     }
@@ -642,18 +710,21 @@ mod tests {
     fn test_symbols_from_model_with_documentation() {
         // Given a model with documented element
         let mut model = Model::new();
-        
-        let mut pkg = Element::new(ElementId::new("MyPackage"), ElementKind::Package)
-            .with_name("MyPackage");
+
+        let mut pkg =
+            Element::new(ElementId::new("MyPackage"), ElementKind::Package).with_name("MyPackage");
         pkg.documentation = Some("This is a documented package".into());
         model.add_element(pkg);
-        
+
         // When we convert to symbols
         let symbols = symbols_from_model(&model);
-        
+
         // Then the symbol should have documentation
         assert_eq!(symbols.len(), 1);
-        assert_eq!(symbols[0].doc.as_deref(), Some("This is a documented package"));
+        assert_eq!(
+            symbols[0].doc.as_deref(),
+            Some("This is a documented package")
+        );
     }
 
     #[test]
@@ -668,38 +739,44 @@ mod tests {
             }
         "#;
         let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
-        
+
         // SysML → HirSymbols
         let original_symbols = file_symbols_from_text(&db, file_text);
-        
+
         // HirSymbols → Model
         let model = model_from_symbols(&original_symbols);
-        
+
         // Model → HirSymbols (the new function)
         let roundtrip_symbols = symbols_from_model(&model);
-        
+
         // Should have same number of non-relationship symbols
         let original_count = original_symbols.len();
         let roundtrip_count = roundtrip_symbols.len();
-        
-        assert_eq!(roundtrip_count, original_count, 
-            "Roundtrip should preserve symbol count: {} → {}", 
-            original_count, roundtrip_count);
-        
+
+        assert_eq!(
+            roundtrip_count, original_count,
+            "Roundtrip should preserve symbol count: {} → {}",
+            original_count, roundtrip_count
+        );
+
         // Names should match
         for orig in &original_symbols {
-            let found = roundtrip_symbols.iter()
+            let found = roundtrip_symbols
+                .iter()
                 .find(|s| s.qualified_name == orig.qualified_name);
-            assert!(found.is_some(), 
-                "Symbol {} should exist after roundtrip", orig.qualified_name);
+            assert!(
+                found.is_some(),
+                "Symbol {} should exist after roundtrip",
+                orig.qualified_name
+            );
         }
     }
 
     #[test]
     fn test_apply_metadata_to_host() {
         use crate::ide::AnalysisHost;
-        use crate::interchange::metadata::{ImportMetadata, ElementMeta};
         use crate::interchange::integrate::apply_metadata_to_host;
+        use crate::interchange::metadata::{ElementMeta, ImportMetadata};
 
         // Create a host with a simple SysML file
         let mut host = AnalysisHost::new();
@@ -720,15 +797,25 @@ package TestPkg {
 
         // Verify element IDs were applied
         let analysis = host.analysis();
-        
-        let pkg = analysis.symbol_index().lookup_qualified("TestPkg")
-            .expect("Should find TestPkg");
-        assert_eq!(pkg.element_id.as_ref(), "uuid-pkg-1", 
-            "Package should have metadata element_id");
 
-        let car = analysis.symbol_index().lookup_qualified("TestPkg::Car")
+        let pkg = analysis
+            .symbol_index()
+            .lookup_qualified("TestPkg")
+            .expect("Should find TestPkg");
+        assert_eq!(
+            pkg.element_id.as_ref(),
+            "uuid-pkg-1",
+            "Package should have metadata element_id"
+        );
+
+        let car = analysis
+            .symbol_index()
+            .lookup_qualified("TestPkg::Car")
             .expect("Should find TestPkg::Car");
-        assert_eq!(car.element_id.as_ref(), "uuid-car-1",
-            "Car should have metadata element_id");
+        assert_eq!(
+            car.element_id.as_ref(),
+            "uuid-car-1",
+            "Car should have metadata element_id"
+        );
     }
 }

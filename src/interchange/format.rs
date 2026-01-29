@@ -1,7 +1,7 @@
 //! Common trait for model interchange formats.
 
-use super::model::Model;
 use super::InterchangeError;
+use super::model::Model;
 
 /// Capabilities supported by a format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

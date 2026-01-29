@@ -192,8 +192,8 @@ use reader::KparReader;
 mod writer {
     use super::*;
     use std::io::{Cursor, Write};
-    use zip::write::SimpleFileOptions;
     use zip::ZipWriter;
+    use zip::write::SimpleFileOptions;
 
     /// KPAR archive writer.
     pub struct KparWriter {
@@ -210,26 +210,30 @@ mod writer {
             let mut buffer = Cursor::new(Vec::new());
             let mut zip = ZipWriter::new(&mut buffer);
 
-            let options = SimpleFileOptions::default()
-                .compression_method(zip::CompressionMethod::Deflated);
+            let options =
+                SimpleFileOptions::default().compression_method(zip::CompressionMethod::Deflated);
 
             // Write manifest
             let manifest = generate_manifest(model);
-            zip.start_file(paths::MANIFEST, options)
-                .map_err(|e| InterchangeError::archive(format!("Failed to create manifest: {e}")))?;
+            zip.start_file(paths::MANIFEST, options).map_err(|e| {
+                InterchangeError::archive(format!("Failed to create manifest: {e}"))
+            })?;
             zip.write_all(manifest.as_bytes())
                 .map_err(|e| InterchangeError::archive(format!("Failed to write manifest: {e}")))?;
 
             // Write model as XMI
             let xmi_content = self.xmi.write(model)?;
             zip.start_file(format!("{}main.xmi", paths::MODEL_DIR), options)
-                .map_err(|e| InterchangeError::archive(format!("Failed to create XMI file: {e}")))?;
+                .map_err(|e| {
+                    InterchangeError::archive(format!("Failed to create XMI file: {e}"))
+                })?;
             zip.write_all(&xmi_content)
                 .map_err(|e| InterchangeError::archive(format!("Failed to write XMI: {e}")))?;
 
             // Finish the archive
-            zip.finish()
-                .map_err(|e| InterchangeError::archive(format!("Failed to finalize archive: {e}")))?;
+            zip.finish().map_err(|e| {
+                InterchangeError::archive(format!("Failed to finalize archive: {e}"))
+            })?;
 
             Ok(buffer.into_inner())
         }
@@ -237,16 +241,8 @@ mod writer {
 
     /// Generate a simple manifest XML for the model.
     fn generate_manifest(model: &Model) -> String {
-        let name = model
-            .metadata
-            .name
-            .as_deref()
-            .unwrap_or("unnamed");
-        let version = model
-            .metadata
-            .version
-            .as_deref()
-            .unwrap_or("1.0.0");
+        let name = model.metadata.name.as_deref().unwrap_or("unnamed");
+        let version = model.metadata.version.as_deref().unwrap_or("1.0.0");
 
         format!(
             r#"<?xml version="1.0" encoding="UTF-8"?>
@@ -382,9 +378,7 @@ mod tests {
         #[test]
         fn test_kpar_write_creates_valid_zip() {
             let mut model = Model::new();
-            model.add_element(
-                Element::new("pkg1", ElementKind::Package).with_name("TestPackage"),
-            );
+            model.add_element(Element::new("pkg1", ElementKind::Package).with_name("TestPackage"));
 
             let kpar_bytes = Kpar.write(&model).expect("Failed to write KPAR");
 
@@ -431,9 +425,7 @@ mod tests {
 
             let mut model = Model::new();
             model.metadata.name = Some("ManifestTest".to_string());
-            model.add_element(
-                Element::new("pkg1", ElementKind::Package).with_name("Test"),
-            );
+            model.add_element(Element::new("pkg1", ElementKind::Package).with_name("Test"));
 
             let kpar_bytes = Kpar.write(&model).expect("Write failed");
 

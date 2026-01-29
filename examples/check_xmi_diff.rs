@@ -25,8 +25,14 @@ fn main() {
                 let start = if i > 100 { i - 100 } else { 0 };
                 let end = std::cmp::min(i + 100, write1.len());
                 println!("\nFirst diff at byte {}", i);
-                println!("Context from write1:\n{}", String::from_utf8_lossy(&write1[start..end]));
-                println!("\nContext from write2:\n{}", String::from_utf8_lossy(&write2[start..end]));
+                println!(
+                    "Context from write1:\n{}",
+                    String::from_utf8_lossy(&write1[start..end])
+                );
+                println!(
+                    "\nContext from write2:\n{}",
+                    String::from_utf8_lossy(&write2[start..end])
+                );
                 break;
             }
         }

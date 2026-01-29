@@ -72,12 +72,16 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::CalculationUsage
             | SymbolKind::ReferenceUsage
             | SymbolKind::OccurrenceUsage
-            | SymbolKind::FlowUsage => TokenType::Property,
+            | SymbolKind::FlowUsage
+            | SymbolKind::ViewUsage
+            | SymbolKind::ViewpointUsage
+            | SymbolKind::RenderingUsage => TokenType::Property,
             // Other types
             SymbolKind::Alias => TokenType::Variable,
             SymbolKind::Import => TokenType::Namespace,
             SymbolKind::Comment => TokenType::Comment,
             SymbolKind::Dependency => TokenType::Variable,
+            SymbolKind::ExposeRelationship => TokenType::Variable,
             SymbolKind::Other => TokenType::Variable,
         }
     }

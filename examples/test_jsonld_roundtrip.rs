@@ -1,9 +1,9 @@
 //! Test JSON-LD roundtrip with attribute preservation.
 
 use std::sync::Arc;
-use syster::interchange::model::{Element, ElementId, ElementKind, Model, PropertyValue};
 use syster::interchange::JsonLd;
 use syster::interchange::ModelFormat;
+use syster::interchange::model::{Element, ElementId, ElementKind, Model, PropertyValue};
 
 fn main() {
     println!("Testing JSON-LD roundtrip with attributes...\n");
@@ -48,7 +48,10 @@ fn main() {
     let bytes = jsonld.write(&model).expect("Failed to export JSON-LD");
     let json_str = String::from_utf8_lossy(&bytes);
     println!("JSON-LD size: {} bytes", bytes.len());
-    println!("\n=== JSON-LD Output ===\n{}\n", &json_str[..json_str.len().min(2000)]);
+    println!(
+        "\n=== JSON-LD Output ===\n{}\n",
+        &json_str[..json_str.len().min(2000)]
+    );
 
     // Read back
     let model2: Model = jsonld.read(&bytes).expect("Failed to import JSON-LD");
@@ -59,14 +62,38 @@ fn main() {
     let mut failed = 0;
 
     // Check package
-    let pkg2 = model2.get(&ElementId::new("pkg-001")).expect("Package missing");
-    check("Package name", pkg2.name.as_deref() == Some("TestPackage"), &mut passed, &mut failed);
-    check("Package shortName", pkg2.short_name.as_deref() == Some("TP"), &mut passed, &mut failed);
+    let pkg2 = model2
+        .get(&ElementId::new("pkg-001"))
+        .expect("Package missing");
+    check(
+        "Package name",
+        pkg2.name.as_deref() == Some("TestPackage"),
+        &mut passed,
+        &mut failed,
+    );
+    check(
+        "Package shortName",
+        pkg2.short_name.as_deref() == Some("TP"),
+        &mut passed,
+        &mut failed,
+    );
 
     // Check classifier
-    let cls2 = model2.get(&ElementId::new("cls-001")).expect("Classifier missing");
-    check("Classifier name", cls2.name.as_deref() == Some("TestClassifier"), &mut passed, &mut failed);
-    check("Classifier isAbstract", cls2.is_abstract, &mut passed, &mut failed);
+    let cls2 = model2
+        .get(&ElementId::new("cls-001"))
+        .expect("Classifier missing");
+    check(
+        "Classifier name",
+        cls2.name.as_deref() == Some("TestClassifier"),
+        &mut passed,
+        &mut failed,
+    );
+    check(
+        "Classifier isAbstract",
+        cls2.is_abstract,
+        &mut passed,
+        &mut failed,
+    );
     check(
         "Classifier documentation",
         cls2.documentation.as_deref() == Some("This is a documented classifier"),
@@ -87,14 +114,22 @@ fn main() {
     );
     check(
         "Classifier someString property",
-        cls2.properties.get(&Arc::from("someString")) == Some(&PropertyValue::String(Arc::from("hello"))),
+        cls2.properties.get(&Arc::from("someString"))
+            == Some(&PropertyValue::String(Arc::from("hello"))),
         &mut passed,
         &mut failed,
     );
 
     // Check feature
-    let feat2 = model2.get(&ElementId::new("feat-001")).expect("Feature missing");
-    check("Feature name", feat2.name.as_deref() == Some("TestFeature"), &mut passed, &mut failed);
+    let feat2 = model2
+        .get(&ElementId::new("feat-001"))
+        .expect("Feature missing");
+    check(
+        "Feature name",
+        feat2.name.as_deref() == Some("TestFeature"),
+        &mut passed,
+        &mut failed,
+    );
     check(
         "Feature isComposite property",
         feat2.properties.get(&Arc::from("isComposite")) == Some(&PropertyValue::Boolean(true)),

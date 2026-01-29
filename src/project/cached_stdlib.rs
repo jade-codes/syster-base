@@ -30,7 +30,9 @@ impl CachedHost {
         let mut host = AnalysisHost::new();
 
         if !stdlib_path.exists() || !stdlib_path.is_dir() {
-            return Self { host: Arc::new(host) };
+            return Self {
+                host: Arc::new(host),
+            };
         }
 
         // Collect all file paths
@@ -55,7 +57,9 @@ impl CachedHost {
         host.mark_dirty();
         let _ = host.analysis(); // Forces index rebuild
 
-        Self { host: Arc::new(host) }
+        Self {
+            host: Arc::new(host),
+        }
     }
 }
 
@@ -160,7 +164,11 @@ mod tests {
         let host = CachedStdLib::analysis_host();
 
         // Should have loaded many files (stdlib has ~90+ files)
-        assert!(host.file_count() > 50, "Expected 50+ stdlib files, got {}", host.file_count());
+        assert!(
+            host.file_count() > 50,
+            "Expected 50+ stdlib files, got {}",
+            host.file_count()
+        );
     }
 
     #[test]
@@ -186,13 +194,17 @@ mod tests {
     #[test]
     fn test_cached_host_has_built_index() {
         let mut host = CachedStdLib::analysis_host();
-        
+
         // Index should already be built (not dirty)
         let analysis = host.analysis();
         let symbol_count = analysis.symbol_index().all_symbols().count();
-        
+
         // Should have many symbols from stdlib
-        assert!(symbol_count > 100, "Expected 100+ symbols, got {}", symbol_count);
+        assert!(
+            symbol_count > 100,
+            "Expected 100+ symbols, got {}",
+            symbol_count
+        );
     }
 
     #[test]

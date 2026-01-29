@@ -4,9 +4,9 @@ use std::path::PathBuf;
 use super::file_loader;
 
 #[cfg(feature = "interchange")]
-use crate::interchange::metadata::ImportMetadata;
-#[cfg(feature = "interchange")]
 use crate::interchange::integrate::apply_metadata_to_host;
+#[cfg(feature = "interchange")]
+use crate::interchange::metadata::ImportMetadata;
 
 /// Loads workspace files on demand
 pub struct WorkspaceLoader;
@@ -91,7 +91,7 @@ impl WorkspaceLoader {
         }
 
         let mut metadata_files = Vec::new();
-        
+
         // Recursively find metadata files
         if let Err(e) = self.collect_metadata_files_recursive(&path, &mut metadata_files) {
             return Err(format!("Error scanning for metadata files: {}", e));
@@ -132,8 +132,7 @@ impl WorkspaceLoader {
             .map_err(|e| format!("Failed to read directory {}: {}", dir.display(), e))?;
 
         for entry in entries {
-            let entry = entry
-                .map_err(|e| format!("Failed to read directory entry: {}", e))?;
+            let entry = entry.map_err(|e| format!("Failed to read directory entry: {}", e))?;
             let path = entry.path();
 
             if path.is_dir() {
@@ -142,9 +141,10 @@ impl WorkspaceLoader {
             } else if path.is_file() {
                 // Check if it's a metadata file
                 if let Some(file_name) = path.file_name().and_then(|n| n.to_str()) {
-                    if file_name.ends_with(".metadata") 
-                        || file_name.ends_with(".metadata.json") 
-                        || file_name == "meta.json" {
+                    if file_name.ends_with(".metadata")
+                        || file_name.ends_with(".metadata.json")
+                        || file_name == "meta.json"
+                    {
                         results.push(path);
                     }
                 }

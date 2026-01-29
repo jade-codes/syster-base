@@ -337,10 +337,7 @@ impl ElementKind {
     /// Parse from XMI type name.
     pub fn from_xmi_type(xmi_type: &str) -> Self {
         // Strip namespace prefix if present
-        let type_name = xmi_type
-            .split(':')
-            .last()
-            .unwrap_or(xmi_type);
+        let type_name = xmi_type.split(':').last().unwrap_or(xmi_type);
 
         match type_name {
             "Package" => Self::Package,
@@ -740,13 +737,23 @@ impl Model {
     }
 
     /// Get relationships where the given element is the source.
-    pub fn relationships_from<'a>(&'a self, source: &'a ElementId) -> impl Iterator<Item = &'a Relationship> {
-        self.relationships.iter().filter(move |r| &r.source == source)
+    pub fn relationships_from<'a>(
+        &'a self,
+        source: &'a ElementId,
+    ) -> impl Iterator<Item = &'a Relationship> {
+        self.relationships
+            .iter()
+            .filter(move |r| &r.source == source)
     }
 
     /// Get relationships where the given element is the target.
-    pub fn relationships_to<'a>(&'a self, target: &'a ElementId) -> impl Iterator<Item = &'a Relationship> {
-        self.relationships.iter().filter(move |r| &r.target == target)
+    pub fn relationships_to<'a>(
+        &'a self,
+        target: &'a ElementId,
+    ) -> impl Iterator<Item = &'a Relationship> {
+        self.relationships
+            .iter()
+            .filter(move |r| &r.target == target)
     }
 
     /// Get the number of elements.
@@ -818,7 +825,10 @@ mod tests {
 
         assert_eq!(model.element_count(), 2);
         assert_eq!(model.roots.len(), 1);
-        assert_eq!(model.get(&ElementId::new("pkg1")).unwrap().name.as_deref(), Some("Root"));
+        assert_eq!(
+            model.get(&ElementId::new("pkg1")).unwrap().name.as_deref(),
+            Some("Root")
+        );
     }
 
     #[test]

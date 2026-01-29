@@ -49,9 +49,9 @@
 //! let jsonld_bytes = JsonLd.write(&model)?;
 //! ```
 
+pub mod decompile;
 mod error;
 mod format;
-pub mod decompile;
 pub mod integrate;
 mod jsonld;
 mod kpar;
@@ -60,16 +60,20 @@ pub mod model;
 pub mod recompile;
 mod xmi;
 
-pub use decompile::{decompile, decompile_with_source, DecompileResult};
+pub use decompile::{DecompileResult, decompile, decompile_with_source};
 pub use error::InterchangeError;
 pub use format::{FormatCapability, ModelFormat};
-pub use integrate::{model_from_database, model_from_symbols, symbols_from_model, apply_metadata_to_host};
+pub use integrate::{
+    apply_metadata_to_host, model_from_database, model_from_symbols, symbols_from_model,
+};
 pub use jsonld::JsonLd;
 pub use kpar::{Kpar, KparManifest};
 pub use metadata::{
     Dependency, ElementMeta, ImportMetadata, PackageMetadata, ProjectMetadata, SourceInfo,
 };
-pub use model::{Element, ElementId, ElementKind, Model, ModelMetadata, Relationship, RelationshipKind};
+pub use model::{
+    Element, ElementId, ElementKind, Model, ModelMetadata, Relationship, RelationshipKind,
+};
 pub use recompile::{restore_element_ids, restore_ids_from_symbols};
 pub use xmi::Xmi;
 

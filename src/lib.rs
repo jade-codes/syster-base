@@ -39,6 +39,7 @@ pub mod ide;
 pub mod project;
 
 /// Model interchange formats: XMI, KPAR, JSON-LD
+#[cfg(feature = "interchange")]
 pub mod interchange;
 
 // ============================================================================

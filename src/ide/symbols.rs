@@ -138,6 +138,7 @@ mod tests {
             doc: None,
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
         }
     }
 

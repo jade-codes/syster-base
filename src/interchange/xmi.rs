@@ -86,10 +86,11 @@ impl ModelFormat for Xmi {
             .map_err(|e| InterchangeError::xml(format!("Invalid UTF-8: {e}")))?;
 
         // Accept either xmi:XMI root or sysml:Namespace/kerml:Namespace root
-        if !content.contains("xmi:XMI") 
-            && !content.contains("XMI") 
+        if !content.contains("xmi:XMI")
+            && !content.contains("XMI")
             && !content.contains("sysml:Namespace")
-            && !content.contains("kerml:Namespace") {
+            && !content.contains("kerml:Namespace")
+        {
             return Err(InterchangeError::xml("Missing XMI/SysML root element"));
         }
 
@@ -103,11 +104,11 @@ impl ModelFormat for Xmi {
 
 #[cfg(feature = "interchange")]
 mod reader {
-    use super::*;
-    use quick_xml::events::{BytesStart, Event};
-    use quick_xml::Reader;
-    use indexmap::IndexMap;
     use super::super::model::PropertyValue;
+    use super::*;
+    use indexmap::IndexMap;
+    use quick_xml::Reader;
+    use quick_xml::events::{BytesStart, Event};
 
     /// XMI document reader.
     pub struct XmiReader {
@@ -188,14 +189,20 @@ mod reader {
                 .map_err(|e| InterchangeError::xml(format!("Invalid tag name: {e}")))?;
 
             // Skip the XMI root element or namespace root
-            if tag_name == "xmi:XMI" || tag_name == "XMI" 
-               || tag_name == "sysml:Namespace" || tag_name == "kerml:Namespace" {
+            if tag_name == "xmi:XMI"
+                || tag_name == "XMI"
+                || tag_name == "sysml:Namespace"
+                || tag_name == "kerml:Namespace"
+            {
                 self.depth_stack.push(StackEntry::Root);
                 return Ok(());
             }
 
             // Check if this is a containment wrapper (but NOT ownedRelationship or ownedRelatedElement - we want to parse those)
-            if is_containment_tag(tag_name) && tag_name != "ownedRelationship" && tag_name != "ownedRelatedElement" {
+            if is_containment_tag(tag_name)
+                && tag_name != "ownedRelationship"
+                && tag_name != "ownedRelatedElement"
+            {
                 self.depth_stack.push(StackEntry::Containment);
                 return Ok(());
             }
@@ -213,7 +220,7 @@ mod reader {
             let mut body: Option<String> = None;
             let mut href: Option<String> = None;
             let mut extra_attrs: Vec<(String, String)> = Vec::new();
-            
+
             // For relationship parsing
             let mut source_ref: Option<String> = None;
             let mut target_ref: Option<String> = None;
@@ -241,10 +248,10 @@ mod reader {
                     "body" => body = Some(value),
                     "href" => href = Some(value),
                     // Relationship source/target references
-                    "source" | "relatedElement" | "subclassifier" | "typedFeature" 
+                    "source" | "relatedElement" | "subclassifier" | "typedFeature"
                     | "redefiningFeature" | "subsettingFeature" => source_ref = Some(value),
-                    "target" | "superclassifier" | "redefinedFeature" 
-                    | "subsettedFeature" | "general" | "specific" => target_ref = Some(value),
+                    "target" | "superclassifier" | "redefinedFeature" | "subsettedFeature"
+                    | "general" | "specific" => target_ref = Some(value),
                     _ => {
                         // Store other attributes for roundtrip
                         if !key.starts_with("xmlns") && !key.starts_with("xmi:version") {
@@ -276,31 +283,41 @@ mod reader {
                 if let Some(sn) = short_name {
                     element.short_name = Some(Arc::from(sn.as_str()));
                 }
-                
+
                 // Set boolean flags
                 element.is_abstract = is_abstract;
-                
+
                 // Store isStandard in properties
                 if is_standard {
-                    element.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
+                    element
+                        .properties
+                        .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
                 }
                 if is_composite {
-                    element.properties.insert(Arc::from("isComposite"), PropertyValue::Boolean(true));
+                    element
+                        .properties
+                        .insert(Arc::from("isComposite"), PropertyValue::Boolean(true));
                 }
-                
+
                 // Store documentation body
                 if let Some(b) = body {
                     element.documentation = Some(Arc::from(b.as_str()));
                 }
-                
+
                 // Store href for cross-file references
                 if let Some(h) = href {
-                    element.properties.insert(Arc::from("href"), PropertyValue::String(Arc::from(h.as_str())));
+                    element.properties.insert(
+                        Arc::from("href"),
+                        PropertyValue::String(Arc::from(h.as_str())),
+                    );
                 }
-                
+
                 // Store extra attributes
                 for (key, value) in extra_attrs {
-                    element.properties.insert(Arc::from(key.as_str()), PropertyValue::String(Arc::from(value.as_str())));
+                    element.properties.insert(
+                        Arc::from(key.as_str()),
+                        PropertyValue::String(Arc::from(value.as_str())),
+                    );
                 }
 
                 // Set owner if we have a parent, and track child order
@@ -312,17 +329,15 @@ mod reader {
                         .or_insert_with(Vec::new)
                         .push(id.clone());
                 }
-                
+
                 // If this is a relationship kind, also create a Relationship
                 if kind.is_relationship() {
-                    if let (Some(src), Some(tgt)) = (source_ref.or_else(|| self.parent_stack.last().cloned()), target_ref) {
+                    if let (Some(src), Some(tgt)) = (
+                        source_ref.or_else(|| self.parent_stack.last().cloned()),
+                        target_ref,
+                    ) {
                         let rel_kind = element_kind_to_relationship_kind(kind);
-                        let relationship = Relationship::new(
-                            id.clone(),
-                            rel_kind,
-                            src,
-                            tgt,
-                        );
+                        let relationship = Relationship::new(id.clone(), rel_kind, src, tgt);
                         self.relationships.push(relationship);
                     }
                 }
@@ -402,7 +417,7 @@ mod reader {
         // Note: ownedRelationship and ownedRelatedElement are NOT containment -
         // they have xsi:type and should be parsed as elements
     }
-    
+
     /// Convert ElementKind to RelationshipKind for relationship elements.
     fn element_kind_to_relationship_kind(kind: ElementKind) -> RelationshipKind {
         match kind {
@@ -431,8 +446,8 @@ use reader::XmiReader;
 #[cfg(feature = "interchange")]
 mod writer {
     use super::*;
-    use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
     use quick_xml::Writer;
+    use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
     use std::io::Cursor;
 
     /// XMI document writer.
@@ -495,32 +510,41 @@ mod writer {
             if let Some(ref short_name) = element.short_name {
                 elem_start.push_attribute(("shortName", short_name.as_ref()));
             }
-            
+
             // Write boolean flags
             if element.is_abstract {
                 elem_start.push_attribute(("isAbstract", "true"));
             }
-            if let Some(super::super::model::PropertyValue::Boolean(true)) = element.properties.get("isStandard") {
+            if let Some(super::super::model::PropertyValue::Boolean(true)) =
+                element.properties.get("isStandard")
+            {
                 elem_start.push_attribute(("isStandard", "true"));
             }
-            if let Some(super::super::model::PropertyValue::Boolean(true)) = element.properties.get("isComposite") {
+            if let Some(super::super::model::PropertyValue::Boolean(true)) =
+                element.properties.get("isComposite")
+            {
                 elem_start.push_attribute(("isComposite", "true"));
             }
-            
+
             // Write documentation body if present
             if let Some(ref doc) = element.documentation {
                 elem_start.push_attribute(("body", doc.as_ref()));
             }
-            
+
             // Write href if present (for cross-file references)
-            if let Some(super::super::model::PropertyValue::String(href)) = element.properties.get("href") {
+            if let Some(super::super::model::PropertyValue::String(href)) =
+                element.properties.get("href")
+            {
                 elem_start.push_attribute(("href", href.as_ref()));
             }
-            
+
             // Write other stored attributes
             for (key, value) in &element.properties {
                 // Skip ones we've already handled
-                if key.as_ref() == "isStandard" || key.as_ref() == "isComposite" || key.as_ref() == "href" {
+                if key.as_ref() == "isStandard"
+                    || key.as_ref() == "isComposite"
+                    || key.as_ref() == "href"
+                {
                     continue;
                 }
                 if let super::super::model::PropertyValue::String(s) = value {
@@ -535,7 +559,7 @@ mod writer {
                 writer
                     .write_event(Event::Start(elem_start))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-                
+
                 // Write all owned children in order, choosing wrapper based on kind
                 for child_id in &element.owned_elements {
                     if let Some(child) = model.get(child_id) {
@@ -545,7 +569,7 @@ mod writer {
                         } else {
                             "ownedMember"
                         };
-                        
+
                         writer
                             .write_event(Event::Start(BytesStart::new(wrapper)))
                             .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
@@ -570,7 +594,7 @@ mod writer {
 
             Ok(())
         }
-        
+
         #[allow(dead_code)]
         fn write_relationship<W: std::io::Write>(
             &self,
@@ -582,12 +606,12 @@ mod writer {
             writer
                 .write_event(Event::Start(BytesStart::new("ownedRelationship")))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-            
+
             // Write the relationship element
             let rel_type = relationship_kind_to_xmi_type(rel.kind);
             let mut rel_start = BytesStart::new(rel_type);
             rel_start.push_attribute(("xmi:id", rel.id.as_str()));
-            
+
             // Add source and target based on relationship kind
             match rel.kind {
                 RelationshipKind::Specialization => {
@@ -611,20 +635,20 @@ mod writer {
                     rel_start.push_attribute(("target", rel.target.as_str()));
                 }
             }
-            
+
             writer
                 .write_event(Event::Empty(rel_start))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-            
+
             // End ownedRelationship wrapper
             writer
                 .write_event(Event::End(BytesEnd::new("ownedRelationship")))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-            
+
             Ok(())
         }
     }
-    
+
     /// Convert RelationshipKind to XMI type name.
     fn relationship_kind_to_xmi_type(kind: RelationshipKind) -> &'static str {
         match kind {
@@ -733,7 +757,8 @@ mod tests {
     #[test]
     fn test_xmi_validate_valid() {
         let xmi = Xmi;
-        let input = br#"<?xml version="1.0"?><xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"/>"#;
+        let input =
+            br#"<?xml version="1.0"?><xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"/>"#;
         assert!(xmi.validate(input).is_ok());
     }
 
@@ -751,10 +776,7 @@ mod tests {
             element_kind_from_xmi("sysml:PartDefinition"),
             ElementKind::PartDefinition
         );
-        assert_eq!(
-            element_kind_from_xmi("kerml:Feature"),
-            ElementKind::Feature
-        );
+        assert_eq!(element_kind_from_xmi("kerml:Feature"), ElementKind::Feature);
     }
 
     #[test]
@@ -784,7 +806,9 @@ mod tests {
             let model = Xmi.read(xmi_content).expect("Failed to read XMI");
             assert_eq!(model.element_count(), 1);
 
-            let pkg = model.get(&ElementId::new("pkg1")).expect("Package not found");
+            let pkg = model
+                .get(&ElementId::new("pkg1"))
+                .expect("Package not found");
             assert_eq!(pkg.name.as_deref(), Some("MyPackage"));
             assert_eq!(pkg.kind, ElementKind::Package);
         }
@@ -807,7 +831,9 @@ mod tests {
             let model = Xmi.read(xmi_content).expect("Failed to read XMI");
             assert_eq!(model.element_count(), 3);
 
-            let pkg = model.get(&ElementId::new("pkg1")).expect("Package not found");
+            let pkg = model
+                .get(&ElementId::new("pkg1"))
+                .expect("Package not found");
             assert_eq!(pkg.owned_elements.len(), 2);
 
             let car = model.get(&ElementId::new("pd1")).expect("Car not found");
@@ -819,10 +845,7 @@ mod tests {
         #[test]
         fn test_xmi_write_simple_model() {
             let mut model = Model::new();
-            model.add_element(
-                Element::new("pkg1", ElementKind::Package)
-                    .with_name("TestPackage")
-            );
+            model.add_element(Element::new("pkg1", ElementKind::Package).with_name("TestPackage"));
 
             let output = Xmi.write(&model).expect("Failed to write XMI");
             let output_str = String::from_utf8(output).expect("Invalid UTF-8");

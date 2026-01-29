@@ -12,7 +12,7 @@
 
 use std::fs;
 use std::path::Path;
-use syster::interchange::{decompile, ModelFormat, Xmi};
+use syster::interchange::{ModelFormat, Xmi, decompile};
 use syster::syntax::sysml::parser::parse_content;
 
 fn main() {
@@ -24,7 +24,7 @@ fn main() {
     } else {
         // Test a simple built-in example first
         test_simple_example();
-        
+
         // Then test official library if available
         test_official_library();
     }
@@ -32,50 +32,51 @@ fn main() {
 
 fn test_simple_example() {
     println!("=== Testing Simple Example ===\n");
-    
+
     // Create a simple model programmatically
-    use syster::interchange::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
-    
+    use syster::interchange::{
+        Element, ElementId, ElementKind, Model, Relationship, RelationshipKind,
+    };
+
     let mut model = Model::new();
-    
+
     // Package
     let pkg_id = ElementId::from("pkg-001");
-    let mut pkg = Element::new(pkg_id.clone(), ElementKind::Package)
-        .with_name("VehicleModel");
-    
+    let mut pkg = Element::new(pkg_id.clone(), ElementKind::Package).with_name("VehicleModel");
+
     // Part definition
     let vehicle_id = ElementId::from("def-001");
     let vehicle = Element::new(vehicle_id.clone(), ElementKind::PartDefinition)
         .with_name("Vehicle")
         .with_owner(pkg_id.clone());
-    
+
     // Another part definition that specializes Vehicle
     let car_id = ElementId::from("def-002");
     let car = Element::new(car_id.clone(), ElementKind::PartDefinition)
         .with_name("Car")
         .with_owner(pkg_id.clone());
-    
+
     // Part usage
     let engine_id = ElementId::from("usage-001");
     let engine = Element::new(engine_id.clone(), ElementKind::PartUsage)
         .with_name("engine")
         .with_owner(car_id.clone());
-    
+
     // Set up owned elements
     pkg.owned_elements = vec![vehicle_id.clone(), car_id.clone()];
-    
+
     // Add a child to car for engine
     let mut car = Element::new(car_id.clone(), ElementKind::PartDefinition)
         .with_name("Car")
         .with_owner(pkg_id.clone());
     car.owned_elements = vec![engine_id.clone()];
-    
+
     model.elements.insert(pkg_id.clone(), pkg);
     model.elements.insert(vehicle_id.clone(), vehicle);
     model.elements.insert(car_id.clone(), car);
     model.elements.insert(engine_id.clone(), engine);
     model.roots.push(pkg_id.clone());
-    
+
     // Add specialization relationship
     model.relationships.push(Relationship::new(
         "rel-001",
@@ -83,22 +84,22 @@ fn test_simple_example() {
         "def-002",
         "def-001",
     ));
-    
+
     // Decompile to SysML text
     let result = decompile(&model);
-    
+
     println!("Generated SysML text:");
     println!("---");
     println!("{}", result.text);
     println!("---\n");
-    
+
     println!("Metadata:");
     println!("  Elements tracked: {}", result.metadata.elements.len());
     for (qn, meta) in &result.metadata.elements {
         println!("    {} -> {:?}", qn, meta.element_id());
     }
     println!();
-    
+
     // Try to parse the generated text
     match parse_content(&result.text, Path::new("generated.sysml")) {
         Ok(syntax_file) => {
@@ -125,12 +126,15 @@ fn test_file(path: &str) {
                 model.elements.len(),
                 model.relationships.len()
             );
-            
+
             // Decompile to SysML
             let result = decompile(&model);
             println!("  Generated {} chars of SysML", result.text.len());
-            println!("  Tracking {} elements in metadata", result.metadata.elements.len());
-            
+            println!(
+                "  Tracking {} elements in metadata",
+                result.metadata.elements.len()
+            );
+
             // Show first 500 chars of output
             if result.text.len() > 0 {
                 let preview: String = result.text.chars().take(500).collect();
@@ -141,11 +145,14 @@ fn test_file(path: &str) {
                 }
                 println!("  ---\n");
             }
-            
+
             // Try to parse
             match parse_content(&result.text, Path::new(path)) {
                 Ok(syntax_file) => {
-                    println!("  ✓ Parse successful! {} elements", syntax_file.elements.len());
+                    println!(
+                        "  ✓ Parse successful! {} elements",
+                        syntax_file.elements.len()
+                    );
                 }
                 Err(err) => {
                     println!("  ✗ Parse failed: {}", err);
@@ -161,26 +168,28 @@ fn test_file(path: &str) {
 
 fn test_official_library() {
     let release_dir = Path::new("/tmp/sysml-v2-release");
-    
+
     if !release_dir.exists() {
         println!("Official SysML v2 release not found at /tmp/sysml-v2-release");
         println!("To test with official files, run:");
-        println!("  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release");
+        println!(
+            "  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release"
+        );
         return;
     }
-    
+
     println!("\n=== Testing Official XMI Files ===\n");
-    
+
     // Test a few key files
     let test_files = [
         "sysml.library.xmi.implied/Systems Library/Parts.sysmlx",
         "sysml.library.xmi.implied/Domain Libraries/Quantities and Units/ISQ.sysmlx",
         "sysml.library.xmi.implied/Kernel Libraries/Kernel Data Types/ScalarValues.sysmlx",
     ];
-    
+
     let mut passed = 0;
     let mut failed = 0;
-    
+
     for rel_path in &test_files {
         let full_path = release_dir.join(rel_path);
         if full_path.exists() {
@@ -208,6 +217,6 @@ fn test_official_library() {
             println!("⊘ {} - not found", rel_path);
         }
     }
-    
+
     println!("\nResults: {} passed, {} failed", passed, failed);
 }

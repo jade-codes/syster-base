@@ -177,7 +177,10 @@ mod reader {
         }
 
         // Get shortName (also check declaredShortName)
-        if let Some(Value::String(short_name)) = obj.get("shortName").or_else(|| obj.get("declaredShortName")) {
+        if let Some(Value::String(short_name)) = obj
+            .get("shortName")
+            .or_else(|| obj.get("declaredShortName"))
+        {
             element.short_name = Some(Arc::from(short_name.as_str()));
         }
 
@@ -203,7 +206,9 @@ mod reader {
             for member in members {
                 if let Value::Object(member_obj) = member {
                     if let Some(Value::String(member_id)) = member_obj.get("@id") {
-                        element.owned_elements.push(ElementId::new(member_id.clone()));
+                        element
+                            .owned_elements
+                            .push(ElementId::new(member_id.clone()));
                     }
                 }
             }
@@ -212,16 +217,32 @@ mod reader {
         // Get additional properties (isStandard, isComposite, etc.)
         for (key, value) in obj {
             // Skip already-handled properties
-            if matches!(key.as_str(), "@id" | "@type" | "@context" | "name" | "declaredName" 
-                | "shortName" | "declaredShortName" | "isAbstract" | "documentation" | "body"
-                | "owner" | "ownedMember" | "ownedRelationship" | "ownedRelatedElement") {
+            if matches!(
+                key.as_str(),
+                "@id"
+                    | "@type"
+                    | "@context"
+                    | "name"
+                    | "declaredName"
+                    | "shortName"
+                    | "declaredShortName"
+                    | "isAbstract"
+                    | "documentation"
+                    | "body"
+                    | "owner"
+                    | "ownedMember"
+                    | "ownedRelationship"
+                    | "ownedRelatedElement"
+            ) {
                 continue;
             }
             // Store string/bool properties using PropertyValue
             let prop_key: Arc<str> = Arc::from(key.as_str());
             match value {
                 Value::String(s) => {
-                    element.properties.insert(prop_key, PropertyValue::from(s.as_str()));
+                    element
+                        .properties
+                        .insert(prop_key, PropertyValue::from(s.as_str()));
                 }
                 Value::Bool(b) => {
                     element.properties.insert(prop_key, PropertyValue::from(*b));
@@ -284,10 +305,7 @@ mod writer {
         }
 
         pub fn write(&self, model: &Model) -> Result<Vec<u8>, InterchangeError> {
-            let elements: Vec<Value> = model
-                .iter_elements()
-                .map(element_to_json)
-                .collect();
+            let elements: Vec<Value> = model.iter_elements().map(element_to_json).collect();
 
             let output = if elements.len() == 1 {
                 // Single element - return object directly
@@ -458,9 +476,7 @@ mod tests {
         #[test]
         fn test_jsonld_write_single_element() {
             let mut model = Model::new();
-            model.add_element(
-                Element::new("pkg1", ElementKind::Package).with_name("TestPackage"),
-            );
+            model.add_element(Element::new("pkg1", ElementKind::Package).with_name("TestPackage"));
 
             let json_bytes = JsonLd.write(&model).expect("Write failed");
             let json_str = String::from_utf8(json_bytes).expect("Invalid UTF-8");
@@ -475,12 +491,8 @@ mod tests {
         #[test]
         fn test_jsonld_write_multiple_elements() {
             let mut model = Model::new();
-            model.add_element(
-                Element::new("pkg1", ElementKind::Package).with_name("Package1"),
-            );
-            model.add_element(
-                Element::new("pkg2", ElementKind::Package).with_name("Package2"),
-            );
+            model.add_element(Element::new("pkg1", ElementKind::Package).with_name("Package1"));
+            model.add_element(Element::new("pkg2", ElementKind::Package).with_name("Package2"));
 
             let json_bytes = JsonLd.write(&model).expect("Write failed");
             let json_str = String::from_utf8(json_bytes).expect("Invalid UTF-8");
@@ -502,7 +514,9 @@ mod tests {
             let model = JsonLd.read(json).expect("Read failed");
             assert_eq!(model.element_count(), 1);
 
-            let pkg = model.get(&ElementId::new("pkg1")).expect("Package not found");
+            let pkg = model
+                .get(&ElementId::new("pkg1"))
+                .expect("Package not found");
             assert_eq!(pkg.name.as_deref(), Some("TestPackage"));
             assert_eq!(pkg.kind, ElementKind::Package);
         }
@@ -561,8 +575,10 @@ mod tests {
             cls.short_name = Some(Arc::from("AC"));
             cls.is_abstract = true;
             cls.documentation = Some(Arc::from("This is documented"));
-            cls.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
-            cls.properties.insert(Arc::from("count"), PropertyValue::Integer(99));
+            cls.properties
+                .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
+            cls.properties
+                .insert(Arc::from("count"), PropertyValue::Integer(99));
             model.add_element(cls);
 
             let json_bytes = JsonLd.write(&model).expect("Write failed");
@@ -613,10 +629,14 @@ mod tests {
             cls.short_name = Some(Arc::from("TC"));
             cls.is_abstract = true;
             cls.documentation = Some(Arc::from("A documented class"));
-            cls.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
-            cls.properties.insert(Arc::from("priority"), PropertyValue::Integer(5));
-            cls.properties.insert(Arc::from("ratio"), PropertyValue::Real(3.14));
-            cls.properties.insert(Arc::from("label"), PropertyValue::String(Arc::from("test")));
+            cls.properties
+                .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
+            cls.properties
+                .insert(Arc::from("priority"), PropertyValue::Integer(5));
+            cls.properties
+                .insert(Arc::from("ratio"), PropertyValue::Real(3.14));
+            cls.properties
+                .insert(Arc::from("label"), PropertyValue::String(Arc::from("test")));
             model.add_element(cls);
 
             // Roundtrip
@@ -624,7 +644,9 @@ mod tests {
             let model2 = JsonLd.read(&json_bytes).expect("Read failed");
 
             // Verify all attributes preserved
-            let cls2 = model2.get(&ElementId::new("cls1")).expect("Class not found");
+            let cls2 = model2
+                .get(&ElementId::new("cls1"))
+                .expect("Class not found");
             assert_eq!(cls2.name.as_deref(), Some("TestClass"));
             assert_eq!(cls2.short_name.as_deref(), Some("TC"));
             assert!(cls2.is_abstract, "isAbstract not preserved");

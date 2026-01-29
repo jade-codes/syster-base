@@ -877,9 +877,11 @@ impl SymbolIndex {
                 let parent_scope = Self::parent_scope(type_scope).unwrap_or("");
                 if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
                     // Recursively search in the supertype (with visited set)
-                    if let Some(found) =
-                        self.find_member_in_scope_impl(&super_sym.qualified_name, member_name, visited)
-                    {
+                    if let Some(found) = self.find_member_in_scope_impl(
+                        &super_sym.qualified_name,
+                        member_name,
+                        visited,
+                    ) {
                         return Some(found);
                     }
                 }
@@ -1485,6 +1487,7 @@ impl SymbolKind {
 
 /// Result of resolving a reference.
 #[derive(Clone, Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ResolveResult {
     /// Successfully resolved to a single symbol.
     Found(HirSymbol),
@@ -1861,6 +1864,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
         }
     }
 

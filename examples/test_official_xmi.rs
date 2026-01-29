@@ -41,7 +41,8 @@ fn test_file(path: &str) {
             );
 
             // Count elements by kind
-            let mut kind_counts: std::collections::HashMap<_, usize> = std::collections::HashMap::new();
+            let mut kind_counts: std::collections::HashMap<_, usize> =
+                std::collections::HashMap::new();
             for elem in model.elements.values() {
                 *kind_counts.entry(elem.kind).or_insert(0) += 1;
             }
@@ -63,11 +64,7 @@ fn test_file(path: &str) {
             if !named.is_empty() {
                 println!("  Named elements (first 10):");
                 for elem in named {
-                    println!(
-                        "    - {} ({:?})",
-                        elem.name.as_ref().unwrap(),
-                        elem.kind
-                    );
+                    println!("    - {} ({:?})", elem.name.as_ref().unwrap(), elem.kind);
                 }
             }
         }
@@ -85,7 +82,9 @@ fn test_official_library() {
         eprintln!("Official SysML v2 XMI library not found at: {}", base_path);
         eprintln!();
         eprintln!("Please clone it first:");
-        eprintln!("  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release");
+        eprintln!(
+            "  git clone --depth 1 https://github.com/Systems-Modeling/SysML-v2-Release.git /tmp/sysml-v2-release"
+        );
         std::process::exit(1);
     }
 
@@ -143,7 +142,11 @@ fn test_official_library() {
     println!("{}", "=".repeat(60));
     println!("Summary:");
     println!("  Total files: {}", total_files);
-    println!("  Successful:  {} ({:.1}%)", successful, (successful as f64 / total_files as f64) * 100.0);
+    println!(
+        "  Successful:  {} ({:.1}%)",
+        successful,
+        (successful as f64 / total_files as f64) * 100.0
+    );
     println!("  Failed:      {}", failed_files.len());
     println!("  Total elements imported: {}", total_elements);
 
