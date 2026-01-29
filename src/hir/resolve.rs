@@ -201,6 +201,13 @@ pub struct SymbolIndex {
     definitions: HashMap<Arc<str>, SymbolIdx>,
     /// Pre-computed visibility map for each scope (built after all files added).
     visibility_map: HashMap<Arc<str>, ScopeVisibility>,
+    /// Filters for each scope (e.g., "SafetyGroup" -> ["Safety"])
+    /// Elements must have ALL listed metadata to be visible in that scope.
+    /// These come from `filter @Metadata;` statements.
+    scope_filters: HashMap<Arc<str>, Vec<Arc<str>>>,
+    /// Filters for specific imports (import qualified name -> metadata names)
+    /// These come from bracket syntax: `import X::*[@Filter]`
+    import_filters: HashMap<Arc<str>, Vec<Arc<str>>>,
     /// Flag to track if visibility maps are stale and need rebuilding.
     visibility_dirty: bool,
 }
@@ -209,6 +216,33 @@ impl SymbolIndex {
     /// Create a new empty index.
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Add symbols and filters from an extraction result.
+    pub fn add_extraction_result(
+        &mut self,
+        file: FileId,
+        result: crate::hir::symbols::ExtractionResult,
+    ) {
+        // Add symbols
+        self.add_file(file, result.symbols);
+
+        // Add scope filters (from `filter @X;` statements)
+        for (scope, metadata_names) in result.scope_filters {
+            for name in metadata_names {
+                self.add_scope_filter(scope.clone(), name);
+            }
+        }
+
+        // Add import filters (from bracket syntax `import X::*[@Filter]`)
+        for (import_qname, metadata_names) in result.import_filters {
+            for name in metadata_names {
+                self.import_filters
+                    .entry(import_qname.clone())
+                    .or_default()
+                    .push(Arc::from(name));
+            }
+        }
     }
 
     /// Add symbols from a file to the index.
@@ -256,6 +290,20 @@ impl SymbolIndex {
 
         // Index by file
         self.by_file.insert(file, file_indices);
+    }
+
+    /// Add a filter for a scope. Elements imported into this scope must have
+    /// the specified metadata to be visible.
+    pub fn add_scope_filter(
+        &mut self,
+        scope: impl Into<Arc<str>>,
+        metadata_name: impl Into<Arc<str>>,
+    ) {
+        self.visibility_dirty = true;
+        self.scope_filters
+            .entry(scope.into())
+            .or_default()
+            .push(metadata_name.into());
     }
 
     /// Remove all symbols from a file.
@@ -1183,14 +1231,35 @@ impl SymbolIndex {
         None
     }
 
+    /// Helper to check if a symbol passes a given list of filters.
+    fn symbol_passes_filters_list(&self, symbol_qname: &str, filters: &[Arc<str>]) -> bool {
+        // Find the symbol by qualified name
+        let symbol = match self.by_qualified_name.get(symbol_qname) {
+            Some(&idx) => &self.symbols[idx],
+            None => return true, // If we can't find the symbol, let it through
+        };
+
+        // Check if symbol has ALL required metadata
+        for required_metadata in filters {
+            let has_metadata = symbol
+                .metadata_annotations
+                .iter()
+                .any(|ann| ann.as_ref() == required_metadata.as_ref());
+            if !has_metadata {
+                return false;
+            }
+        }
+        true
+    }
+
     /// Process imports for a scope recursively, handling transitive public re-exports.
     fn process_imports_recursive(
         &mut self,
         scope: &str,
         visited: &mut HashSet<(Arc<str>, Arc<str>)>,
     ) {
-        // Find import symbols in this scope - only extract needed fields to avoid cloning full HirSymbols
-        let imports_to_process: Vec<(Arc<str>, bool)> = self
+        // Find import symbols in this scope - extract needed fields
+        let imports_to_process: Vec<(Arc<str>, Arc<str>, bool)> = self
             .symbols
             .iter()
             .filter(|s| s.kind == SymbolKind::Import)
@@ -1204,10 +1273,10 @@ impl SymbolIndex {
                     false
                 }
             })
-            .map(|s| (s.name.clone(), s.is_public))
+            .map(|s| (s.name.clone(), s.qualified_name.clone(), s.is_public))
             .collect();
 
-        for (import_name, is_public) in imports_to_process {
+        for (import_name, import_qname, is_public) in imports_to_process {
             let is_wildcard = import_name.ends_with("::*") && !import_name.ends_with("::**");
             let is_recursive = import_name.ends_with("::**");
 
@@ -1232,17 +1301,39 @@ impl SymbolIndex {
                 // Recursively process the target's imports first (to get transitive symbols)
                 self.process_imports_recursive(&resolved_target, visited);
 
+                // Get filter info - both scope filters and import-specific filters
+                let scope_filters = self.scope_filters.get(scope).cloned();
+                let import_filters = self.import_filters.get(import_qname.as_ref()).cloned();
+
+                // Combine filters: import filters take precedence, then scope filters
+                let active_filters = import_filters.or(scope_filters);
+
                 // Now copy symbols from target to this scope
                 if let Some(target_vis) = self.visibility_map.get(&resolved_target as &str).cloned()
                 {
+                    // Collect symbols to import (applying filter)
+                    let direct_defs_to_import: Vec<_> = target_vis
+                        .direct_defs()
+                        .filter(|(_, qname)| {
+                            // Apply filter if present
+                            if let Some(ref filters) = active_filters {
+                                if !filters.is_empty() {
+                                    return self.symbol_passes_filters_list(qname, filters);
+                                }
+                            }
+                            true
+                        })
+                        .map(|(n, q)| (n.clone(), q.clone()))
+                        .collect();
+
                     let vis = self
                         .visibility_map
                         .get_mut(scope)
                         .expect("scope must exist");
 
-                    // Copy direct definitions (always visible)
-                    for (name, qname) in target_vis.direct_defs() {
-                        vis.add_import(name.clone(), qname.clone());
+                    // Copy direct definitions (filtered)
+                    for (name, qname) in direct_defs_to_import {
+                        vis.add_import(name, qname);
                     }
 
                     // Only copy imports that come from publicly re-exported namespaces
@@ -1271,7 +1362,7 @@ impl SymbolIndex {
 
                 // For recursive imports, also import all descendants
                 if is_recursive {
-                    self.import_descendants(scope, &resolved_target);
+                    self.import_descendants(scope, &resolved_target, &active_filters);
                 }
             } else {
                 // Specific import: import a single symbol
@@ -1295,7 +1386,12 @@ impl SymbolIndex {
     ///
     /// This imports all symbols that are nested under the target scope,
     /// not just direct children.
-    fn import_descendants(&mut self, importing_scope: &str, target_scope: &str) {
+    fn import_descendants(
+        &mut self,
+        importing_scope: &str,
+        target_scope: &str,
+        filters: &Option<Vec<Arc<str>>>,
+    ) {
         let target_prefix = format!("{}::", target_scope);
 
         // Find all symbols that are descendants of target_scope
@@ -1304,7 +1400,19 @@ impl SymbolIndex {
             .iter()
             .filter(|s| {
                 // Skip imports, they're processed separately
-                s.kind != SymbolKind::Import && s.qualified_name.starts_with(&target_prefix)
+                if s.kind == SymbolKind::Import || !s.qualified_name.starts_with(&target_prefix) {
+                    return false;
+                }
+                // Apply filter if present
+                if let Some(filter_list) = filters {
+                    if !filter_list.is_empty() {
+                        return self.symbol_passes_filters_list_static(
+                            &s.metadata_annotations,
+                            filter_list,
+                        );
+                    }
+                }
+                true
             })
             .map(|s| (s.name.clone(), s.qualified_name.clone()))
             .collect();
@@ -1315,6 +1423,25 @@ impl SymbolIndex {
                 vis.add_import(simple_name, qualified_name);
             }
         }
+    }
+
+    /// Check if a symbol passes filters given its metadata annotations directly.
+    /// This avoids lookup by qualified name since we already have the symbol.
+    fn symbol_passes_filters_list_static(
+        &self,
+        metadata_annotations: &[Arc<str>],
+        filters: &[Arc<str>],
+    ) -> bool {
+        // Check if symbol has ALL required metadata
+        for required_metadata in filters {
+            let has_metadata = metadata_annotations
+                .iter()
+                .any(|ann| ann.as_ref() == required_metadata.as_ref());
+            if !has_metadata {
+                return false;
+            }
+        }
+        true
     }
 
     /// Resolve an import target relative to a scope.
@@ -1865,6 +1992,7 @@ mod tests {
             type_refs: Vec::new(),
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(),
         }
     }
 

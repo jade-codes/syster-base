@@ -44,6 +44,7 @@ fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&s
         type_refs: Vec::new(),
         is_public: false,
         view_data: None,
+        metadata_annotations: Vec::new(),
     }
 }
 
@@ -76,6 +77,7 @@ fn make_symbol_with_type_refs(
         type_refs,
         is_public: false,
         view_data: None,
+        metadata_annotations: Vec::new(),
     }
 }
 

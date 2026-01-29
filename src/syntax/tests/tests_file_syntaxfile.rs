@@ -38,6 +38,7 @@ fn create_sysml_import(path: &str) -> SysMLElement {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     })
 }
@@ -293,6 +294,7 @@ fn test_extract_imports_with_recursive_import_sysml() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
     let sysml_file = create_sysml_file(vec![SysMLElement::Import(import_element)]);

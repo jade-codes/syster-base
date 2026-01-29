@@ -116,6 +116,8 @@ pub struct NormalizedImport<'a> {
     pub path: &'a str,
     pub span: Option<Span>,
     pub is_public: bool,
+    /// Filter metadata names from bracket syntax, e.g., `import X::*[@Safety]`
+    pub filters: Vec<String>,
 }
 
 /// A normalized alias.
@@ -152,6 +154,7 @@ pub struct NormalizedDependency<'a> {
 /// A normalized filter (filters elements by metadata or expression).
 #[derive(Debug, Clone)]
 pub struct NormalizedFilter<'a> {
+    /// Simple metadata type names that elements must have (e.g., ["Safety", "Approved"])
     pub metadata_refs: Vec<&'a str>,
     pub span: Option<Span>,
 }
@@ -549,9 +552,9 @@ impl<'a> NormalizedUsage<'a> {
                 NormalizedUsageKind::Requirement
             }
             UsageKind::Constraint => NormalizedUsageKind::Constraint,
-            UsageKind::State | UsageKind::ExhibitState | UsageKind::Transition => {
-                NormalizedUsageKind::State
-            }
+            UsageKind::State { is_parallel: _ }
+            | UsageKind::ExhibitState { is_parallel: _ }
+            | UsageKind::Transition => NormalizedUsageKind::State,
             UsageKind::Calculation => NormalizedUsageKind::Calculation,
             UsageKind::Reference => NormalizedUsageKind::Reference,
             UsageKind::Occurrence
@@ -767,6 +770,7 @@ impl<'a> NormalizedImport<'a> {
             path: &import.path,
             span: import.span,
             is_public: import.is_public,
+            filters: import.filters.clone(),
         }
     }
 
@@ -775,6 +779,7 @@ impl<'a> NormalizedImport<'a> {
             path: &import.path,
             span: import.span,
             is_public: import.is_public,
+            filters: Vec::new(), // KerML imports don't have filter syntax
         }
     }
 }

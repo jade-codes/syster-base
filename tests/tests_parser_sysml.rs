@@ -1118,6 +1118,92 @@ fn test_parse_import(#[case] input: &str, #[case] desc: &str) {
     );
 }
 
+// Import Filtering Tests (SysML v2 §7.5.4)
+#[rstest]
+#[case(
+    r#"public import DesignModel::**[@Approval and approved and level > 1];"#,
+    "filtered import with metadata and expressions"
+)]
+#[case(
+    r#"import DesignModel::**[@PartDefinition and @PartDefinition::ownedPart != null];"#,
+    "filtered import with abstract syntax metadata"
+)]
+#[case(
+    r#"import X::*[@A][@B][@C];"#,
+    "import with multiple filter conditions"
+)]
+#[case(
+    r#"private import ApprovalMetadata::**;"#,
+    "recursive import without filter"
+)]
+#[case(r#"import Pkg::Element[@isAbstract];"#, "member import with filter")]
+fn test_parse_filtered_import(#[case] input: &str, #[case] desc: &str) {
+    let result = SysMLParser::parse(Rule::import, input);
+    assert!(
+        result.is_ok(),
+        "Failed to parse {}: {:?}",
+        desc,
+        result.err()
+    );
+}
+
+#[test]
+fn test_parse_package_with_filter_statement() {
+    // From SysML v2 spec §7.5.4 - package-level filter
+    let source = r#"
+package UpperLevelApprovals {
+    public import DesignModel::**;
+    filter @ApprovalMetadata::Approval and
+        ApprovalMetadata::Approval::approved and
+        ApprovalMetadata::Approval::level > 1;
+}
+"#;
+    let result = SysMLParser::parse(Rule::package, source);
+    assert!(
+        result.is_ok(),
+        "Failed to parse package with filter statement: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_parse_package_with_filtered_import() {
+    // From SysML v2 spec §7.5.4 - filtered import syntax
+    let source = r#"
+package UpperLevelApprovals {
+    private import ApprovalMetadata::**;
+    public import DesignModel::**[@Approval and approved and level > 1];
+}
+"#;
+    let result = SysMLParser::parse(Rule::package, source);
+    assert!(
+        result.is_ok(),
+        "Failed to parse package with filtered import: {:?}",
+        result.err()
+    );
+}
+
+#[test]
+fn test_parse_full_filter_spec_example() {
+    // Complete example from SysML v2 spec §7.5.4
+    let source = r#"
+package PackageApprovals {
+    private import ApprovalMetadata::*;
+    private import SysML::*;
+    public import DesignModel::**[@PartDefinition and
+        @PartDefinition::ownedPart != null and
+        @Approval and
+        Approval::approved];
+}
+"#;
+    let result = SysMLParser::parse(Rule::package, source);
+    assert!(
+        result.is_ok(),
+        "Failed to parse full spec example: {:?}",
+        result.err()
+    );
+}
+
 // Definition Element Tests
 
 #[rstest]

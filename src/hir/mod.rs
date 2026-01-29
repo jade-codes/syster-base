@@ -55,8 +55,8 @@ pub use input::SourceRoot;
 pub use resolve::{ResolveResult, Resolver, SymbolIndex};
 pub use source::FileSet;
 pub use symbols::{
-    HirRelationship, HirSymbol, RefKind, RelationshipKind, SymbolKind, TypeRef, TypeRefChain,
-    TypeRefKind, extract_symbols_unified, new_element_id,
+    ExtractionResult, HirRelationship, HirSymbol, RefKind, RelationshipKind, SymbolKind, TypeRef,
+    TypeRefChain, TypeRefKind, extract_symbols_unified, extract_with_filters, new_element_id,
 };
 pub use views::{
     ExposeRelationship, FilterCondition, ImportPath, MetadataFilter, RenderingDefinition,

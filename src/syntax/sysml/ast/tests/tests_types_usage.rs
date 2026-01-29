@@ -402,14 +402,16 @@ fn test_usage_kind_perform_action() {
 
 #[test]
 fn test_usage_kind_exhibit_state() {
-    let usage = Usage::new(
-        UsageKind::ExhibitState,
-        Some("exhibit".to_string()),
-        Relationships::none(),
-        vec![],
-    );
+    for is_parallel in [true, false] {
+        let usage = Usage::new(
+            UsageKind::ExhibitState { is_parallel },
+            Some("exhibit".to_string()),
+            Relationships::none(),
+            vec![],
+        );
 
-    assert_eq!(usage.kind, UsageKind::ExhibitState);
+        assert_eq!(usage.kind, UsageKind::ExhibitState { is_parallel });
+    }
 }
 
 #[test]

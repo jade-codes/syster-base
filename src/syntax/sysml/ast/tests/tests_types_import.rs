@@ -15,6 +15,7 @@ fn test_import_creation() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -38,6 +39,7 @@ fn test_import_with_span() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: Some(span),
     };
 
@@ -53,6 +55,7 @@ fn test_import_recursive() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -67,6 +70,7 @@ fn test_import_non_recursive() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -81,6 +85,7 @@ fn test_import_simple_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -95,6 +100,7 @@ fn test_import_wildcard_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -109,6 +115,7 @@ fn test_import_recursive_wildcard_path() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -123,6 +130,7 @@ fn test_import_empty_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -137,6 +145,7 @@ fn test_import_clone() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -154,6 +163,7 @@ fn test_import_partial_eq() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -162,6 +172,7 @@ fn test_import_partial_eq() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -175,6 +186,7 @@ fn test_import_not_eq_different_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -183,6 +195,7 @@ fn test_import_not_eq_different_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -196,6 +209,7 @@ fn test_import_not_eq_different_recursive() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -204,6 +218,7 @@ fn test_import_not_eq_different_recursive() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -233,6 +248,7 @@ fn test_import_not_eq_different_span() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: Some(span1),
     };
 
@@ -241,6 +257,7 @@ fn test_import_not_eq_different_span() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: Some(span2),
     };
 
@@ -254,6 +271,7 @@ fn test_import_debug_trait() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -273,6 +291,7 @@ fn test_import_as_element() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -295,6 +314,7 @@ fn test_import_element_pattern_matching() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -320,6 +340,7 @@ fn test_import_very_long_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -334,6 +355,7 @@ fn test_import_complex_qualified_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -351,6 +373,7 @@ fn test_import_with_special_characters() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -368,6 +391,7 @@ fn test_import_unicode_path() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -381,6 +405,7 @@ fn test_import_wildcard_only() {
         path_span: None,
         is_recursive: false,
         is_public: false,
+        filters: Vec::new(),
         span: None,
     };
 
@@ -402,6 +427,7 @@ fn test_import_both_flags_and_span() {
         path_span: None,
         is_recursive: true,
         is_public: false,
+        filters: Vec::new(),
         span: Some(span),
     };
 

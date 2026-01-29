@@ -343,8 +343,8 @@ pub fn to_def_kind(rule: Rule) -> Result<DefinitionKind, ParseError> {
 }
 
 /// Map pest Rule to UsageKind
-pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
-    Some(match rule {
+pub fn to_usage_kind(pair: &Pair<Rule>) -> Option<UsageKind> {
+    Some(match pair.as_rule() {
         Rule::part_usage | Rule::subject_usage => UsageKind::Part,
         Rule::action_usage
         | Rule::state_action_usage
@@ -381,9 +381,15 @@ pub fn to_usage_kind(rule: Rule) -> Option<UsageKind> {
         | Rule::empty_usage => UsageKind::Reference,
         Rule::satisfy_requirement_usage => UsageKind::SatisfyRequirement,
         Rule::perform_action_usage => UsageKind::PerformAction,
-        Rule::exhibit_state_usage => UsageKind::ExhibitState,
+        Rule::exhibit_state_usage => {
+            let is_parallel = has_body_rule_flag(pair, Rule::state_usage_body, Rule::parallel_marker);
+            UsageKind::ExhibitState{is_parallel}
+        },
         Rule::include_use_case_usage => UsageKind::IncludeUseCase,
-        Rule::state_usage => UsageKind::State,
+        Rule::state_usage => {
+            let is_parallel = has_body_rule_flag(pair, Rule::state_usage_body, Rule::parallel_marker);
+            UsageKind::State{is_parallel}
+        },
         Rule::connection_usage | Rule::binding_connector_as_usage => UsageKind::Connection,
         Rule::constraint_usage | Rule::assert_constraint_usage | Rule::requirement_constraint_usage => UsageKind::Constraint,
         Rule::calculation_usage => UsageKind::Calculation,
@@ -477,6 +483,14 @@ pub fn extract_definition_flags(pairs: &[Pair<Rule>]) -> (bool, bool) {
         .iter()
         .any(|p| has_definition_flag(p, Rule::variation_token));
     (is_abstract, is_variation)
+}
+
+pub fn has_body_rule_flag(pair: &Pair<Rule>, body_rule: Rule, flag: Rule) -> bool {
+    if let Some(state_body) = pair.clone().into_inner().find(|p| p.as_rule() == body_rule) {
+        state_body.clone().into_inner().any(|p| has_flag(&p, flag))
+    } else {
+        false
+    }
 }
 
 // ============================================================================

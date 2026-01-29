@@ -796,6 +796,7 @@ mod tests {
             type_refs: Vec::new(),
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(),
         }
     }
 

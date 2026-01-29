@@ -399,6 +399,9 @@ pub struct HirSymbol {
     pub is_public: bool,
     /// View-specific data (for ViewDefinition, ViewUsage, etc.)
     pub view_data: Option<crate::hir::views::ViewData>,
+    /// Metadata types applied to this symbol (e.g., ["Safety", "Approved"])
+    /// Used for filter import evaluation (SysML v2 §7.5.4)
+    pub metadata_annotations: Vec<Arc<str>>,
 }
 
 /// The kind of a symbol.
@@ -502,7 +505,9 @@ impl SymbolKind {
             UsageKind::Allocation => Self::AllocationUsage,
             UsageKind::Requirement | UsageKind::SatisfyRequirement => Self::RequirementUsage,
             UsageKind::Constraint => Self::ConstraintUsage,
-            UsageKind::State | UsageKind::ExhibitState | UsageKind::Transition => Self::StateUsage,
+            UsageKind::State { is_parallel: _ }
+            | UsageKind::ExhibitState { is_parallel: _ }
+            | UsageKind::Transition => Self::StateUsage,
             UsageKind::Calculation => Self::CalculationUsage,
             UsageKind::Reference => Self::ReferenceUsage,
             UsageKind::Occurrence
@@ -653,6 +658,11 @@ impl ExtractionContext {
         }
     }
 
+    /// Get the current scope name (the prefix without trailing ::)
+    fn current_scope_name(&self) -> String {
+        self.prefix.clone()
+    }
+
     fn push_scope(&mut self, name: &str) {
         self.scope_stack.push(name.to_string());
         if self.prefix.is_empty() {
@@ -686,14 +696,35 @@ impl ExtractionContext {
 // UNIFIED EXTRACTION (using normalized types)
 // ============================================================================
 
+/// Result of symbol extraction, including both symbols and scope filters.
+#[derive(Debug, Default)]
+pub struct ExtractionResult {
+    /// Extracted symbols.
+    pub symbols: Vec<HirSymbol>,
+    /// Filters for each scope (scope qualified name -> metadata names).
+    /// Elements imported into a scope must have ALL listed metadata to be visible.
+    /// These come from `filter @Metadata;` statements.
+    pub scope_filters: Vec<(Arc<str>, Vec<String>)>,
+    /// Filters for specific imports (import qualified name -> metadata names).
+    /// These come from bracket syntax: `import X::*[@Filter]`
+    pub import_filters: Vec<(Arc<str>, Vec<String>)>,
+}
+
 /// Extract all symbols from any syntax file using the normalized adapter layer.
 ///
 /// This is the preferred extraction function as it handles both SysML and KerML
 /// through a unified code path.
 pub fn extract_symbols_unified(file: FileId, syntax: &crate::syntax::SyntaxFile) -> Vec<HirSymbol> {
+    extract_with_filters(file, syntax).symbols
+}
+
+/// Extract symbols and filters from any syntax file.
+///
+/// Returns both symbols and scope filter information for import filtering.
+pub fn extract_with_filters(file: FileId, syntax: &crate::syntax::SyntaxFile) -> ExtractionResult {
     use crate::syntax::SyntaxFile;
 
-    let mut symbols = Vec::new();
+    let mut result = ExtractionResult::default();
     let mut context = ExtractionContext {
         file,
         prefix: String::new(),
@@ -709,7 +740,7 @@ pub fn extract_symbols_unified(file: FileId, syntax: &crate::syntax::SyntaxFile)
             }
             for element in &sysml.elements {
                 let normalized = NormalizedElement::from_sysml(element);
-                extract_from_normalized(&mut symbols, &mut context, &normalized);
+                extract_from_normalized(&mut result, &mut context, &normalized);
             }
         }
         SyntaxFile::KerML(kerml) => {
@@ -719,22 +750,78 @@ pub fn extract_symbols_unified(file: FileId, syntax: &crate::syntax::SyntaxFile)
             }
             for element in &kerml.elements {
                 let normalized = NormalizedElement::from_kerml(element);
-                extract_from_normalized(&mut symbols, &mut context, &normalized);
+                extract_from_normalized(&mut result, &mut context, &normalized);
             }
         }
     }
 
-    symbols
+    result
 }
 
 /// Extract from a normalized element.
 fn extract_from_normalized(
+    result: &mut ExtractionResult,
+    ctx: &mut ExtractionContext,
+    element: &NormalizedElement,
+) {
+    match element {
+        NormalizedElement::Package(pkg) => extract_from_normalized_package(result, ctx, pkg),
+        NormalizedElement::Definition(def) => {
+            extract_from_normalized_definition(&mut result.symbols, ctx, def)
+        }
+        NormalizedElement::Usage(usage) => {
+            extract_from_normalized_usage(&mut result.symbols, ctx, usage)
+        }
+        NormalizedElement::Import(import) => {
+            // Extract import symbol
+            extract_from_normalized_import(&mut result.symbols, ctx, import);
+            // Store bracket filters if present
+            if !import.filters.is_empty() {
+                let import_qname = ctx.qualified_name(&format!("import:{}", import.path));
+                result
+                    .import_filters
+                    .push((Arc::from(import_qname.as_str()), import.filters.clone()));
+            }
+        }
+        NormalizedElement::Alias(alias) => {
+            extract_from_normalized_alias(&mut result.symbols, ctx, alias)
+        }
+        NormalizedElement::Comment(comment) => {
+            extract_from_normalized_comment(&mut result.symbols, ctx, comment)
+        }
+        NormalizedElement::Dependency(dep) => {
+            extract_from_normalized_dependency(&mut result.symbols, ctx, dep)
+        }
+        NormalizedElement::Filter(filter) => {
+            // Store filter for current scope
+            let scope = ctx.current_scope_name();
+            if !filter.metadata_refs.is_empty() {
+                result.scope_filters.push((
+                    Arc::from(scope.as_str()),
+                    filter.metadata_refs.iter().map(|s| s.to_string()).collect(),
+                ));
+            }
+        }
+        NormalizedElement::Expose(_expose) => {
+            // Expose relationships are handled during view extraction, not symbol extraction
+        }
+    }
+}
+
+/// Extract from a normalized element into a symbol list (no filter support).
+/// Used for nested extraction within definitions/usages.
+fn extract_from_normalized_into_symbols(
     symbols: &mut Vec<HirSymbol>,
     ctx: &mut ExtractionContext,
     element: &NormalizedElement,
 ) {
     match element {
-        NormalizedElement::Package(pkg) => extract_from_normalized_package(symbols, ctx, pkg),
+        NormalizedElement::Package(pkg) => {
+            // For nested packages, create a temporary result
+            let mut result = ExtractionResult::default();
+            extract_from_normalized_package(&mut result, ctx, pkg);
+            symbols.extend(result.symbols);
+        }
         NormalizedElement::Definition(def) => extract_from_normalized_definition(symbols, ctx, def),
         NormalizedElement::Usage(usage) => extract_from_normalized_usage(symbols, ctx, usage),
         NormalizedElement::Import(import) => extract_from_normalized_import(symbols, ctx, import),
@@ -755,7 +842,7 @@ fn extract_from_normalized(
 }
 
 fn extract_from_normalized_package(
-    symbols: &mut Vec<HirSymbol>,
+    result: &mut ExtractionResult,
     ctx: &mut ExtractionContext,
     pkg: &NormalizedPackage,
 ) {
@@ -767,7 +854,7 @@ fn extract_from_normalized_package(
     let qualified_name = ctx.qualified_name(&name);
     let span = span_to_info(pkg.span);
 
-    symbols.push(HirSymbol {
+    result.symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
         short_name: pkg.short_name.map(Arc::from),
         qualified_name: Arc::from(qualified_name.as_str()),
@@ -787,12 +874,13 @@ fn extract_from_normalized_package(
         relationships: Vec::new(),
         type_refs: Vec::new(),
         is_public: false,
-        view_data: None,
+view_data: None,
+        metadata_annotations: Vec::new(),
     });
 
     ctx.push_scope(&name);
     for child in &pkg.children {
-        extract_from_normalized(symbols, ctx, child);
+        extract_from_normalized(result, ctx, child);
     }
     ctx.pop_scope();
 }
@@ -870,6 +958,55 @@ fn extract_relationships_from_normalized(
         .collect()
 }
 
+/// Extract metadata annotations from normalized relationships and children.
+/// Returns the simple names of metadata types applied to this element.
+///
+/// Metadata can be applied in two ways:
+/// 1. Via `relationships.meta` (e.g., from expression contexts)
+/// 2. Via nested metadata usage children (e.g., `part x { @Safety; }`)
+///
+/// For nested metadata usages, we look at children that have no original name
+/// (anonymous usages) and are typed by metadata definitions.
+fn extract_metadata_annotations(
+    relationships: &[NormalizedRelationship],
+    children: &[NormalizedElement],
+) -> Vec<Arc<str>> {
+    let mut annotations = Vec::new();
+
+    // Extract from relationships (Meta kind)
+    for rel in relationships.iter() {
+        if matches!(rel.kind, NormalizedRelKind::Meta) {
+            let target = rel.target.as_str();
+            let simple_name = target.rsplit("::").next().unwrap_or(&target);
+            annotations.push(Arc::from(simple_name));
+        }
+    }
+
+    // Extract from children that are metadata usages
+    // In SysML, `@Safety` inside a body becomes a child usage typed by Safety
+    // These children are originally anonymous (name=None in the source) but get
+    // generated anon names during extraction. We identify them by:
+    // 1. Having no original name (name.is_none()) - they're originally anonymous
+    // 2. Having a TypedBy relationship to what looks like a metadata type
+    for child in children.iter() {
+        if let NormalizedElement::Usage(usage) = child {
+            // Metadata usages are originally anonymous in the source
+            // (the name gets assigned later during symbol extraction)
+            if usage.name.is_none() {
+                for rel in &usage.relationships {
+                    if matches!(rel.kind, NormalizedRelKind::TypedBy) {
+                        let target = rel.target.as_str();
+                        let simple_name = target.rsplit("::").next().unwrap_or(&target);
+                        annotations.push(Arc::from(simple_name));
+                    }
+                }
+            }
+        }
+    }
+
+    annotations
+}
+
 fn extract_from_normalized_definition(
     symbols: &mut Vec<HirSymbol>,
     ctx: &mut ExtractionContext,
@@ -908,6 +1045,9 @@ fn extract_from_normalized_definition(
     // Extract all relationships for hover display
     let relationships = extract_relationships_from_normalized(&def.relationships);
 
+    // Extract metadata annotations for filter imports
+    let metadata_annotations = extract_metadata_annotations(&def.relationships, &def.children);
+
     // Extract doc comment
     let doc = def.doc.map(|s| Arc::from(s.trim()));
 
@@ -935,12 +1075,13 @@ fn extract_from_normalized_definition(
         type_refs,
         is_public: false,
         view_data,
+        metadata_annotations,
     });
 
     // Recurse into children
     ctx.push_scope(&name);
     for child in &def.children {
-        extract_from_normalized(symbols, ctx, child);
+        extract_from_normalized_into_symbols(symbols, ctx, child);
     }
     ctx.pop_scope();
 }
@@ -955,6 +1096,9 @@ fn extract_from_normalized_usage(
 
     // Extract all relationships for hover display
     let relationships = extract_relationships_from_normalized(&usage.relationships);
+
+    // Extract metadata annotations for filter imports
+    let metadata_annotations = extract_metadata_annotations(&usage.relationships, &usage.children);
 
     // For anonymous usages, attach refs to the parent but still recurse into children
     let name = match usage.name {
@@ -1032,6 +1176,7 @@ fn extract_from_normalized_usage(
                 doc: None,
                 is_public: false,
                 view_data: None,
+                metadata_annotations: metadata_annotations.clone(),
             };
             symbols.push(anon_symbol);
 
@@ -1040,7 +1185,7 @@ fn extract_from_normalized_usage(
 
             // Recurse into children for anonymous usages
             for child in &usage.children {
-                extract_from_normalized(symbols, ctx, child);
+                extract_from_normalized_into_symbols(symbols, ctx, child);
             }
 
             ctx.pop_scope();
@@ -1107,12 +1252,13 @@ fn extract_from_normalized_usage(
         type_refs,
         is_public: false,
         view_data,
+        metadata_annotations,
     });
 
     // Recurse into children
     ctx.push_scope(&name);
     for child in &usage.children {
-        extract_from_normalized(symbols, ctx, child);
+        extract_from_normalized_into_symbols(symbols, ctx, child);
     }
     ctx.pop_scope();
 }
@@ -1147,6 +1293,7 @@ fn extract_from_normalized_import(
         type_refs: Vec::new(),
         is_public: import.is_public,
         view_data: None,
+        metadata_annotations: Vec::new(), // Imports don't have metadata
     });
 }
 
@@ -1199,6 +1346,7 @@ fn extract_from_normalized_alias(
         type_refs,
         is_public: false,
         view_data: None,
+        metadata_annotations: Vec::new(), // Aliases don't have metadata
     });
 }
 
@@ -1259,6 +1407,7 @@ fn extract_from_normalized_comment(
         type_refs,
         is_public: false,
         view_data: None,
+        metadata_annotations: Vec::new(), // Comments don't have metadata
     });
 }
 
@@ -1397,6 +1546,7 @@ fn extract_from_normalized_dependency(
             type_refs,
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(), // Dependencies don't have metadata
         });
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
@@ -1424,6 +1574,7 @@ fn extract_from_normalized_dependency(
             type_refs,
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(), // Dependencies don't have metadata
         });
     }
 }

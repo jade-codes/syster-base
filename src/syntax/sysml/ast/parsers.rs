@@ -761,6 +761,24 @@ fn visit_pair(pair: &Pair<Rule>, ctx: &mut ParseContext, depth: usize, in_body: 
             }
         }
 
+        // Handle metadata_usage_declaration to extract the metadata type
+        // Grammar: metadata_usage_declaration = { (identification? ~ defined_by_token)? ~ metadata_typing }
+        // metadata_typing = { identifier | "meta" }
+        // e.g., @Safety; -> metadata_typing = "Safety"
+        Rule::metadata_usage_declaration => {
+            for inner in pair.clone().into_inner() {
+                if inner.as_rule() == Rule::metadata_typing {
+                    // The metadata type name
+                    let type_name = inner.as_str();
+                    ctx.relationships.typed_by = Some(type_name.to_string());
+                    ctx.relationships.typed_by_span = Some(to_span(inner.as_span()));
+                } else {
+                    // Handle identification if present
+                    visit_pair(&inner, ctx, depth + 1, in_body);
+                }
+            }
+        }
+
         // Handle satisfy_requirement_usage specially to get relationships right
         // Grammar: satisfy ... (owned_reference_subsetting | requirement_usage_keyword ...) ... ("by" satisfaction_subject_member)?
         // The owned_reference_subsetting is the REQUIREMENT being satisfied, should be Satisfies
@@ -1381,7 +1399,7 @@ fn visit_body_member_single<'a>(
         _ if is_usage_rule(rule) => {
             let usage = parse_usage_with_kind(
                 pair.clone(),
-                to_usage_kind(rule).unwrap_or(UsageKind::Reference),
+                to_usage_kind(pair).unwrap_or(UsageKind::Reference),
             );
             ctx.def_members
                 .push(DefinitionMember::Usage(Box::new(usage.clone())));
@@ -1652,7 +1670,7 @@ fn parse_usage_with_kind(pair: Pair<Rule>, kind: UsageKind) -> Usage {
 
 /// Parse a usage, inferring kind from the rule
 pub fn parse_usage(pair: Pair<Rule>) -> Usage {
-    let kind = to_usage_kind(pair.as_rule()).unwrap_or(UsageKind::Reference);
+    let kind = to_usage_kind(&pair).unwrap_or(UsageKind::Reference);
     parse_usage_with_kind(pair, kind)
 }
 
@@ -1762,6 +1780,7 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
     let mut path = String::new();
     let mut path_span = None;
     let mut span = None;
+    let mut filters = Vec::new();
 
     fn process_pair(
         pair: Pair<Rule>,
@@ -1770,6 +1789,7 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
         span: &mut Option<Span>,
         is_public: &mut bool,
         is_recursive: &mut bool,
+        filters: &mut Vec<String>,
     ) {
         match pair.as_rule() {
             Rule::import_prefix => {
@@ -1809,7 +1829,44 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
             Rule::membership_import | Rule::namespace_import => {
                 // These contain import_prefix and imported_membership/imported_namespace
                 for child in pair.into_inner() {
-                    process_pair(child, path, path_span, span, is_public, is_recursive);
+                    process_pair(
+                        child,
+                        path,
+                        path_span,
+                        span,
+                        is_public,
+                        is_recursive,
+                        filters,
+                    );
+                }
+            }
+            Rule::filter_package => {
+                // Extract filter conditions from bracket syntax: [@Safety][@Approved]
+                for filter_member in pair.into_inner() {
+                    if filter_member.as_rule() == Rule::filter_package_member {
+                        // Extract metadata reference from owned_expression
+                        // Look for @MetadataName pattern
+                        let filter_text = filter_member.as_str();
+                        // Try to extract metadata reference from the expression
+                        for inner in filter_member.into_inner() {
+                            let meta_refs = extract_meta_types_from_expression(&inner);
+                            for meta_ref in meta_refs {
+                                let target = meta_ref.target();
+                                // Get simple name (last part after ::)
+                                let simple_name = target.rsplit("::").next().unwrap_or(&target);
+                                filters.push(simple_name.to_string());
+                            }
+                            // If no meta refs found, try to get identifier from the expression
+                            if filters.is_empty() {
+                                // Fallback: extract any identifier from the filter text
+                                let trimmed =
+                                    filter_text.trim_matches(|c| c == '[' || c == ']' || c == '@');
+                                if !trimmed.is_empty() {
+                                    filters.push(trimmed.to_string());
+                                }
+                            }
+                        }
+                    }
                 }
             }
             _ => {}
@@ -1824,6 +1881,7 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
             &mut span,
             &mut is_public,
             &mut is_recursive,
+            &mut filters,
         );
     }
 
@@ -1832,6 +1890,7 @@ pub fn parse_import(pairs: &mut Pairs<Rule>) -> Result<Import, ParseError> {
         path_span,
         is_recursive,
         is_public,
+        filters,
         span,
     })
 }

@@ -713,7 +713,7 @@ impl Usage {
         match self.kind {
             UsageKind::SatisfyRequirement
             | UsageKind::PerformAction
-            | UsageKind::ExhibitState
+            | UsageKind::ExhibitState { is_parallel: _ }
             | UsageKind::IncludeUseCase => {
                 if let Some(ref typed_by) = self.relationships.typed_by {
                     Some((typed_by.as_str(), self.relationships.typed_by_span))
@@ -766,12 +766,15 @@ impl Comment {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Import {
     pub path: String,
     pub path_span: Option<Span>,
     pub is_recursive: bool,
     pub is_public: bool,
+    /// Filter expressions from bracket syntax, e.g., `import X::*[@Safety][@Approved]`
+    /// Contains the simple metadata names (e.g., ["Safety", "Approved"])
+    pub filters: Vec<String>,
     pub span: Option<Span>,
 }
 

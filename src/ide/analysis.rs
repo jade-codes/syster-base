@@ -22,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use crate::base::FileId;
-use crate::hir::{SymbolIndex, extract_symbols_unified};
+use crate::hir::{SymbolIndex, extract_with_filters};
 use crate::syntax::SyntaxFile;
 
 use super::{
@@ -188,17 +188,17 @@ impl AnalysisHost {
         for (path, syntax_file) in &self.files {
             let path_str = path.to_string_lossy().to_string();
             if let Some(&file_id) = self.file_id_map.get(&path_str) {
-                // Extract symbols using unified extraction (handles both SysML and KerML)
-                let mut symbols = extract_symbols_unified(file_id, syntax_file);
-
+                // Extract symbols and filters using unified extraction (handles both SysML and KerML)
+                let mut result = extract_with_filters(file_id, syntax_file);
+                
                 // Preserve element IDs from cache (survives removal/re-add)
-                for symbol in &mut symbols {
+                for symbol in &mut result.symbols {
                     if let Some(cached_id) = self.element_id_cache.get(&symbol.qualified_name) {
                         symbol.element_id = cached_id.clone();
                     }
                 }
-
-                new_index.add_file(file_id, symbols);
+                
+                new_index.add_extraction_result(file_id, result);
             }
         }
 

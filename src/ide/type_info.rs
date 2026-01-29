@@ -153,6 +153,7 @@ mod tests {
             ))],
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(),
         }
     }
 
@@ -182,6 +183,7 @@ mod tests {
             type_refs: Vec::new(),
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(),
         };
 
         // Add a usage with type_ref
@@ -228,6 +230,7 @@ mod tests {
             type_refs: Vec::new(),
             is_public: false,
             view_data: None,
+            metadata_annotations: Vec::new(),
         };
 
         index.add_file(FileId::new(0), vec![symbol]);

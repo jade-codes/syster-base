@@ -452,12 +452,12 @@ fn test_import_alias() {
 }
 
 // =============================================================================
-// FILTER IMPORTS
+// FILTER IMPORTS (SysML v2 §7.5.4)
 // =============================================================================
 
 // Note: SysML uses filter expressions with [condition] syntax, not `except` keyword.
 // e.g., `import Lib::*[not isAbstract];`
-// Filter expression evaluation is not yet implemented.
+// Filter expression evaluation is NOT YET implemented - filters are parsed but ignored.
 
 #[test]
 fn test_import_filter_syntax_parses() {
@@ -478,4 +478,448 @@ fn test_import_filter_syntax_parses() {
     // Without filter, both should be visible
     assert_resolves(analysis.symbol_index(), "Consumer", "Included");
     assert_resolves(analysis.symbol_index(), "Consumer", "Excluded");
+}
+
+#[test]
+fn test_filtered_import_with_nonexistent_filter_imports_nothing() {
+    // Filter syntax with non-matching filter imports nothing
+    // This verifies filter evaluation is working
+    let source = r#"
+        package Source {
+            part def PartA;
+            part def PartB;
+            part def PartC;
+        }
+        package Consumer {
+            import Source::*[@SomeCondition];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // @SomeCondition doesn't exist, so no elements match the filter
+    assert_not_found(analysis.symbol_index(), "Consumer", "PartA");
+    assert_not_found(analysis.symbol_index(), "Consumer", "PartB");
+    assert_not_found(analysis.symbol_index(), "Consumer", "PartC");
+}
+
+#[test]
+fn test_multiple_filter_conditions_require_all_to_match() {
+    // Multiple [filter] conditions require ALL to match (AND semantics)
+    let source = r#"
+        metadata def Condition1;
+        metadata def Condition2;
+        metadata def Condition3;
+        
+        package Source {
+            part def AllThree { @Condition1; @Condition2; @Condition3; }
+            part def JustOne { @Condition1; }
+            part def JustTwo { @Condition1; @Condition2; }
+            part def None;
+        }
+        package Consumer {
+            import Source::*[@Condition1][@Condition2][@Condition3];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Only element with ALL three metadata passes the filter
+    assert_resolves(analysis.symbol_index(), "Consumer", "AllThree");
+    assert_not_found(analysis.symbol_index(), "Consumer", "JustOne");
+    assert_not_found(analysis.symbol_index(), "Consumer", "JustTwo");
+    assert_not_found(analysis.symbol_index(), "Consumer", "None");
+}
+
+#[test]
+fn test_package_level_filter_statement_parses() {
+    // Package-level filter statement (applies to all imports)
+    // With filter @SomeMetadata, only elements WITH @SomeMetadata are visible
+    let source = r#"
+        metadata def SomeMetadata;
+        
+        package Source {
+            part def Visible { @SomeMetadata; }
+            part def Hidden;
+        }
+        package Consumer {
+            import Source::*;
+            filter @SomeMetadata;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Filter statement evaluated - only Visible has @SomeMetadata
+    assert_resolves(analysis.symbol_index(), "Consumer", "Visible");
+    assert_not_found(analysis.symbol_index(), "Consumer", "Hidden");
+}
+
+#[test]
+fn test_recursive_import_with_filter_nonexistent_metadata() {
+    // Recursive import (**) with filter condition that doesn't exist
+    // When filter metadata doesn't exist, nothing matches
+    let source = r#"
+        package Outer {
+            package Inner {
+                part def DeepElement;
+            }
+            part def ShallowElement;
+        }
+        package Consumer {
+            import Outer::**[@SomeFilter];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // @SomeFilter doesn't exist, so no elements pass the filter
+    assert_not_found(analysis.symbol_index(), "Consumer", "ShallowElement");
+    assert_not_found(analysis.symbol_index(), "Consumer", "DeepElement");
+}
+
+#[test]
+fn test_spec_example_approval_metadata_with_filter_evaluation() {
+    // Example from SysML v2 spec §7.5.4, updated for filter evaluation
+    // Complex expressions like "@Approval and approved and level > 1"
+    // are parsed but only simple metadata refs (@Approval) are currently extracted
+    let source = r#"
+        package ApprovalMetadata {
+            metadata def Approval {
+                attribute approved : Boolean;
+                attribute level : Natural;
+            }
+        }
+        package DesignModel {
+            public import ApprovalMetadata::*;
+            part def System { @Approval; }
+            part def UnapprovedSystem;
+        }
+        package UpperLevelApprovals {
+            private import ApprovalMetadata::**;
+            public import DesignModel::**[@Approval];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Verify packages exist
+    assert_symbol_exists(analysis.symbol_index(), "ApprovalMetadata");
+    assert_symbol_exists(analysis.symbol_index(), "DesignModel");
+    assert_symbol_exists(analysis.symbol_index(), "UpperLevelApprovals");
+
+    // Only System with @Approval is imported; UnapprovedSystem is filtered out
+    assert_resolves(analysis.symbol_index(), "UpperLevelApprovals", "System");
+    assert_not_found(
+        analysis.symbol_index(),
+        "UpperLevelApprovals",
+        "UnapprovedSystem",
+    );
+}
+// =============================================================================
+// FILTER IMPORT EVALUATION (TODO: Implement)
+// =============================================================================
+
+/// Verify that metadata_annotations are being extracted correctly from symbols.
+/// This test passes once HirSymbol.metadata_annotations is populated.
+#[test]
+fn test_metadata_annotations_extracted() {
+    let source = r#"
+        metadata def Safety;
+        metadata def Approved;
+        
+        package Source {
+            part safeAndApproved { @Safety; @Approved; }
+            part onlySafe { @Safety; }
+            part noMetadata;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Check metadata_annotations are extracted
+    let safe_and_approved = get_symbol(analysis.symbol_index(), "Source::safeAndApproved");
+    assert!(
+        safe_and_approved
+            .metadata_annotations
+            .contains(&"Safety".into()),
+        "safeAndApproved should have @Safety, got: {:?}",
+        safe_and_approved.metadata_annotations
+    );
+    assert!(
+        safe_and_approved
+            .metadata_annotations
+            .contains(&"Approved".into()),
+        "safeAndApproved should have @Approved, got: {:?}",
+        safe_and_approved.metadata_annotations
+    );
+
+    let only_safe = get_symbol(analysis.symbol_index(), "Source::onlySafe");
+    assert!(
+        only_safe.metadata_annotations.contains(&"Safety".into()),
+        "onlySafe should have @Safety, got: {:?}",
+        only_safe.metadata_annotations
+    );
+    assert!(
+        !only_safe.metadata_annotations.contains(&"Approved".into()),
+        "onlySafe should NOT have @Approved"
+    );
+
+    let no_metadata = get_symbol(analysis.symbol_index(), "Source::noMetadata");
+    assert!(
+        no_metadata.metadata_annotations.is_empty(),
+        "noMetadata should have no annotations, got: {:?}",
+        no_metadata.metadata_annotations
+    );
+}
+
+#[test]
+fn test_filtered_import_excludes_non_matching_elements() {
+    // This test should FAIL until filter evaluation is implemented
+    // Based on SysML v2 spec example - metadata applied to parts
+    let source = r#"
+        metadata def Safety {
+            attribute isMandatory : Boolean;
+        }
+        metadata def Security;
+        
+        package Source {
+            part bumper { @Safety { isMandatory = true; } }
+            part keylessEntry { @Security; }
+            part frontSeat;
+        }
+        package SafetyGroup {
+            import Source::*;
+            filter @Safety;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // With filter @Safety, only bumper should be visible
+    assert_resolves(analysis.symbol_index(), "SafetyGroup", "bumper");
+
+    // These should NOT be visible (filtered out - no @Safety metadata)
+    assert_not_found(analysis.symbol_index(), "SafetyGroup", "keylessEntry");
+    assert_not_found(analysis.symbol_index(), "SafetyGroup", "frontSeat");
+}
+
+#[test]
+fn test_filtered_import_with_bracket_syntax() {
+    // Filter in bracket syntax on import itself
+    let source = r#"
+        metadata def Approved;
+        
+        package Source {
+            part approved1 { @Approved; }
+            part approved2 { @Approved; }
+            part notApproved;
+        }
+        package Consumer {
+            import Source::*[@Approved];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Only approved elements should be visible
+    assert_resolves(analysis.symbol_index(), "Consumer", "approved1");
+    assert_resolves(analysis.symbol_index(), "Consumer", "approved2");
+    assert_not_found(analysis.symbol_index(), "Consumer", "notApproved");
+}
+
+#[test]
+fn test_filter_with_no_matching_elements() {
+    // Filter that matches nothing should import nothing
+    let source = r#"
+        metadata def Required;
+        
+        package Source {
+            part a;
+            part b;
+            part c;
+        }
+        package Consumer {
+            import Source::*[@Required];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Nothing has @Required, so nothing should be visible
+    assert_not_found(analysis.symbol_index(), "Consumer", "a");
+    assert_not_found(analysis.symbol_index(), "Consumer", "b");
+    assert_not_found(analysis.symbol_index(), "Consumer", "c");
+}
+
+#[test]
+fn test_filter_with_all_matching_elements() {
+    // Filter where all elements match should import all
+    let source = r#"
+        metadata def Common;
+        
+        package Source {
+            part a { @Common; }
+            part b { @Common; }
+            part c { @Common; }
+        }
+        package Consumer {
+            import Source::*[@Common];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // All have @Common, so all should be visible
+    assert_resolves(analysis.symbol_index(), "Consumer", "a");
+    assert_resolves(analysis.symbol_index(), "Consumer", "b");
+    assert_resolves(analysis.symbol_index(), "Consumer", "c");
+}
+
+#[test]
+fn test_filter_metadata_short_name_matches() {
+    // @Safety should match even when metadata is in a nested package
+    let source = r#"
+        package SafetyMetadata {
+            metadata def Safety;
+        }
+        package Source {
+            import SafetyMetadata::*;
+            part safePart { @Safety; }
+            part unsafePart;
+        }
+        package Consumer {
+            import SafetyMetadata::*;
+            import Source::*[@Safety];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    assert_resolves(analysis.symbol_index(), "Consumer", "safePart");
+    assert_not_found(analysis.symbol_index(), "Consumer", "unsafePart");
+}
+
+#[test]
+fn test_filter_metadata_qualified_name_matches() {
+    // Fully qualified metadata name in filter
+    let source = r#"
+        package Meta {
+            metadata def Tag;
+        }
+        package Source {
+            import Meta::*;
+            part tagged { @Tag; }
+            part untagged;
+        }
+        package Consumer {
+            import Meta::*;
+            import Source::*[@Tag];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    assert_resolves(analysis.symbol_index(), "Consumer", "tagged");
+    assert_not_found(analysis.symbol_index(), "Consumer", "untagged");
+}
+
+#[test]
+fn test_filter_nonexistent_metadata_imports_nothing() {
+    // Filter with nonexistent metadata type should import nothing
+    let source = r#"
+        package Source {
+            part a;
+            part b;
+        }
+        package Consumer {
+            import Source::*[@NonExistent];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // NonExistent doesn't exist, so nothing matches
+    assert_not_found(analysis.symbol_index(), "Consumer", "a");
+    assert_not_found(analysis.symbol_index(), "Consumer", "b");
+}
+
+#[test]
+fn test_filter_on_recursive_import() {
+    // Recursive import with filter should filter at all levels
+    let source = r#"
+        metadata def Important;
+        
+        package Outer {
+            part outerImportant { @Important; }
+            part outerNormal;
+            package Inner {
+                part innerImportant { @Important; }
+                part innerNormal;
+            }
+        }
+        package Consumer {
+            import Outer::**[@Important];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Only @Important elements at any level
+    assert_resolves(analysis.symbol_index(), "Consumer", "outerImportant");
+    assert_resolves(analysis.symbol_index(), "Consumer", "innerImportant");
+    assert_not_found(analysis.symbol_index(), "Consumer", "outerNormal");
+    assert_not_found(analysis.symbol_index(), "Consumer", "innerNormal");
+}
+
+#[test]
+fn test_multiple_filters_on_same_import() {
+    // Multiple [filter] conditions require ALL to match
+    let source = r#"
+        metadata def A;
+        metadata def B;
+        
+        package Source {
+            part hasA { @A; }
+            part hasB { @B; }
+            part hasBoth { @A; @B; }
+            part hasNeither;
+        }
+        package Consumer {
+            import Source::*[@A][@B];
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Only element with BOTH @A and @B
+    assert_resolves(analysis.symbol_index(), "Consumer", "hasBoth");
+    assert_not_found(analysis.symbol_index(), "Consumer", "hasA");
+    assert_not_found(analysis.symbol_index(), "Consumer", "hasB");
+    assert_not_found(analysis.symbol_index(), "Consumer", "hasNeither");
+}
+
+#[test]
+fn test_filter_preserves_public_visibility() {
+    // Public filtered import should re-export filtered elements
+    let source = r#"
+        metadata def Public;
+        
+        package Source {
+            part publicPart { @Public; }
+            part privatePart;
+        }
+        package Middle {
+            public import Source::*[@Public];
+        }
+        package Consumer {
+            import Middle::*;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Consumer gets publicPart via Middle's public filtered import
+    assert_resolves(analysis.symbol_index(), "Consumer", "publicPart");
+    assert_not_found(analysis.symbol_index(), "Consumer", "privatePart");
 }
