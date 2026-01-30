@@ -1519,7 +1519,7 @@ package SimpleVehicleModel{
     package SafetyandSecurityGroups {
         public import VehicleConfigurations::VehicleConfiguration_b::PartsTree::*;
         package SafetyGroup {
-            /* Parts that contribute to safety. */
+            doc /* Parts that contribute to safety. */
             public import vehicle_b::**;
             filter @Safety;
         }

@@ -42,7 +42,7 @@ These tests call `extract_symbols_unified(&syntax_file)` but it now requires `ex
 3. Rewrite tests to use public API
 
 ---
-
+parserparser
 ### Category C: Completely broken API usage (2 files)
 
 #### `test_debug_vehicle_chain.rs` (9 errors)

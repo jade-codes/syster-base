@@ -1112,8 +1112,13 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         SyntaxKind::IDENT => p.parse_shorthand_feature_member(),
         
         _ => {
+            let got = if let Some(text) = p.current_token_text() {
+                format!("'{}'", text)
+            } else {
+                kind_to_name(p.current_kind()).to_string()
+            };
             p.error_recover(
-                format!("unexpected token: {:?}", p.current_kind()),
+                format!("unexpected {} in namespace body", got),
                 &[SyntaxKind::PACKAGE_KW, SyntaxKind::PART_KW, SyntaxKind::R_BRACE],
             );
         }
@@ -4182,11 +4187,8 @@ fn parse_objective_member<P: SysMLParser>(p: &mut P) {
     p.bump(); // objective
     p.skip_trivia();
     
-    // Optional identifier
-    if p.at(SyntaxKind::IDENT) {
-        p.bump();
-        p.skip_trivia();
-    }
+    // Optional identifier (wrapped in NAME)
+    parse_optional_identification(p);
     
     // Optional typing
     if p.at(SyntaxKind::COLON) {
@@ -4216,11 +4218,8 @@ fn parse_subject_member<P: SysMLParser>(p: &mut P) {
     p.bump(); // subject
     p.skip_trivia();
     
-    // Usage declaration (identifier, typing, etc.)
-    if p.at(SyntaxKind::IDENT) {
-        p.bump();
-        p.skip_trivia();
-    }
+    // Usage declaration (identifier wrapped in NAME, typing, etc.)
+    parse_optional_identification(p);
     
     // Multiplicity
     if p.at(SyntaxKind::L_BRACKET) {
@@ -4273,11 +4272,8 @@ fn parse_actor_member<P: SysMLParser>(p: &mut P) {
     p.bump(); // actor
     p.skip_trivia();
     
-    // Similar to subject member
-    if p.at(SyntaxKind::IDENT) {
-        p.bump();
-        p.skip_trivia();
-    }
+    // Usage declaration (identifier wrapped in NAME)
+    parse_optional_identification(p);
     
     if p.at(SyntaxKind::COLON) {
         p.parse_typing();
@@ -4327,10 +4323,8 @@ fn parse_stakeholder_member<P: SysMLParser>(p: &mut P) {
     p.bump(); // stakeholder
     p.skip_trivia();
     
-    if p.at(SyntaxKind::IDENT) {
-        p.bump();
-        p.skip_trivia();
-    }
+    // Usage declaration (identifier wrapped in NAME)
+    parse_optional_identification(p);
     
     if p.at(SyntaxKind::COLON) {
         p.parse_typing();

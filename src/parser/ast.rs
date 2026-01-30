@@ -16,6 +16,116 @@ pub trait AstNode: Sized {
     fn descendants<T: AstNode>(&self) -> impl Iterator<Item = T> {
         self.syntax().descendants().filter_map(T::cast)
     }
+    
+    /// Extract doc comment preceding this node.
+    /// Looks for block comments (`/* ... */`) or consecutive line comments (`// ...`)
+    /// immediately preceding the node (separated only by whitespace).
+    fn doc_comment(&self) -> Option<String> {
+        extract_doc_comment(self.syntax())
+    }
+}
+
+/// Extract doc comment from preceding trivia or COMMENT_ELEMENT of a syntax node.
+/// 
+/// SysML supports two forms of documentation:
+/// 1. `doc /* content */` - formal SysML documentation (COMMENT_ELEMENT nodes)
+/// 2. Regular comments `/* ... */` or `// ...` - informal doc comments (trivia)
+pub fn extract_doc_comment(node: &SyntaxNode) -> Option<String> {
+    let mut comments = Vec::new();
+    let mut current = node.prev_sibling_or_token();
+    
+    while let Some(node_or_token) = current {
+        match node_or_token {
+            rowan::NodeOrToken::Token(ref t) => {
+                match t.kind() {
+                    SyntaxKind::WHITESPACE => {
+                        // Allow whitespace, continue looking
+                        current = t.prev_sibling_or_token();
+                    }
+                    SyntaxKind::BLOCK_COMMENT => {
+                        // Block comment - use as doc
+                        let text = t.text();
+                        // Strip /* and */ and trim
+                        let content = text
+                            .strip_prefix("/*")
+                            .and_then(|s| s.strip_suffix("*/"))
+                            .map(|s| clean_doc_comment(s))
+                            .unwrap_or_default();
+                        if !content.is_empty() {
+                            comments.push(content);
+                        }
+                        // Block comment found, stop looking
+                        break;
+                    }
+                    SyntaxKind::LINE_COMMENT => {
+                        // Line comment - collect consecutive ones
+                        let text = t.text();
+                        // Strip // and trim
+                        let content = text.strip_prefix("//").unwrap_or(text).trim();
+                        if !content.is_empty() {
+                            comments.push(content.to_string());
+                        }
+                        current = t.prev_sibling_or_token();
+                    }
+                    _ => break, // Any other token stops the search
+                }
+            }
+            rowan::NodeOrToken::Node(ref n) => {
+                // Check for COMMENT_ELEMENT (SysML `doc /* ... */` syntax)
+                if n.kind() == SyntaxKind::COMMENT_ELEMENT {
+                    // Extract the content from the COMMENT_ELEMENT
+                    // The structure is: doc /* content */
+                    // We need to find the BLOCK_COMMENT token inside
+                    for child in n.children_with_tokens() {
+                        if let rowan::NodeOrToken::Token(t) = child {
+                            if t.kind() == SyntaxKind::BLOCK_COMMENT {
+                                let text = t.text();
+                                let content = text
+                                    .strip_prefix("/*")
+                                    .and_then(|s| s.strip_suffix("*/"))
+                                    .map(|s| clean_doc_comment(s))
+                                    .unwrap_or_default();
+                                if !content.is_empty() {
+                                    comments.push(content);
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    // Found doc element, stop looking
+                    break;
+                } else {
+                    // Another node that's not a comment stops the search
+                    break;
+                }
+            }
+        }
+    }
+    
+    if comments.is_empty() {
+        return None;
+    }
+    
+    // Reverse because we collected bottom-up
+    comments.reverse();
+    Some(comments.join("\n"))
+}
+
+/// Clean up doc comment content by removing leading asterisks and normalizing whitespace.
+fn clean_doc_comment(s: &str) -> String {
+    s.lines()
+        .map(|line| {
+            let trimmed = line.trim();
+            // Remove leading * from doc comment lines
+            if let Some(rest) = trimmed.strip_prefix('*') {
+                rest.trim_start().to_string()
+            } else {
+                trimmed.to_string()
+            }
+        })
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// Trait for AST tokens that wrap a SyntaxToken
@@ -100,6 +210,10 @@ pub enum NamespaceMember {
     SendAction(SendActionUsage),
     /// Accept action usage (e.g., `accept e : Signal via port`)
     AcceptAction(AcceptActionUsage),
+    /// State subaction (e.g., `entry action initial;`)
+    StateSubaction(StateSubaction),
+    /// Control node (fork, join, merge, decide)
+    ControlNode(ControlNode),
 }
 
 impl AstNode for NamespaceMember {
@@ -113,6 +227,10 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::DEPENDENCY
                 | SyntaxKind::DEFINITION
                 | SyntaxKind::USAGE
+                | SyntaxKind::SUBJECT_USAGE
+                | SyntaxKind::ACTOR_USAGE
+                | SyntaxKind::STAKEHOLDER_USAGE
+                | SyntaxKind::OBJECTIVE_USAGE
                 | SyntaxKind::ELEMENT_FILTER_MEMBER
                 | SyntaxKind::METADATA_USAGE
                 | SyntaxKind::COMMENT_ELEMENT
@@ -123,6 +241,8 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::CONNECT_USAGE
                 | SyntaxKind::SEND_ACTION_USAGE
                 | SyntaxKind::ACCEPT_ACTION_USAGE
+                | SyntaxKind::STATE_SUBACTION
+                | SyntaxKind::CONTROL_NODE
         )
     }
 
@@ -134,7 +254,11 @@ impl AstNode for NamespaceMember {
             SyntaxKind::ALIAS_MEMBER => Some(Self::Alias(Alias(node))),
             SyntaxKind::DEPENDENCY => Some(Self::Dependency(Dependency(node))),
             SyntaxKind::DEFINITION => Some(Self::Definition(Definition(node))),
-            SyntaxKind::USAGE => Some(Self::Usage(Usage(node))),
+            SyntaxKind::USAGE
+            | SyntaxKind::SUBJECT_USAGE
+            | SyntaxKind::ACTOR_USAGE
+            | SyntaxKind::STAKEHOLDER_USAGE
+            | SyntaxKind::OBJECTIVE_USAGE => Some(Self::Usage(Usage(node))),
             SyntaxKind::ELEMENT_FILTER_MEMBER => Some(Self::Filter(ElementFilter(node))),
             SyntaxKind::METADATA_USAGE => Some(Self::Metadata(MetadataUsage(node))),
             SyntaxKind::COMMENT_ELEMENT => Some(Self::Comment(Comment(node))),
@@ -145,6 +269,8 @@ impl AstNode for NamespaceMember {
             SyntaxKind::CONNECT_USAGE => Some(Self::ConnectUsage(ConnectUsage(node))),
             SyntaxKind::SEND_ACTION_USAGE => Some(Self::SendAction(SendActionUsage(node))),
             SyntaxKind::ACCEPT_ACTION_USAGE => Some(Self::AcceptAction(AcceptActionUsage(node))),
+            SyntaxKind::STATE_SUBACTION => Some(Self::StateSubaction(StateSubaction(node))),
+            SyntaxKind::CONTROL_NODE => Some(Self::ControlNode(ControlNode(node))),
             _ => None,
         }
     }
@@ -168,6 +294,8 @@ impl AstNode for NamespaceMember {
             Self::ConnectUsage(n) => n.syntax(),
             Self::SendAction(n) => n.syntax(),
             Self::AcceptAction(n) => n.syntax(),
+            Self::StateSubaction(n) => n.syntax(),
+            Self::ControlNode(n) => n.syntax(),
         }
     }
 }
@@ -217,7 +345,28 @@ ast_node!(NamespaceBody, NAMESPACE_BODY);
 
 impl NamespaceBody {
     pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
-        self.0.children().filter_map(NamespaceMember::cast)
+        self.0.children().flat_map(|child| {
+            // STATE_SUBACTION is a container for entry/do/exit actions
+            // We need to look inside for nested members (ACCEPT_ACTION_USAGE, SEND_ACTION_USAGE)
+            // as well as try casting the child itself
+            if child.kind() == SyntaxKind::STATE_SUBACTION {
+                // First try direct children of STATE_SUBACTION  
+                let nested: Vec<NamespaceMember> = child.children()
+                    .filter_map(NamespaceMember::cast)
+                    .collect();
+                if nested.is_empty() {
+                    // If no nested namespace members, wrap the STATE_SUBACTION itself as a StateSubaction
+                    StateSubaction::cast(child)
+                        .map(|s| NamespaceMember::StateSubaction(s))
+                        .into_iter()
+                        .collect::<Vec<_>>()
+                } else {
+                    nested
+                }
+            } else {
+                NamespaceMember::cast(child).into_iter().collect()
+            }
+        })
     }
 }
 
@@ -592,7 +741,35 @@ pub enum DefinitionKind {
 // Usage
 // ============================================================================
 
-ast_node!(Usage, USAGE);
+/// Usage node - covers USAGE and requirement-specific usage kinds
+/// (SUBJECT_USAGE, ACTOR_USAGE, STAKEHOLDER_USAGE, OBJECTIVE_USAGE)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Usage(SyntaxNode);
+
+impl AstNode for Usage {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        matches!(
+            kind,
+            SyntaxKind::USAGE
+                | SyntaxKind::SUBJECT_USAGE
+                | SyntaxKind::ACTOR_USAGE
+                | SyntaxKind::STAKEHOLDER_USAGE
+                | SyntaxKind::OBJECTIVE_USAGE
+        )
+    }
+
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(node.kind()) {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.0
+    }
+}
 
 impl Usage {
     pub fn is_ref(&self) -> bool {
@@ -1026,6 +1203,11 @@ impl FromToTarget {
 ast_node!(TransitionUsage, TRANSITION_USAGE);
 
 impl TransitionUsage {
+    /// Get the transition name (if named)
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
     /// Get all specializations (source and target states)
     pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
         self.0.children().filter_map(Specialization::cast)
@@ -1040,6 +1222,32 @@ impl TransitionUsage {
     pub fn target(&self) -> Option<Specialization> {
         self.specializations().nth(1)
     }
+    
+    /// Get the accept payload name (the second NAME if present, after ACCEPT_KW)
+    /// e.g., in `accept ignitionCmd:IgnitionCmd`, returns the Name for `ignitionCmd`
+    pub fn accept_payload_name(&self) -> Option<Name> {
+        use crate::parser::SyntaxKind;
+        let mut found_accept = false;
+        for child in self.0.children_with_tokens() {
+            match &child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::ACCEPT_KW => {
+                    found_accept = true;
+                }
+                rowan::NodeOrToken::Node(n) if found_accept => {
+                    if let Some(name) = Name::cast(n.clone()) {
+                        return Some(name);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
+    
+    /// Get typing for the accept payload (e.g., `:IgnitionCmd`)
+    pub fn accept_typing(&self) -> Option<Typing> {
+        self.0.children().find_map(Typing::cast)
+    }
 }
 
 // ============================================================================
@@ -1049,6 +1257,16 @@ impl TransitionUsage {
 ast_node!(PerformActionUsage, PERFORM_ACTION_USAGE);
 
 impl PerformActionUsage {
+    /// Get the perform action name (if named, e.g., `perform action startVehicle`)
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
+    /// Get the typing (e.g., `: GetOutOfVehicle` in `perform action x : GetOutOfVehicle`)
+    pub fn typing(&self) -> Option<Typing> {
+        self.0.children().find_map(Typing::cast)
+    }
+    
     /// Get all specializations (includes the performed action and redefines)
     pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
         self.0.children().filter_map(Specialization::cast)
@@ -1057,6 +1275,11 @@ impl PerformActionUsage {
     /// Get the performed action (first specialization, the action being performed)
     pub fn performed(&self) -> Option<Specialization> {
         self.specializations().next()
+    }
+    
+    /// Get the body of the perform action
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
     }
 }
 
@@ -1067,6 +1290,11 @@ impl PerformActionUsage {
 ast_node!(AcceptActionUsage, ACCEPT_ACTION_USAGE);
 
 impl AcceptActionUsage {
+    /// Get the accept action name (if named, e.g., the payload name)
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
     /// Get the trigger expression (what's being accepted)
     pub fn trigger(&self) -> Option<Expression> {
         self.0.children().find_map(Expression::cast)
@@ -1093,6 +1321,95 @@ impl SendActionUsage {
     /// Get qualified names (for via/to targets)
     pub fn qualified_names(&self) -> impl Iterator<Item = QualifiedName> + '_ {
         self.0.children().filter_map(QualifiedName::cast)
+    }
+}
+
+// ============================================================================
+// State Subaction (entry/do/exit)
+// ============================================================================
+
+ast_node!(StateSubaction, STATE_SUBACTION);
+
+impl StateSubaction {
+    /// Get the state subaction kind (entry, do, or exit)
+    pub fn kind(&self) -> Option<SyntaxKind> {
+        self.0.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| matches!(t.kind(), SyntaxKind::ENTRY_KW | SyntaxKind::DO_KW | SyntaxKind::EXIT_KW))
+            .map(|t| t.kind())
+    }
+    
+    /// Get the name of the action (if named)
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
+    /// Get the body if present
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+    
+    /// Check if this is an 'entry' subaction
+    pub fn is_entry(&self) -> bool {
+        self.kind() == Some(SyntaxKind::ENTRY_KW)
+    }
+    
+    /// Check if this is a 'do' subaction
+    pub fn is_do(&self) -> bool {
+        self.kind() == Some(SyntaxKind::DO_KW)
+    }
+    
+    /// Check if this is an 'exit' subaction
+    pub fn is_exit(&self) -> bool {
+        self.kind() == Some(SyntaxKind::EXIT_KW)
+    }
+}
+
+// ============================================================================
+// Control Node (fork, join, merge, decide)
+// ============================================================================
+
+ast_node!(ControlNode, CONTROL_NODE);
+
+impl ControlNode {
+    /// Get the control node kind (fork, join, merge, or decide)
+    pub fn kind(&self) -> Option<SyntaxKind> {
+        self.0.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| matches!(t.kind(), 
+                SyntaxKind::FORK_KW | SyntaxKind::JOIN_KW | 
+                SyntaxKind::MERGE_KW | SyntaxKind::DECIDE_KW))
+            .map(|t| t.kind())
+    }
+    
+    /// Get the name of the control node (if named)
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
+    /// Get the body if present
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+    
+    /// Check if this is a 'fork' node
+    pub fn is_fork(&self) -> bool {
+        self.kind() == Some(SyntaxKind::FORK_KW)
+    }
+    
+    /// Check if this is a 'join' node
+    pub fn is_join(&self) -> bool {
+        self.kind() == Some(SyntaxKind::JOIN_KW)
+    }
+    
+    /// Check if this is a 'merge' node
+    pub fn is_merge(&self) -> bool {
+        self.kind() == Some(SyntaxKind::MERGE_KW)
+    }
+    
+    /// Check if this is a 'decide' node
+    pub fn is_decide(&self) -> bool {
+        self.kind() == Some(SyntaxKind::DECIDE_KW)
     }
 }
 
@@ -1269,14 +1586,25 @@ impl Succession {
     pub fn target(&self) -> Option<SuccessionItem> {
         self.items().nth(1)
     }
+    
+    /// Get inline usages directly inside the succession (not wrapped in SUCCESSION_ITEM)
+    /// These come from `then action a { ... }` style successions
+    pub fn inline_usages(&self) -> impl Iterator<Item = Usage> + '_ {
+        self.0.children().filter_map(Usage::cast)
+    }
 }
 
 ast_node!(SuccessionItem, SUCCESSION_ITEM);
 
 impl SuccessionItem {
-    /// Get the qualified name reference
+    /// Get the qualified name reference (for simple succession like `then start`)
     pub fn target(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
+    }
+    
+    /// Get the inline usage (for succession with inline definition like `then action a { ... }`)
+    pub fn usage(&self) -> Option<Usage> {
+        self.0.children().find_map(Usage::cast)
     }
 }
 

@@ -61,18 +61,79 @@ pub fn parse_kerml(input: &str) -> Parse {
     parser.finish()
 }
 
-/// Convert a SyntaxKind to a human-readable name
+/// Convert a SyntaxKind to a human-readable name for error messages
 pub fn kind_to_name(kind: SyntaxKind) -> &'static str {
     match kind {
+        // Trivia
         SyntaxKind::WHITESPACE => "whitespace",
-        SyntaxKind::LINE_COMMENT => "line comment",
-        SyntaxKind::BLOCK_COMMENT => "block comment",
+        SyntaxKind::LINE_COMMENT => "comment",
+        SyntaxKind::BLOCK_COMMENT => "comment",
+        
+        // Literals
         SyntaxKind::IDENT => "identifier",
         SyntaxKind::INTEGER => "integer",
-        SyntaxKind::DECIMAL => "decimal",
+        SyntaxKind::DECIMAL => "number",
         SyntaxKind::STRING => "string",
         SyntaxKind::ERROR => "error",
-        _ => "token",
+        
+        // Punctuation
+        SyntaxKind::SEMICOLON => "';'",
+        SyntaxKind::COLON => "':'",
+        SyntaxKind::COLON_COLON => "'::'",
+        SyntaxKind::COLON_GT => "':>'",
+        SyntaxKind::COLON_GT_GT => "':>>'",
+        SyntaxKind::COLON_COLON_GT => "'::>'",
+        SyntaxKind::COMMA => "','",
+        SyntaxKind::DOT => "'.'",
+        SyntaxKind::DOT_DOT => "'..'",
+        SyntaxKind::L_PAREN => "'('",
+        SyntaxKind::R_PAREN => "')'",
+        SyntaxKind::L_BRACE => "'{'",
+        SyntaxKind::R_BRACE => "'}'",
+        SyntaxKind::L_BRACKET => "'['",
+        SyntaxKind::R_BRACKET => "']'",
+        SyntaxKind::LT => "'<'",
+        SyntaxKind::GT => "'>'",
+        SyntaxKind::LT_EQ => "'<='",
+        SyntaxKind::GT_EQ => "'>='",
+        SyntaxKind::EQ => "'='",
+        SyntaxKind::EQ_EQ => "'=='",
+        SyntaxKind::EQ_EQ_EQ => "'==='",
+        SyntaxKind::BANG_EQ => "'!='",
+        SyntaxKind::BANG_EQ_EQ => "'!=='",
+        SyntaxKind::COLON_EQ => "':='",
+        SyntaxKind::PLUS => "'+'",
+        SyntaxKind::MINUS => "'-'",
+        SyntaxKind::STAR => "'*'",
+        SyntaxKind::STAR_STAR => "'**'",
+        SyntaxKind::SLASH => "'/'",
+        SyntaxKind::PERCENT => "'%'",
+        SyntaxKind::CARET => "'^'",
+        SyntaxKind::TILDE => "'~'",
+        SyntaxKind::AMP => "'&'",
+        SyntaxKind::AMP_AMP => "'&&'",
+        SyntaxKind::PIPE => "'|'",
+        SyntaxKind::PIPE_PIPE => "'||'",
+        SyntaxKind::AT => "'@'",
+        SyntaxKind::AT_AT => "'@@'",
+        SyntaxKind::HASH => "'#'",
+        SyntaxKind::QUESTION => "'?'",
+        SyntaxKind::QUESTION_QUESTION => "'??'",
+        SyntaxKind::BANG => "'!'",
+        SyntaxKind::ARROW => "'->'",
+        SyntaxKind::FAT_ARROW => "'=>'",
+        SyntaxKind::DOLLAR => "'$'",
+        
+        // Common keywords - extract text from the enum variant name
+        _ => {
+            // For keywords, try to extract a user-friendly name
+            let debug_str = format!("{:?}", kind);
+            if debug_str.ends_with("_KW") {
+                // It's a keyword - return as-is from debug, user will see the raw keyword
+                return "keyword";
+            }
+            "token"
+        }
     }
 }
 
@@ -195,7 +256,11 @@ impl<'a> Parser<'a> {
         if self.eat(kind) {
             true
         } else {
-            self.error(format!("expected {:?}", kind));
+            let expected = kind_to_name(kind);
+            let found = self.current()
+                .map(|t| kind_to_name(t.kind))
+                .unwrap_or("end of file");
+            self.error(format!("expected {}, found {}", expected, found));
             false
         }
     }

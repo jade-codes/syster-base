@@ -104,6 +104,7 @@ pub struct NormalizedPackage {
     pub range: Option<TextRange>,
     /// Range of just the name identifier (for semantic tokens and hover)
     pub name_range: Option<TextRange>,
+    pub doc: Option<String>,
     pub children: Vec<NormalizedElement>,
 }
 
@@ -143,6 +144,7 @@ pub struct NormalizedUsage {
 #[derive(Debug, Clone)]
 pub struct NormalizedImport {
     pub path: String,
+    pub path_range: Option<TextRange>,
     pub range: Option<TextRange>,
     pub is_public: bool,
     /// Filter metadata names from bracket syntax, e.g., `import X::*[@Safety]`
@@ -247,6 +249,12 @@ pub enum NormalizedUsageKind {
     Occurrence,
     Flow,
     Transition,
+    Accept,
+    // Control nodes
+    Fork,
+    Join,
+    Merge,
+    Decide,
     // KerML: features are treated as usages
     Feature,
     // Fallback
@@ -375,6 +383,7 @@ impl NormalizedElement {
                     short_name: pkg.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
                     range: Some(pkg.syntax().text_range()),
                     name_range: pkg.name().map(|n| n.syntax().text_range()),
+                    doc: parser::extract_doc_comment(pkg.syntax()),
                     children: pkg
                         .body()
                         .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
@@ -476,6 +485,14 @@ impl NormalizedElement {
                 // Convert accept action to a usage
                 NormalizedElement::Usage(NormalizedUsage::from_accept_action(&accept))
             }
+            NamespaceMember::StateSubaction(subaction) => {
+                // Convert state subaction (entry/do/exit) to a usage
+                NormalizedElement::Usage(NormalizedUsage::from_state_subaction(&subaction))
+            }
+            NamespaceMember::ControlNode(node) => {
+                // Convert control node (fork/join/merge/decide) to a usage
+                NormalizedElement::Usage(NormalizedUsage::from_control_node(&node))
+            }
         }
     }
 }
@@ -487,6 +504,7 @@ impl NormalizedPackage {
             short_name: pkg.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
             range: Some(pkg.syntax().text_range()),
             name_range: pkg.name().map(|n| n.syntax().text_range()),
+            doc: parser::extract_doc_comment(pkg.syntax()),
             children: pkg
                 .body()
                 .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
@@ -554,11 +572,12 @@ impl NormalizedDefinition {
                     Some(SpecializationKind::FeatureChain) => NormalizedRelKind::Specializes,
                     None => NormalizedRelKind::Specializes, // Comma-continuation inherits Specializes
                 };
-                let target = spec.target()?.to_string();
+                let target_node = spec.target()?;
+                let target = target_node.to_string();
                 Some(NormalizedRelationship {
                     kind: rel_kind,
                     target: RelTarget::Simple(target),
-                    range: Some(spec.syntax().text_range()),
+                    range: Some(target_node.syntax().text_range()),
                 })
             })
             .collect();
@@ -595,25 +614,10 @@ impl NormalizedDefinition {
         }
 
         // Extract children from body
-        eprintln!("[TRACE normalized::from_def] def={:?}, has body={}", def.name().and_then(|n| n.text()), def.body().is_some());
-        if let Some(body) = def.body() {
-            eprintln!("[TRACE normalized::from_def]   body syntax children:");
-            for child in body.syntax().children() {
-                eprintln!("[TRACE normalized::from_def]     child kind={:?}", child.kind());
-            }
-        }
         let children: Vec<NormalizedElement> = def
             .body()
-            .map(|b| {
-                let members: Vec<_> = b.members().collect();
-                eprintln!("[TRACE normalized::from_def]   body has {} members", members.len());
-                for (i, m) in members.iter().enumerate() {
-                    eprintln!("[TRACE normalized::from_def]   member[{}]: {:?}", i, m);
-                }
-                members.into_iter().map(|m| NormalizedElement::from_rowan(&m)).collect()
-            })
+            .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
             .unwrap_or_default();
-        eprintln!("[TRACE normalized::from_def]   extracted {} children", children.len());
 
         Self {
             name: def.name().and_then(|n| n.text()),
@@ -625,7 +629,7 @@ impl NormalizedDefinition {
                 .name()
                 .and_then(|n| n.short_name())
                 .map(|sn| sn.syntax().text_range()),
-            doc: None, // TODO: Extract doc comments
+            doc: parser::extract_doc_comment(def.syntax()),
             relationships,
             children,
         }
@@ -635,40 +639,52 @@ impl NormalizedDefinition {
 impl NormalizedUsage {
     fn from_rowan(usage: &RowanUsage) -> Self {
         // Determine usage kind based on keyword tokens
-        let kind = match usage.usage_kind() {
-            Some(RowanUsageKind::Part) => NormalizedUsageKind::Part,
-            Some(RowanUsageKind::Attribute) => NormalizedUsageKind::Attribute,
-            Some(RowanUsageKind::Port) => NormalizedUsageKind::Port,
-            Some(RowanUsageKind::Item) => NormalizedUsageKind::Item,
-            Some(RowanUsageKind::Action) => NormalizedUsageKind::Action,
-            Some(RowanUsageKind::State) => NormalizedUsageKind::State,
-            Some(RowanUsageKind::Constraint) => NormalizedUsageKind::Constraint,
-            Some(RowanUsageKind::Requirement) => NormalizedUsageKind::Requirement,
-            Some(RowanUsageKind::Calc) => NormalizedUsageKind::Calculation,
-            Some(RowanUsageKind::Connection) => NormalizedUsageKind::Connection,
-            Some(RowanUsageKind::Interface) => NormalizedUsageKind::Interface,
-            Some(RowanUsageKind::Allocation) => NormalizedUsageKind::Allocation,
-            Some(RowanUsageKind::Flow) => NormalizedUsageKind::Flow,
-            Some(RowanUsageKind::Occurrence) => NormalizedUsageKind::Occurrence,
-            Some(RowanUsageKind::Ref) => NormalizedUsageKind::Reference,
-            // KerML mappings
-            Some(RowanUsageKind::Feature) => NormalizedUsageKind::Attribute, // feature -> attribute
-            Some(RowanUsageKind::Step) => NormalizedUsageKind::Action, // step -> action
-            Some(RowanUsageKind::Expr) => NormalizedUsageKind::Calculation, // expr -> calc
-            Some(RowanUsageKind::Connector) => NormalizedUsageKind::Connection, // connector -> connection
-            Some(RowanUsageKind::Case) => NormalizedUsageKind::Other,
-            None => NormalizedUsageKind::Part, // Default to Part for usages without keyword
+        // Check for nested transition first, then perform action
+        let kind = if usage.transition_usage().is_some() {
+            NormalizedUsageKind::Transition
+        } else if usage.perform_action_usage().is_some() {
+            // perform action => Action kind
+            NormalizedUsageKind::Action
+        } else {
+            match usage.usage_kind() {
+                Some(RowanUsageKind::Part) => NormalizedUsageKind::Part,
+                Some(RowanUsageKind::Attribute) => NormalizedUsageKind::Attribute,
+                Some(RowanUsageKind::Port) => NormalizedUsageKind::Port,
+                Some(RowanUsageKind::Item) => NormalizedUsageKind::Item,
+                Some(RowanUsageKind::Action) => NormalizedUsageKind::Action,
+                Some(RowanUsageKind::State) => NormalizedUsageKind::State,
+                Some(RowanUsageKind::Constraint) => NormalizedUsageKind::Constraint,
+                Some(RowanUsageKind::Requirement) => NormalizedUsageKind::Requirement,
+                Some(RowanUsageKind::Calc) => NormalizedUsageKind::Calculation,
+                Some(RowanUsageKind::Connection) => NormalizedUsageKind::Connection,
+                Some(RowanUsageKind::Interface) => NormalizedUsageKind::Interface,
+                Some(RowanUsageKind::Allocation) => NormalizedUsageKind::Allocation,
+                Some(RowanUsageKind::Flow) => NormalizedUsageKind::Flow,
+                Some(RowanUsageKind::Occurrence) => NormalizedUsageKind::Occurrence,
+                Some(RowanUsageKind::Ref) => NormalizedUsageKind::Reference,
+                // KerML mappings
+                Some(RowanUsageKind::Feature) => NormalizedUsageKind::Attribute, // feature -> attribute
+                Some(RowanUsageKind::Step) => NormalizedUsageKind::Action, // step -> action
+                Some(RowanUsageKind::Expr) => NormalizedUsageKind::Calculation, // expr -> calc
+                Some(RowanUsageKind::Connector) => NormalizedUsageKind::Connection, // connector -> connection
+                Some(RowanUsageKind::Case) => NormalizedUsageKind::Other,
+                None => NormalizedUsageKind::Part, // Default to Part for usages without keyword
+            }
         };
 
         // Extract typing as a relationship
         let mut relationships: Vec<NormalizedRelationship> = Vec::new();
 
-        if let Some(typing) = usage.typing() {
+        // Check for typing on the usage itself, or on nested perform action
+        let typing = usage.typing().or_else(|| {
+            usage.perform_action_usage().and_then(|p| p.typing())
+        });
+        if let Some(typing) = typing {
             if let Some(target) = typing.target() {
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::TypedBy,
                     target: RelTarget::Simple(target.to_string()),
-                    range: Some(typing.syntax().text_range()),
+                    range: Some(target.syntax().text_range()),
                 });
             }
         }
@@ -698,6 +714,7 @@ impl NormalizedUsage {
             };
             if let Some(target) = spec.target() {
                 let target_str = target.to_string();
+                let target_range = target.syntax().text_range();
                 // Check if this is a feature chain (contains .)
                 let rel_target = if target_str.contains('.') {
                     // Parse as chain
@@ -710,7 +727,7 @@ impl NormalizedUsage {
                         .collect();
                     RelTarget::Chain(FeatureChain {
                         parts,
-                        range: Some(target.syntax().text_range()),
+                        range: Some(target_range),
                     })
                 } else {
                     RelTarget::Simple(target_str)
@@ -718,7 +735,7 @@ impl NormalizedUsage {
                 relationships.push(NormalizedRelationship {
                     kind: rel_kind,
                     target: rel_target,
-                    range: Some(spec.syntax().text_range()),
+                    range: Some(target_range),
                 });
             }
         }
@@ -865,7 +882,7 @@ impl NormalizedUsage {
                     relationships.push(NormalizedRelationship {
                         kind,
                         target: RelTarget::Simple(target.to_string()),
-                        range: Some(typing.syntax().text_range()),
+                        range: Some(target.syntax().text_range()),
                     });
                 }
             }
@@ -1007,22 +1024,90 @@ impl NormalizedUsage {
         }
 
         // Extract children from body
-        let children: Vec<NormalizedElement> = usage
-            .body()
-            .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
-            .unwrap_or_default();
+        // For perform actions, the body is inside the PERFORM_ACTION_USAGE
+        let mut children: Vec<NormalizedElement> = if let Some(perform) = usage.perform_action_usage() {
+            perform
+                .body()
+                .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+                .unwrap_or_default()
+        } else {
+            usage
+                .body()
+                .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+                .unwrap_or_default()
+        };
+        
+        // For transitions, also add accept payload as a child if present
+        if let Some(trans) = usage.transition_usage() {
+            if let Some(accept_name) = trans.accept_payload_name() {
+                let payload_text = accept_name.text();
+                let payload_short = accept_name.short_name().and_then(|sn| sn.text());
+                let payload_range = Some(accept_name.syntax().text_range());
+                let payload_short_range = accept_name
+                    .short_name()
+                    .map(|sn| sn.syntax().text_range());
+                
+                // Get accept typing if present (e.g., `accept sig : Signal`)
+                let mut payload_rels = Vec::new();
+                if let Some(typing) = trans.accept_typing() {
+                    if let Some(target) = typing.target() {
+                        payload_rels.push(NormalizedRelationship {
+                            kind: NormalizedRelKind::TypedBy,
+                            target: RelTarget::Simple(target.to_string()),
+                            range: Some(target.syntax().text_range()),
+                        });
+                    }
+                }
+                
+                children.push(NormalizedElement::Usage(NormalizedUsage {
+                    name: payload_text,
+                    short_name: payload_short,
+                    kind: NormalizedUsageKind::Accept,
+                    range: payload_range,
+                    name_range: payload_range,
+                    short_name_range: payload_short_range,
+                    doc: None,
+                    relationships: payload_rels,
+                    children: Vec::new(),
+                }));
+            }
+        }
+
+        // Get name from nested transition or perform action if present, otherwise from usage itself
+        let (name, short_name, name_range, short_name_range) = if let Some(trans) = usage.transition_usage() {
+            let trans_name = trans.name();
+            (
+                trans_name.as_ref().and_then(|n| n.text()),
+                trans_name.as_ref().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+                trans_name.as_ref().map(|n| n.syntax().text_range()),
+                trans_name.and_then(|n| n.short_name()).map(|sn| sn.syntax().text_range()),
+            )
+        } else if let Some(perform) = usage.perform_action_usage() {
+            let perform_name = perform.name();
+            (
+                perform_name.as_ref().and_then(|n| n.text()),
+                perform_name.as_ref().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+                perform_name.as_ref().map(|n| n.syntax().text_range()),
+                perform_name.and_then(|n| n.short_name()).map(|sn| sn.syntax().text_range()),
+            )
+        } else {
+            let usage_name = usage.name();
+            (
+                usage_name.as_ref().and_then(|n| n.text()),
+                usage_name.as_ref().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+                usage_name.as_ref().map(|n| n.syntax().text_range()),
+                usage_name.and_then(|n| n.short_name()).map(|sn| sn.syntax().text_range()),
+            )
+        };
 
         Self {
-            name: usage.name().and_then(|n| n.text()),
-            short_name: usage.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+            name,
+            short_name,
             kind,
             range: Some(usage.syntax().text_range()),
-            name_range: usage.name().map(|n| n.syntax().text_range()),
-            short_name_range: usage
-                .name()
-                .and_then(|n| n.short_name())
-                .map(|sn| sn.syntax().text_range()),
-            doc: None, // TODO: Extract doc comments
+            name_range,
+            short_name_range,
+            doc: parser::extract_doc_comment(usage.syntax()),
             relationships,
             children,
         }
@@ -1067,17 +1152,25 @@ impl NormalizedUsage {
     /// Create a NormalizedUsage from a standalone Succession
     fn from_succession(succ: &parser::Succession) -> Self {
         let mut relationships = Vec::new();
+        let mut children = Vec::new();
         
+        // Handle succession items (wrapped in SUCCESSION_ITEM)
         let items: Vec<_> = succ.items().collect();
         if !items.is_empty() {
+            // First item is the source
             if let Some(qn) = items[0].target() {
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::SuccessionSource,
                     target: RelTarget::Simple(qn.to_string()),
                     range: Some(qn.syntax().text_range()),
                 });
+            } else if let Some(usage) = items[0].usage() {
+                // Inline usage definition - add as child
+                children.push(NormalizedElement::Usage(NormalizedUsage::from_rowan(&usage)));
             }
         }
+        
+        // Remaining wrapped items are targets
         for item in items.iter().skip(1) {
             if let Some(qn) = item.target() {
                 relationships.push(NormalizedRelationship {
@@ -1085,7 +1178,16 @@ impl NormalizedUsage {
                     target: RelTarget::Simple(qn.to_string()),
                     range: Some(qn.syntax().text_range()),
                 });
+            } else if let Some(usage) = item.usage() {
+                // Inline usage definition (like `then action a { ... }`)
+                children.push(NormalizedElement::Usage(NormalizedUsage::from_rowan(&usage)));
             }
+        }
+        
+        // Handle inline usages directly inside succession (not wrapped in SUCCESSION_ITEM)
+        // These come from `then action a { ... }` style successions
+        for usage in succ.inline_usages() {
+            children.push(NormalizedElement::Usage(NormalizedUsage::from_rowan(&usage)));
         }
         
         Self {
@@ -1097,7 +1199,7 @@ impl NormalizedUsage {
             short_name_range: None,
             doc: None,
             relationships,
-            children: Vec::new(),
+            children,
         }
     }
     
@@ -1136,7 +1238,7 @@ impl NormalizedUsage {
                     relationships.push(NormalizedRelationship {
                         kind: NormalizedRelKind::TypedBy,
                         target: RelTarget::Simple(target.to_string()),
-                        range: Some(typing.syntax().text_range()),
+                        range: Some(target.syntax().text_range()),
                     });
                 }
             }
@@ -1161,16 +1263,59 @@ impl NormalizedUsage {
             }
         }
         
+        // Extract name if present (e.g., transition myTransition first source then target)
+        let name = trans.name().and_then(|n| n.text());
+        let short_name = trans.name().and_then(|n| n.short_name()).and_then(|sn| sn.text());
+        let name_range = trans.name().map(|n| n.syntax().text_range());
+        let short_name_range = trans.name()
+            .and_then(|n| n.short_name())
+            .map(|sn| sn.syntax().text_range());
+        
+        // Extract accept payload as a child symbol
+        let mut children = Vec::new();
+        if let Some(accept_name) = trans.accept_payload_name() {
+            let payload_text = accept_name.text();
+            let payload_short = accept_name.short_name().and_then(|sn| sn.text());
+            let payload_range = Some(accept_name.syntax().text_range());
+            let payload_short_range = accept_name
+                .short_name()
+                .map(|sn| sn.syntax().text_range());
+            
+            // Get accept typing if present (e.g., `accept sig : Signal`)
+            let mut payload_rels = Vec::new();
+            if let Some(typing) = trans.accept_typing() {
+                if let Some(target) = typing.target() {
+                    payload_rels.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::TypedBy,
+                        target: RelTarget::Simple(target.to_string()),
+                        range: Some(target.syntax().text_range()),
+                    });
+                }
+            }
+            
+            children.push(NormalizedElement::Usage(NormalizedUsage {
+                name: payload_text,
+                short_name: payload_short,
+                kind: NormalizedUsageKind::Accept,
+                range: payload_range,
+                name_range: payload_range,
+                short_name_range: payload_short_range,
+                doc: None,
+                relationships: payload_rels,
+                children: Vec::new(),
+            }));
+        }
+        
         Self {
-            name: None, // Standalone transitions are anonymous
-            short_name: None,
+            name,
+            short_name,
             kind: NormalizedUsageKind::Transition,
             range: Some(trans.syntax().text_range()),
-            name_range: None,
-            short_name_range: None,
+            name_range,
+            short_name_range,
             doc: None,
             relationships,
-            children: Vec::new(),
+            children,
         }
     }
     
@@ -1321,7 +1466,7 @@ impl NormalizedUsage {
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::TypedBy,
                     target: RelTarget::Simple(target.to_string()),
-                    range: Some(typing.syntax().text_range()),
+                    range: Some(target.syntax().text_range()),
                 });
             }
         }
@@ -1359,12 +1504,99 @@ impl NormalizedUsage {
             children,
         }
     }
+    
+    /// Create a NormalizedUsage from a StateSubaction (entry/do/exit)
+    fn from_state_subaction(subaction: &parser::StateSubaction) -> Self {
+        let mut relationships = Vec::new();
+        
+        // Extract typing if present (e.g., entry action myAction : ActionType)
+        if let Some(typing) = subaction.syntax().children().find_map(parser::Typing::cast) {
+            if let Some(target) = typing.target() {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TypedBy,
+                    target: RelTarget::Simple(target.to_string()),
+                    range: Some(target.syntax().text_range()),
+                });
+            }
+        }
+        
+        // Extract name if present
+        let name = subaction.name().and_then(|n| n.text());
+        let short_name = subaction.name().and_then(|n| n.short_name()).and_then(|sn| sn.text());
+        let name_range = subaction.name().map(|n| n.syntax().text_range());
+        let short_name_range = subaction.name()
+            .and_then(|n| n.short_name())
+            .map(|sn| sn.syntax().text_range());
+            
+        // Extract children from the body (if any)
+        let children: Vec<NormalizedElement> = subaction.body()
+            .map(|body| {
+                body.members()
+                    .map(|m| NormalizedElement::from_rowan(&m))
+                    .collect()
+            })
+            .unwrap_or_default();
+            
+        Self {
+            name,
+            short_name,
+            kind: NormalizedUsageKind::Action,
+            range: Some(subaction.syntax().text_range()),
+            name_range,
+            short_name_range,
+            doc: None,
+            relationships,
+            children,
+        }
+    }
+    
+    /// Create a NormalizedUsage from a ControlNode (fork/join/merge/decide)
+    fn from_control_node(node: &parser::ControlNode) -> Self {
+        // Determine kind based on control node type
+        let kind = match node.kind() {
+            Some(parser::SyntaxKind::FORK_KW) => NormalizedUsageKind::Fork,
+            Some(parser::SyntaxKind::JOIN_KW) => NormalizedUsageKind::Join,
+            Some(parser::SyntaxKind::MERGE_KW) => NormalizedUsageKind::Merge,
+            Some(parser::SyntaxKind::DECIDE_KW) => NormalizedUsageKind::Decide,
+            _ => NormalizedUsageKind::Other,
+        };
+        
+        // Extract name if present
+        let name = node.name().and_then(|n| n.text());
+        let short_name = node.name().and_then(|n| n.short_name()).and_then(|sn| sn.text());
+        let name_range = node.name().map(|n| n.syntax().text_range());
+        let short_name_range = node.name()
+            .and_then(|n| n.short_name())
+            .map(|sn| sn.syntax().text_range());
+            
+        // Extract children from the body (if any)
+        let children: Vec<NormalizedElement> = node.body()
+            .map(|body| {
+                body.members()
+                    .map(|m| NormalizedElement::from_rowan(&m))
+                    .collect()
+            })
+            .unwrap_or_default();
+            
+        Self {
+            name,
+            short_name,
+            kind,
+            range: Some(node.syntax().text_range()),
+            name_range,
+            short_name_range,
+            doc: parser::extract_doc_comment(node.syntax()),
+            relationships: Vec::new(),
+            children,
+        }
+    }
 }
 
 impl NormalizedImport {
     fn from_rowan(import: &RowanImport) -> Self {
-        let path = import
-            .target()
+        let target = import.target();
+        let path_range = target.as_ref().map(|t| t.syntax().text_range());
+        let path = target
             .map(|t| {
                 let mut path = t.to_string();
                 if import.is_wildcard() {
@@ -1391,6 +1623,7 @@ impl NormalizedImport {
 
         Self {
             path,
+            path_range,
             range: Some(import.syntax().text_range()),
             is_public: import.is_public(),
             filters,

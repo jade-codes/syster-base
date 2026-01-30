@@ -459,8 +459,13 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         }
         
         _ => {
+            let got = if let Some(text) = p.current_token_text() {
+                format!("'{}'", text)
+            } else {
+                kind_to_name(p.current_kind()).to_string()
+            };
             p.error_recover(
-                format!("unexpected token in namespace: {:?}", p.current_kind()),
+                format!("unexpected {} in namespace body", got),
                 &[SyntaxKind::PACKAGE_KW, SyntaxKind::CLASS_KW, SyntaxKind::R_BRACE],
             );
         }

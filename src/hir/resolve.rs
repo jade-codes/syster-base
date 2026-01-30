@@ -768,35 +768,21 @@ impl SymbolIndex {
         chain_parts: &[Arc<str>],
         chain_idx: usize,
     ) -> Option<Arc<str>> {
-        eprintln!("[TRACE resolve_feature_chain_member] scope={}, chain_parts={:?}, chain_idx={}", scope, chain_parts, chain_idx);
-        
         if chain_idx == 0 || chain_parts.is_empty() {
-            eprintln!("[TRACE resolve_feature_chain_member] Early return: chain_idx=0 or empty");
             return None;
         }
 
         // Step 1: Resolve the first part using full lexical scoping
         // This walks up the scope hierarchy to find the symbol
         let first_part = &chain_parts[0];
-        let first_sym = match self.resolve_with_scope_walk(first_part, scope) {
-            Some(sym) => {
-                eprintln!("[TRACE resolve_feature_chain_member] Step 1: resolved '{}' -> {}", first_part, sym.qualified_name);
-                sym
-            }
-            None => {
-                eprintln!("[TRACE resolve_feature_chain_member] Step 1: FAILED to resolve '{}'", first_part);
-                return None;
-            }
-        };
+        let first_sym = self.resolve_with_scope_walk(first_part, scope)?;
 
         // Track the current symbol (for checking nested members) and its type scope (for inheritance)
         let mut current_sym_qname = first_sym.qualified_name.clone();
         let mut current_type_scope = self.get_member_lookup_scope(&first_sym, scope);
-        eprintln!("[TRACE resolve_feature_chain_member] current_sym={}, type_scope={}", current_sym_qname, current_type_scope);
 
         // Step 2: Walk through the chain, resolving each part
         for (i, part) in chain_parts.iter().enumerate().take(chain_idx + 1).skip(1) {
-            eprintln!("[TRACE resolve_feature_chain_member] Step 2[{}]: looking for '{}' in sym={} or type={}", i, part, current_sym_qname, current_type_scope);
             // SysML Pattern: Usages can have nested members defined directly within them.
             // For example: part differential:Differential { port leftDiffPort:DiffPort; }
             // Here `leftDiffPort` is a member of the usage, not the Differential definition.
@@ -807,19 +793,11 @@ impl SymbolIndex {
             let member_sym = {
                 // Try 1: Look for nested member directly in the current symbol
                 if let Some(sym) = self.find_member_in_scope(&current_sym_qname, part) {
-                    eprintln!("[TRACE resolve_feature_chain_member]   Found nested member: {}", sym.qualified_name);
                     sym
                 } else if current_sym_qname != current_type_scope {
                     // Try 2: Look in the type scope (inherited members)
-                    if let Some(sym) = self.find_member_in_scope(&current_type_scope, part) {
-                        eprintln!("[TRACE resolve_feature_chain_member]   Found type member: {}", sym.qualified_name);
-                        sym
-                    } else {
-                        eprintln!("[TRACE resolve_feature_chain_member]   NOT FOUND in type scope either");
-                        return None;
-                    }
+                    self.find_member_in_scope(&current_type_scope, part)?
                 } else {
-                    eprintln!("[TRACE resolve_feature_chain_member]   NOT FOUND (sym==type scope)");
                     return None;
                 }
             };
@@ -842,17 +820,10 @@ impl SymbolIndex {
     /// NOTE: Resolver::resolve() already walks up the scope hierarchy internally,
     /// so we just need to call it once with the starting scope.
     fn resolve_with_scope_walk(&self, name: &str, starting_scope: &str) -> Option<HirSymbol> {
-        eprintln!("[TRACE resolve_with_scope_walk] Resolving '{}' from scope '{}'", name, starting_scope);
         let resolver = Resolver::new(self).with_scope(starting_scope);
         match resolver.resolve(name) {
-            ResolveResult::Found(sym) => {
-                eprintln!("[TRACE resolve_with_scope_walk]   Found: {}", sym.qualified_name);
-                Some(sym)
-            }
-            other => {
-                eprintln!("[TRACE resolve_with_scope_walk]   Result: {:?}", other);
-                None
-            }
+            ResolveResult::Found(sym) => Some(sym),
+            _ => None,
         }
     }
 
@@ -868,8 +839,6 @@ impl SymbolIndex {
     /// where members actually live. E.g., `connect lugNutPort ::> wheel1.lugNutCompositePort`
     /// means members of `lugNutPort` are actually in `wheel1.lugNutCompositePort`.
     fn get_member_lookup_scope(&self, sym: &HirSymbol, resolution_scope: &str) -> Arc<str> {
-        eprintln!("[TRACE get_member_lookup_scope] sym={}, supertypes={:?}, type_refs.len={}", sym.qualified_name, sym.supertypes, sym.type_refs.len());
-        
         // First, check if the symbol has a resolved type_ref (from its : TypeAnnotation)
         // This is more accurate than re-resolving the name because it uses the same
         // resolution context that was used for the symbol's own typing.
@@ -877,18 +846,14 @@ impl SymbolIndex {
             for tr in trk.as_refs() {
                 // Look for typed-by refs with resolved targets
                 if tr.kind == crate::hir::symbols::RefKind::TypedBy {
-                    eprintln!("[TRACE get_member_lookup_scope]   Found TypedBy: target={}, resolved={:?}", tr.target, tr.resolved_target);
                     if let Some(ref resolved) = tr.resolved_target {
                         // Got a pre-resolved type - use it
                         if let Some(type_sym) = self.lookup_qualified(resolved) {
                             if type_sym.kind.is_definition() {
-                                eprintln!("[TRACE get_member_lookup_scope]   Returning definition: {}", type_sym.qualified_name);
                                 return type_sym.qualified_name.clone();
                             }
                             // If it's a usage, follow the typing chain
-                            let final_type = self.follow_typing_chain(type_sym, resolution_scope);
-                            eprintln!("[TRACE get_member_lookup_scope]   Following chain -> {}", final_type);
-                            return final_type;
+                            return self.follow_typing_chain(type_sym, resolution_scope);
                         }
                     }
                 }
@@ -927,32 +892,24 @@ impl SymbolIndex {
 
         // Fallback: resolve the supertype name (for symbols without resolved type_refs yet)
         if let Some(type_name) = sym.supertypes.first() {
-            eprintln!("[TRACE get_member_lookup_scope]   Fallback: resolving supertype '{}'", type_name);
             let sym_scope = Self::parent_scope(&sym.qualified_name).unwrap_or("");
 
             if let Some(type_sym) = self.resolve_with_scope_walk(type_name, sym_scope) {
-                eprintln!("[TRACE get_member_lookup_scope]   Resolved supertype to: {}", type_sym.qualified_name);
                 if type_sym.kind.is_usage() {
                     return type_sym.qualified_name.clone();
                 }
-                let final_type = self.follow_typing_chain(&type_sym, resolution_scope);
-                eprintln!("[TRACE get_member_lookup_scope]   Following chain -> {}", final_type);
-                return final_type;
+                return self.follow_typing_chain(&type_sym, resolution_scope);
             }
 
             if let Some(type_sym) = self.lookup_qualified(type_name) {
-                eprintln!("[TRACE get_member_lookup_scope]   Direct lookup supertype: {}", type_sym.qualified_name);
                 if type_sym.kind.is_usage() {
                     return type_sym.qualified_name.clone();
                 }
-                let final_type = self.follow_typing_chain(type_sym, resolution_scope);
-                return final_type;
+                return self.follow_typing_chain(type_sym, resolution_scope);
             }
-            eprintln!("[TRACE get_member_lookup_scope]   FAILED to resolve supertype '{}'", type_name);
         }
 
         // No type - use the symbol itself as the scope for nested members
-        eprintln!("[TRACE get_member_lookup_scope]   Using self as scope: {}", sym.qualified_name);
         sym.qualified_name.clone()
     }
 

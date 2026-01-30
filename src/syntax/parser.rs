@@ -166,11 +166,16 @@ pub fn parse_with_result(content: &str, path: &Path) -> ParseResult<SyntaxFile> 
 
     let syntax_file = SyntaxFile::new(content, extension);
     
-    // Convert rowan syntax errors to our ParseError type
+    // Convert rowan syntax errors to our ParseError type with line/column info
+    let line_index = crate::base::LineIndex::new(content);
     let errors: Vec<ParseError> = syntax_file
         .errors()
         .iter()
-        .map(|e| ParseError::syntax_error(&e.message, 0, 0)) // TODO: Convert TextRange to line/column
+        .map(|e| {
+            // Convert TextRange start to line/column
+            let line_col = line_index.line_col(e.range.start());
+            ParseError::syntax_error(&e.message, line_col.line as usize, line_col.col as usize)
+        })
         .collect();
 
     if errors.is_empty() {

@@ -395,11 +395,10 @@ impl<'a> SemanticChecker<'a> {
 
     /// Check a single symbol.
     fn check_symbol(&mut self, symbol: &HirSymbol) {
-        // Check supertype references (e.g., `part wheel : Wheel`)
-        // These are always type references that should resolve via scope
-        for supertype in &symbol.supertypes {
-            self.check_type_reference(symbol, supertype);
-        }
+        // NOTE: We don't check supertypes directly because they mix type references
+        // (from `: TypeName`) with feature references (from `subsets featureName`).
+        // Instead, we rely on type_refs which have proper RefKind discrimination.
+        // The type_refs extraction already captures TypedBy relationships.
 
         // Check type_refs based on their RefKind
         self.check_type_refs(symbol);
@@ -408,6 +407,12 @@ impl<'a> SemanticChecker<'a> {
     /// Check type references in a symbol's body, filtering by RefKind.
     fn check_type_refs(&mut self, symbol: &HirSymbol) {
         use crate::hir::symbols::TypeRefKind;
+
+        // Skip anonymous symbols (e.g., shorthand redefines like `:>> threadDia`)
+        // Their type_refs are feature references that need inheritance context
+        if symbol.qualified_name.contains("<:") {
+            return;
+        }
 
         for type_ref in &symbol.type_refs {
             match type_ref {
@@ -448,6 +453,13 @@ impl<'a> SemanticChecker<'a> {
     /// 2. For qualified: resolve the prefix, then find member in that scope
     /// 3. For simple: look in containing symbol's supertypes
     fn check_feature_reference(&mut self, symbol: &HirSymbol, target: &str) {
+        // Strip index expressions like [1] from the target (e.g., "cylinders[1]" -> "cylinders")
+        let target = if let Some(bracket_pos) = target.find('[') {
+            &target[..bracket_pos]
+        } else {
+            target
+        };
+
         // Handle qualified references like "Vehicle::mass"
         if let Some(idx) = target.rfind("::") {
             let prefix = &target[..idx];
@@ -495,11 +507,19 @@ impl<'a> SemanticChecker<'a> {
             return;
         }
 
+        // Check if it's visible in the parent scope using visibility map resolution
+        // (e.g., `:> vehicleAlternatives` where vehicleAlternatives is a sibling subject)
+        let scope = Self::extract_scope(&symbol.qualified_name);
+        let resolver = Resolver::new(self.index).with_scope(scope.clone());
+        if let ResolveResult::Found(sibling_sym) = resolver.resolve(target) {
+            self.referenced.insert(sibling_sym.qualified_name.clone());
+            return;
+        }
+
         // Look in the symbol's supertypes for the feature
         for supertype in &symbol.supertypes {
             // Resolve the supertype
-            let scope = Self::extract_scope(&symbol.qualified_name);
-            let resolver = Resolver::new(self.index).with_scope(scope);
+            let resolver = Resolver::new(self.index).with_scope(scope.clone());
 
             if let ResolveResult::Found(super_sym) = resolver.resolve(supertype) {
                 // Look for the member in the supertype (recursive search)
@@ -849,11 +869,17 @@ mod tests {
 
     #[test]
     fn test_semantic_checker_undefined_reference() {
+        use crate::hir::symbols::{TypeRef, TypeRefKind, RefKind};
+        
         let mut index = SymbolIndex::new();
 
-        // Add a symbol that references a non-existent type
+        // Add a symbol that references a non-existent type via type_refs
         let mut symbol = make_symbol("wheel", "Vehicle::wheel", SymbolKind::PartUsage, 0);
-        symbol.supertypes = vec![Arc::from("NonExistent")];
+        symbol.type_refs = vec![TypeRefKind::Simple(TypeRef::new(
+            "NonExistent",
+            RefKind::TypedBy,
+            0, 0, 0, 11,
+        ))];
 
         index.add_file(FileId::new(0), vec![symbol]);
 
