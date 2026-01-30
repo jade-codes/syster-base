@@ -35,6 +35,7 @@ mod lexer;
 mod parser;
 pub mod ast;
 pub mod grammar;
+pub mod keywords;
 
 pub use syntax_kind::{SyntaxKind, SysMLLanguage, SyntaxNode, SyntaxToken, SyntaxElement};
 pub use lexer::{Lexer, Token};

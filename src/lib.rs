@@ -63,7 +63,7 @@ pub mod core {
 }
 
 // Re-export commonly needed items
-// pub use parser::keywords; // TODO: Re-enable when keywords module is available
+pub use parser::keywords;
 
 // Re-export foundation types
 pub use base::{FileId, Interner, LineCol, LineIndex, Name, Position, Span, TextRange, TextSize};

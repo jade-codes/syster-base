@@ -1156,6 +1156,7 @@ impl SymbolIndex {
     /// 2. Inheritance propagation (supertypes' members become visible)
     /// 3. Import processing with transitive public re-export handling
     fn build_visibility_maps(&mut self) {
+        eprintln!("[TRACE build_visibility_maps] Starting visibility map build");
         // 1. Single pass: collect scopes AND group symbols by parent scope
         // This is O(symbols) instead of O(scopes × symbols)
         self.visibility_map.clear();
@@ -1165,12 +1166,14 @@ impl SymbolIndex {
             .insert(Arc::from(""), ScopeVisibility::new(""));
 
         for symbol in &self.symbols {
+            eprintln!("[TRACE build_visibility_maps] Processing symbol: {} ({:?})", symbol.qualified_name, symbol.kind);
             // Ensure this symbol's scope exists (for namespace-creating symbols)
             // Include usages too - they can have nested members and need inherited members from their type
             if symbol.kind == SymbolKind::Package
                 || symbol.kind.is_definition()
                 || symbol.kind.is_usage()
             {
+                eprintln!("[TRACE build_visibility_maps]   Creating scope for: {}", symbol.qualified_name);
                 self.visibility_map
                     .entry(symbol.qualified_name.clone())
                     .or_insert_with(|| ScopeVisibility::new(symbol.qualified_name.clone()));
@@ -1179,6 +1182,7 @@ impl SymbolIndex {
             // Skip adding import symbols as direct definitions - they're processed separately
             // and shouldn't shadow global packages with the same name
             if symbol.kind == SymbolKind::Import {
+                eprintln!("[TRACE build_visibility_maps]   Skipping import symbol (handled separately): {}", symbol.qualified_name);
                 continue;
             }
 
@@ -1186,6 +1190,8 @@ impl SymbolIndex {
             let parent_scope: Arc<str> = Self::parent_scope(&symbol.qualified_name)
                 .map(Arc::from)
                 .unwrap_or_else(|| Arc::from(""));
+
+            eprintln!("[TRACE build_visibility_maps]   Adding '{}' to parent scope '{}'", symbol.name, parent_scope);
 
             // Ensure parent scope exists
             let vis = self
@@ -1201,16 +1207,28 @@ impl SymbolIndex {
             }
         }
 
+        eprintln!("[TRACE build_visibility_maps] Processing imports...");
         // 3. Process all imports FIRST (needed for inheritance to resolve types via imports)
         let mut visited: HashSet<(Arc<str>, Arc<str>)> = HashSet::new();
         let scope_keys: Vec<_> = self.visibility_map.keys().cloned().collect();
 
-        for scope in scope_keys {
+        for scope in &scope_keys {
+            eprintln!("[TRACE build_visibility_maps] Processing imports for scope: '{}'", scope);
             self.process_imports_recursive(&scope, &mut visited);
         }
 
+        eprintln!("[TRACE build_visibility_maps] Propagating inherited members...");
         // 4. Propagate inherited members from supertypes (can now resolve types via imports)
         self.propagate_inherited_members();
+        
+        eprintln!("[TRACE build_visibility_maps] Final visibility maps:");
+        for (scope, vis) in &self.visibility_map {
+            eprintln!("[TRACE build_visibility_maps]   Scope '{}': direct={:?}, imports={:?}", 
+                scope, 
+                vis.direct_defs().map(|(n, _)| n.to_string()).collect::<Vec<_>>(),
+                vis.imports().map(|(n, _)| n.to_string()).collect::<Vec<_>>()
+            );
+        }
     }
 
     /// Propagate inherited members from supertypes into scope visibility maps.
@@ -1331,6 +1349,8 @@ impl SymbolIndex {
         scope: &str,
         visited: &mut HashSet<(Arc<str>, Arc<str>)>,
     ) {
+        eprintln!("[TRACE process_imports_recursive] Processing scope: '{}'", scope);
+        
         // Find import symbols in this scope - extract needed fields
         let imports_to_process: Vec<(Arc<str>, Arc<str>, bool)> = self
             .symbols
@@ -1349,7 +1369,10 @@ impl SymbolIndex {
             .map(|s| (s.name.clone(), s.qualified_name.clone(), s.is_public))
             .collect();
 
+        eprintln!("[TRACE process_imports_recursive]   Found {} imports to process", imports_to_process.len());
+
         for (import_name, import_qname, is_public) in imports_to_process {
+            eprintln!("[TRACE process_imports_recursive]   Import: '{}' (qname='{}', public={})", import_name, import_qname, is_public);
             let is_wildcard = import_name.ends_with("::*") && !import_name.ends_with("::**");
             let is_recursive = import_name.ends_with("::**");
 
@@ -1360,6 +1383,8 @@ impl SymbolIndex {
                 import_name.trim_end_matches("::*")
             };
             let resolved_target = self.resolve_import_target(scope, import_target);
+            eprintln!("[TRACE process_imports_recursive]     is_wildcard={}, is_recursive={}, import_target='{}', resolved_target='{}'", 
+                is_wildcard, is_recursive, import_target, resolved_target);
 
             if is_wildcard || is_recursive {
                 // Wildcard or recursive import: import symbols from target scope
@@ -1367,6 +1392,7 @@ impl SymbolIndex {
                 // Skip if already visited this (scope, target) pair
                 let key = (Arc::from(scope), Arc::from(resolved_target.as_str()));
                 if visited.contains(&key) {
+                    eprintln!("[TRACE process_imports_recursive]     SKIPPING - already visited");
                     continue;
                 }
                 visited.insert(key);
@@ -1384,6 +1410,8 @@ impl SymbolIndex {
                 // Now copy symbols from target to this scope
                 if let Some(target_vis) = self.visibility_map.get(&resolved_target as &str).cloned()
                 {
+                    eprintln!("[TRACE process_imports_recursive]     target_vis direct_defs={:?}", 
+                        target_vis.direct_defs().map(|(n, _)| n.to_string()).collect::<Vec<_>>());
                     // Collect symbols to import (applying filter)
                     let direct_defs_to_import: Vec<_> = target_vis
                         .direct_defs()
@@ -1529,8 +1557,11 @@ impl SymbolIndex {
     /// 3. Walk up parent scopes
     /// 4. Fall back to target as-is
     fn resolve_import_target(&self, scope: &str, target: &str) -> String {
+        eprintln!("[TRACE resolve_import_target] scope='{}', target='{}'", scope, target);
+        
         // If already qualified with ::, check as-is first
         if target.contains("::") && self.visibility_map.contains_key(target) {
+            eprintln!("[TRACE resolve_import_target]   Found as qualified: '{}'", target);
             return target.to_string();
         }
 
@@ -1542,6 +1573,7 @@ impl SymbolIndex {
                 // Check if target is visible (either as direct def or import)
                 if let Some(resolved_qname) = vis.lookup(target) {
                     // Found it - return the qualified name
+                    eprintln!("[TRACE resolve_import_target]   Found via visibility lookup in scope '{}': '{}'", scope, resolved_qname);
                     return resolved_qname.to_string();
                 }
             }
@@ -1556,7 +1588,9 @@ impl SymbolIndex {
                 format!("{}::{}", current, target)
             };
 
+            eprintln!("[TRACE resolve_import_target]   Trying candidate: '{}'", candidate);
             if self.visibility_map.contains_key(&candidate as &str) {
+                eprintln!("[TRACE resolve_import_target]   Found candidate in visibility_map: '{}'", candidate);
                 return candidate;
             }
 
@@ -1571,6 +1605,7 @@ impl SymbolIndex {
         }
 
         // Fall back to target as-is (might be global)
+        eprintln!("[TRACE resolve_import_target]   Falling back to target as-is: '{}'", target);
         target.to_string()
     }
 

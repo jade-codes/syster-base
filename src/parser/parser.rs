@@ -273,7 +273,15 @@ impl<'a> ExpressionParser for Parser<'a> {
     }
 
     fn at_name_token(&self) -> bool {
-        matches!(self.current_kind(), SyntaxKind::IDENT)
+        // In SysML/KerML, certain keywords can be used as identifiers in context
+        // (contextual keywords). This includes names like "start", "end", "done" etc.
+        // which are common member names in action definitions.
+        matches!(self.current_kind(), 
+            SyntaxKind::IDENT |
+            SyntaxKind::START_KW |
+            SyntaxKind::END_KW |
+            SyntaxKind::DONE_KW
+        )
     }
 
     fn get_pos(&self) -> usize {
@@ -451,7 +459,7 @@ impl<'a> SysMLParser for Parser<'a> {
             SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NULL_KW |
             // Expression starters
             SyntaxKind::NEW_KW | SyntaxKind::L_BRACE | SyntaxKind::L_PAREN |
-            SyntaxKind::IF_KW | SyntaxKind::IDENT |
+            SyntaxKind::IF_KW | SyntaxKind::IDENT | SyntaxKind::THIS_KW |
             // Unary prefix operators
             SyntaxKind::NOT_KW | SyntaxKind::MINUS | SyntaxKind::PLUS |
             SyntaxKind::TILDE | SyntaxKind::BANG |

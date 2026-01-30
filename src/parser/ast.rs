@@ -90,6 +90,12 @@ pub enum NamespaceMember {
     Bind(BindingConnector),
     /// Standalone succession (e.g., `first a then b;`)
     Succession(Succession),
+    /// Transition usage (e.g., `accept sig : Signal then running;`)
+    Transition(TransitionUsage),
+    /// KerML connector (e.g., `connector link;`)
+    Connector(Connector),
+    /// Connect usage (e.g., `connect p ::> a to b;`)
+    ConnectUsage(ConnectUsage),
 }
 
 impl AstNode for NamespaceMember {
@@ -108,6 +114,9 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::COMMENT_ELEMENT
                 | SyntaxKind::BINDING_CONNECTOR
                 | SyntaxKind::SUCCESSION
+                | SyntaxKind::TRANSITION_USAGE
+                | SyntaxKind::CONNECTOR
+                | SyntaxKind::CONNECT_USAGE
         )
     }
 
@@ -125,6 +134,9 @@ impl AstNode for NamespaceMember {
             SyntaxKind::COMMENT_ELEMENT => Some(Self::Comment(Comment(node))),
             SyntaxKind::BINDING_CONNECTOR => Some(Self::Bind(BindingConnector(node))),
             SyntaxKind::SUCCESSION => Some(Self::Succession(Succession(node))),
+            SyntaxKind::TRANSITION_USAGE => Some(Self::Transition(TransitionUsage(node))),
+            SyntaxKind::CONNECTOR => Some(Self::Connector(Connector(node))),
+            SyntaxKind::CONNECT_USAGE => Some(Self::ConnectUsage(ConnectUsage(node))),
             _ => None,
         }
     }
@@ -143,6 +155,9 @@ impl AstNode for NamespaceMember {
             Self::Comment(n) => n.syntax(),
             Self::Bind(n) => n.syntax(),
             Self::Succession(n) => n.syntax(),
+            Self::Transition(n) => n.syntax(),
+            Self::Connector(n) => n.syntax(),
+            Self::ConnectUsage(n) => n.syntax(),
         }
     }
 }
@@ -248,6 +263,37 @@ impl Import {
         stars.len() >= 2
     }
 
+    /// Check if this is a public import
+    pub fn is_public(&self) -> bool {
+        // PUBLIC_KW may be a sibling (before the IMPORT node) rather than a child
+        // Check both inside and before
+        let has_inside = self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::PUBLIC_KW);
+        
+        if has_inside {
+            return true;
+        }
+        
+        // Check previous sibling
+        if let Some(prev) = self.0.prev_sibling_or_token() {
+            // Skip whitespace
+            let mut current = Some(prev);
+            while let Some(node_or_token) = current {
+                match node_or_token {
+                    rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::PUBLIC_KW => return true,
+                    rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::WHITESPACE => {
+                        current = t.prev_sibling_or_token();
+                    }
+                    _ => break,
+                }
+            }
+        }
+        
+        false
+    }
+
     /// Get the filter package if present
     pub fn filter(&self) -> Option<FilterPackage> {
         self.0.children().find_map(FilterPackage::cast)
@@ -259,6 +305,11 @@ ast_node!(FilterPackage, FILTER_PACKAGE);
 impl FilterPackage {
     pub fn target(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
+    }
+    
+    /// Get all filter targets (for multiple filters like [@A][@B])
+    pub fn targets(&self) -> Vec<QualifiedName> {
+        self.0.children().filter_map(QualifiedName::cast).collect()
     }
 }
 
@@ -293,6 +344,31 @@ ast_node!(ElementFilter, ELEMENT_FILTER_MEMBER);
 impl ElementFilter {
     pub fn expression(&self) -> Option<Expression> {
         self.0.children().find_map(Expression::cast)
+    }
+    
+    /// Extract metadata references from the filter expression.
+    /// For `filter @Safety;` returns ["Safety"]
+    pub fn metadata_refs(&self) -> Vec<String> {
+        let mut refs = Vec::new();
+        if let Some(expr) = self.expression() {
+            // Walk the expression looking for @ followed by QUALIFIED_NAME
+            let mut at_seen = false;
+            for child in expr.syntax().children_with_tokens() {
+                match child {
+                    rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::AT => {
+                        at_seen = true;
+                    }
+                    rowan::NodeOrToken::Node(n) if at_seen && n.kind() == SyntaxKind::QUALIFIED_NAME => {
+                        if let Some(qn) = QualifiedName::cast(n) {
+                            refs.push(qn.to_string());
+                        }
+                        at_seen = false;
+                    }
+                    _ => {}
+                }
+            }
+        }
+        refs
     }
 }
 
@@ -668,11 +744,16 @@ impl Name {
     }
 
     pub fn text(&self) -> Option<String> {
-        // Get the identifier token
+        // Get the identifier token (including contextual keywords used as names)
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .find(|t| matches!(t.kind(), 
+                SyntaxKind::IDENT |
+                SyntaxKind::START_KW |
+                SyntaxKind::END_KW |
+                SyntaxKind::DONE_KW
+            ))
             .map(|t| t.text().to_string())
     }
 }
@@ -684,7 +765,12 @@ impl ShortName {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .find(|t| matches!(t.kind(), 
+                SyntaxKind::IDENT |
+                SyntaxKind::START_KW |
+                SyntaxKind::END_KW |
+                SyntaxKind::DONE_KW
+            ))
             .map(|t| t.text().to_string())
     }
 }
@@ -693,11 +779,20 @@ ast_node!(QualifiedName, QUALIFIED_NAME);
 
 impl QualifiedName {
     /// Get all name segments
+    /// Includes IDENT tokens and contextual keywords that can be used as identifiers
     pub fn segments(&self) -> Vec<String> {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .filter(|t| t.kind() == SyntaxKind::IDENT)
+            .filter(|t| {
+                // Include IDENT and contextual keywords that can be used as names
+                matches!(t.kind(), 
+                    SyntaxKind::IDENT |
+                    SyntaxKind::START_KW |
+                    SyntaxKind::END_KW |
+                    SyntaxKind::DONE_KW
+                )
+            })
             .map(|t| t.text().to_string())
             .collect()
     }
@@ -924,6 +1019,29 @@ impl RequirementVerification {
 }
 
 // ============================================================================
+// KerML Connector (standalone connector, not SysML Connection)
+// ============================================================================
+
+ast_node!(Connector, CONNECTOR);
+
+impl Connector {
+    /// Get the name
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
+    /// Get the connector part (contains ends)
+    pub fn connector_part(&self) -> Option<ConnectorPart> {
+        self.0.children().find_map(ConnectorPart::cast)
+    }
+    
+    /// Get the namespace body
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+}
+
+// ============================================================================
 // Connect Usage
 // ============================================================================
 
@@ -958,8 +1076,27 @@ impl ConnectorPart {
 ast_node!(ConnectorEnd, CONNECTOR_END);
 
 impl ConnectorEnd {
-    /// Get the qualified name reference
+    /// Get the qualified name target reference.
+    /// For patterns like `p ::> comp.lugNutPort`, returns `comp.lugNutPort`.
+    /// For simple patterns like `comp.lugNutPort`, returns `comp.lugNutPort`.
     pub fn target(&self) -> Option<QualifiedName> {
+        // First check if we have a CONNECTOR_END_REFERENCE child
+        if let Some(ref_node) = self.0.children()
+            .find(|n| n.kind() == SyntaxKind::CONNECTOR_END_REFERENCE) 
+        {
+            // Within CONNECTOR_END_REFERENCE, find qualified names
+            let qns: Vec<_> = ref_node.children().filter_map(QualifiedName::cast).collect();
+            // If there's a ::> or references keyword, return the second QN (the target)
+            // Otherwise return the first/only QN
+            let has_references = ref_node.children_with_tokens()
+                .any(|n| n.kind() == SyntaxKind::COLON_COLON_GT || n.kind() == SyntaxKind::REFERENCES_KW);
+            if has_references && qns.len() > 1 {
+                return Some(qns[1].clone());
+            } else {
+                return qns.into_iter().next();
+            }
+        }
+        // Direct child lookup as fallback
         self.0.children().find_map(QualifiedName::cast)
     }
 }

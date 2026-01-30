@@ -239,7 +239,7 @@ fn parse_optional_identification<P: KerMLParser>(p: &mut P) {
 
 /// Parse optional qualified name
 fn parse_optional_qualified_name<P: KerMLParser>(p: &mut P) {
-    if p.at_name_token() {
+    if p.at_name_token() || p.at(SyntaxKind::THIS_KW) {
         p.parse_qualified_name();
         p.skip_trivia();
     }
@@ -446,6 +446,17 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         }
         
         SyntaxKind::IDENT => p.parse_usage(),
+        
+        // Expression-starting tokens (for result expressions in function/predicate bodies)
+        SyntaxKind::NOT_KW | SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW |
+        SyntaxKind::NULL_KW | SyntaxKind::INTEGER | SyntaxKind::DECIMAL |
+        SyntaxKind::STRING | SyntaxKind::L_PAREN => {
+            super::kerml_expressions::parse_expression(p);
+            p.skip_trivia();
+            if p.at(SyntaxKind::SEMICOLON) {
+                p.bump();
+            }
+        }
         
         _ => {
             p.error_recover(
@@ -1134,6 +1145,13 @@ pub fn parse_qualified_name<P: KerMLParser>(p: &mut P, _tokens: &[(SyntaxKind, u
         consume_if(p, SyntaxKind::COLON_COLON);
     }
     
+    // Handle 'this' keyword as a special name (KerML self-reference)
+    if p.at(SyntaxKind::THIS_KW) {
+        p.bump();
+        p.finish_node();
+        return;
+    }
+    
     if p.at_name_token() {
         p.bump();
     }
@@ -1770,6 +1788,21 @@ fn parse_usage_name_or_shorthand<P: KerMLParser>(p: &mut P) {
             p.finish_node();
         }
     } else if p.at_name_token() || p.at(SyntaxKind::LT) {
+        // Check for "type name" pattern: two identifiers in a row
+        // e.g., "bool signalCondition { }" = feature signalCondition : bool
+        if p.at(SyntaxKind::IDENT) {
+            let peek1 = p.peek_kind(1);
+            if peek1 == SyntaxKind::IDENT || peek1 == SyntaxKind::LT {
+                // First identifier is the type, create typing node
+                p.start_node(SyntaxKind::TYPING);
+                p.bump(); // type name
+                p.skip_trivia();
+                p.finish_node();
+                // Second identifier is the feature name
+                p.parse_identification();
+                return;
+            }
+        }
         p.parse_identification();
     }
 }
@@ -1780,10 +1813,11 @@ fn parse_usage_details<P: KerMLParser>(p: &mut P) {
     parse_optional_multiplicity(p);
     parse_optional_typing(p);
     parse_optional_multiplicity(p);
+    // Per pest: ordering_modifiers can appear before or after specializations
+    parse_ordering_modifiers(p);
     parse_specializations(p);
     p.skip_trivia();
-    // Per pest: ordering_modifiers = { (ordered_token | nonunique_token)* }
-    // These come after specialization but before relationships
+    // Parse ordering modifiers again (can appear after specializations too)
     parse_ordering_modifiers(p);
     parse_feature_relationships(p);
     p.skip_trivia();

@@ -246,6 +246,7 @@ pub enum NormalizedUsageKind {
     Reference,
     Occurrence,
     Flow,
+    Transition,
     // KerML: features are treated as usages
     Feature,
     // Fallback
@@ -398,18 +399,34 @@ impl NormalizedElement {
             }
             NamespaceMember::Filter(filter) => {
                 NormalizedElement::Filter(NormalizedFilter {
-                    metadata_refs: Vec::new(), // TODO: Extract filter refs
+                    metadata_refs: filter.metadata_refs(),
                     range: Some(filter.syntax().text_range()),
                 })
             }
-            NamespaceMember::Metadata(_meta) => {
-                // Metadata usages are skipped for now
-                NormalizedElement::Comment(NormalizedComment {
-                    name: None,
+            NamespaceMember::Metadata(meta) => {
+                // Convert metadata usage (@Type) to a normalized usage with TypedBy relationship
+                // This allows filter imports to match on metadata annotations
+                let type_name = meta.target().map(|t| t.to_string()).unwrap_or_default();
+                let relationships = if !type_name.is_empty() {
+                    vec![NormalizedRelationship {
+                        kind: NormalizedRelKind::TypedBy,
+                        target: RelTarget::Simple(type_name),
+                        range: meta.target().map(|t| t.syntax().text_range()),
+                    }]
+                } else {
+                    Vec::new()
+                };
+                
+                NormalizedElement::Usage(NormalizedUsage {
+                    name: None, // Metadata usages are anonymous
                     short_name: None,
-                    content: String::new(),
-                    about: Vec::new(),
-                    range: None,
+                    kind: NormalizedUsageKind::Attribute, // Use Attribute for metadata
+                    relationships,
+                    range: Some(meta.syntax().text_range()),
+                    name_range: None,
+                    short_name_range: None,
+                    doc: None,
+                    children: Vec::new(),
                 })
             }
             NamespaceMember::Comment(_comment) => {
@@ -428,6 +445,18 @@ impl NormalizedElement {
             NamespaceMember::Succession(succ) => {
                 // Convert standalone succession to a usage with succession relationships
                 NormalizedElement::Usage(NormalizedUsage::from_succession(succ))
+            }
+            NamespaceMember::Transition(trans) => {
+                // Convert standalone transition to a usage with transition relationships
+                NormalizedElement::Usage(NormalizedUsage::from_transition(trans))
+            }
+            NamespaceMember::Connector(conn) => {
+                // Convert KerML connector to a usage
+                NormalizedElement::Usage(NormalizedUsage::from_connector(&conn))
+            }
+            NamespaceMember::ConnectUsage(conn) => {
+                // Convert connect usage to a normalized usage with connection relationships
+                NormalizedElement::Usage(NormalizedUsage::from_connect_usage(&conn))
             }
         }
     }
@@ -1077,6 +1106,182 @@ impl NormalizedUsage {
             children: Vec::new(),
         }
     }
+    
+    /// Create a NormalizedUsage from a standalone TransitionUsage
+    fn from_transition(trans: &parser::TransitionUsage) -> Self {
+        let mut relationships = Vec::new();
+        
+        // Extract transition source (first specialization)
+        if let Some(source_spec) = trans.source() {
+            if let Some(qn) = source_spec.target() {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TransitionSource,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
+        }
+        
+        // Extract transition target (second specialization)
+        if let Some(target_spec) = trans.target() {
+            if let Some(qn) = target_spec.target() {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TransitionTarget,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
+        }
+        
+        // For accept transitions: look for typing and qualified names directly
+        // accept sig : Signal then running; has TYPING(Signal) and QUALIFIED_NAME(running) as children
+        use crate::parser::SyntaxKind;
+        for child in trans.syntax().children() {
+            if let Some(typing) = parser::Typing::cast(child.clone()) {
+                if let Some(target) = typing.target() {
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::TypedBy,
+                        target: RelTarget::Simple(target.to_string()),
+                        range: Some(typing.syntax().text_range()),
+                    });
+                }
+            }
+            // Look for QUALIFIED_NAME after THEN_KW as transition target
+            if child.kind() == SyntaxKind::QUALIFIED_NAME {
+                if let Some(qn) = parser::QualifiedName::cast(child.clone()) {
+                    // Check if this is after 'then' (a target), not part of accept
+                    // We can't easily check position here, so add as potential target
+                    // Skip if it's already been added as a typing target
+                    let target_str = qn.to_string();
+                    let already_exists = relationships.iter().any(|r| {
+                        matches!(&r.target, RelTarget::Simple(t) if t == &target_str)
+                    });
+                    if !already_exists {
+                        relationships.push(NormalizedRelationship {
+                            kind: NormalizedRelKind::TransitionTarget,
+                            target: RelTarget::Simple(target_str),
+                            range: Some(qn.syntax().text_range()),
+                        });
+                    }
+                }
+            }
+        }
+        
+        Self {
+            name: None, // Standalone transitions are anonymous
+            short_name: None,
+            kind: NormalizedUsageKind::Transition,
+            range: Some(trans.syntax().text_range()),
+            name_range: None,
+            short_name_range: None,
+            doc: None,
+            relationships,
+            children: Vec::new(),
+        }
+    }
+    
+    /// Create a NormalizedUsage from a KerML Connector
+    fn from_connector(conn: &parser::Connector) -> Self {
+        let mut relationships = Vec::new();
+        
+        // Extract connector ends if present
+        if let Some(conn_part) = conn.connector_part() {
+            let ends: Vec<_> = conn_part.ends().collect();
+            if let Some(first) = ends.first() {
+                if let Some(qn) = first.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::ConnectSource,
+                        target: rel_target,
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+            }
+            for end in ends.iter().skip(1) {
+                if let Some(qn) = end.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::ConnectTarget,
+                        target: rel_target,
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+            }
+        }
+        
+        // Extract children from body
+        let children = conn
+            .body()
+            .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+            .unwrap_or_default();
+        
+        Self {
+            name: conn.name().and_then(|n| n.text()),
+            short_name: conn.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+            kind: NormalizedUsageKind::Connection, // KerML connector
+            range: Some(conn.syntax().text_range()),
+            name_range: conn.name().map(|n| n.syntax().text_range()),
+            short_name_range: conn.name().and_then(|n| n.short_name()).map(|sn| sn.syntax().text_range()),
+            doc: None,
+            relationships,
+            children,
+        }
+    }
+    
+    /// Create a NormalizedUsage from a SysML ConnectUsage
+    fn from_connect_usage(conn: &parser::ConnectUsage) -> Self {
+        let mut relationships = Vec::new();
+        
+        // Extract connector ends if present
+        if let Some(conn_part) = conn.connector_part() {
+            if let Some(source) = conn_part.source() {
+                if let Some(qn) = source.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::ConnectSource,
+                        target: rel_target,
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+            }
+            if let Some(target) = conn_part.target() {
+                if let Some(qn) = target.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::ConnectTarget,
+                        target: rel_target,
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+            }
+        }
+        
+        // Extract name from NAME child if present
+        let name = conn.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .and_then(|n| n.text());
+        let name_range = conn.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .map(|n| n.syntax().text_range());
+        
+        Self {
+            name,
+            short_name: None,
+            kind: NormalizedUsageKind::Connection,
+            range: Some(conn.syntax().text_range()),
+            name_range,
+            short_name_range: None,
+            doc: None,
+            relationships,
+            children: Vec::new(), // ConnectUsage typically has no body children
+        }
+    }
 }
 
 impl NormalizedImport {
@@ -1100,11 +1305,18 @@ impl NormalizedImport {
             })
             .unwrap_or_default();
 
+        // Extract filter metadata from bracket syntax [@Filter]
+        // Multiple filters like [@A][@B] are all inside one FILTER_PACKAGE
+        let filters = import
+            .filter()
+            .map(|fp| fp.targets().into_iter().map(|qn| qn.to_string()).collect())
+            .unwrap_or_default();
+
         Self {
             path,
             range: Some(import.syntax().text_range()),
-            is_public: false, // TODO: Detect public imports
-            filters: Vec::new(), // TODO: Extract filter metadata
+            is_public: import.is_public(),
+            filters,
         }
     }
 }

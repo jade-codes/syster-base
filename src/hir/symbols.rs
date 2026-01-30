@@ -487,6 +487,7 @@ impl SymbolKind {
             NormalizedUsageKind::Reference => Self::ReferenceUsage,
             NormalizedUsageKind::Occurrence => Self::OccurrenceUsage,
             NormalizedUsageKind::Flow => Self::FlowUsage,
+            NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             NormalizedUsageKind::Feature => Self::PartUsage, // KerML features map to part usage
             NormalizedUsageKind::Other => Self::Other,
         }
@@ -592,6 +593,7 @@ impl SymbolKind {
             NormalizedUsageKind::Reference => Self::ReferenceUsage,
             NormalizedUsageKind::Occurrence => Self::OccurrenceUsage,
             NormalizedUsageKind::Flow => Self::FlowUsage,
+            NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             // KerML features are treated as attribute usages
             NormalizedUsageKind::Feature => Self::AttributeUsage,
             NormalizedUsageKind::Other => Self::Other,
@@ -755,8 +757,10 @@ fn extract_from_normalized(
             // Extract import symbol
             extract_from_normalized_import(&mut result.symbols, ctx, import);
             // Store bracket filters if present
+            eprintln!("[TRACE extract_import] path='{}', filters={:?}", import.path, import.filters);
             if !import.filters.is_empty() {
                 let import_qname = ctx.qualified_name(&format!("import:{}", import.path));
+                eprintln!("[TRACE extract_import]   storing filter for import qname: '{}'", import_qname);
                 result
                     .import_filters
                     .push((Arc::from(import_qname.as_str()), import.filters.clone()));
@@ -939,6 +943,43 @@ fn extract_metadata_annotations(
     children: &[NormalizedElement],
 ) -> Vec<Arc<str>> {
     let mut annotations = Vec::new();
+    
+    eprintln!("[TRACE extract_metadata_annotations] relationships count={}, children count={}", relationships.len(), children.len());
+    for rel in relationships.iter() {
+        eprintln!("[TRACE extract_metadata_annotations]   rel: kind={:?}, target={:?}", rel.kind, rel.target);
+    }
+    for child in children.iter() {
+        match child {
+            NormalizedElement::Usage(usage) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child usage: name={:?}, kind={:?}, relationships={}", 
+                    usage.name, usage.kind, usage.relationships.len());
+                for rel in &usage.relationships {
+                    eprintln!("[TRACE extract_metadata_annotations]     child rel: kind={:?}, target={:?}", rel.kind, rel.target);
+                }
+            }
+            NormalizedElement::Definition(def) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child definition: name={:?}, kind={:?}", def.name, def.kind);
+            }
+            NormalizedElement::Package(pkg) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child package: name={:?}", pkg.name);
+            }
+            NormalizedElement::Import(imp) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child import: path={}", imp.path);
+            }
+            NormalizedElement::Alias(alias) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child alias: name={:?}", alias.name);
+            }
+            NormalizedElement::Comment(com) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child comment: name={:?}", com.name);
+            }
+            NormalizedElement::Dependency(dep) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child dependency: name={:?}", dep.name);
+            }
+            NormalizedElement::Filter(filter) => {
+                eprintln!("[TRACE extract_metadata_annotations]   child filter: metadata_refs={:?}", filter.metadata_refs);
+            }
+        }
+    }
 
     // Extract from relationships (Meta kind)
     for rel in relationships.iter() {
@@ -1063,6 +1104,8 @@ fn extract_from_normalized_usage(
 
     // Extract metadata annotations for filter imports
     let metadata_annotations = extract_metadata_annotations(&usage.relationships, &usage.children);
+    
+    eprintln!("[TRACE extract_usage] usage name={:?}, metadata_annotations={:?}", usage.name, metadata_annotations);
 
     // For anonymous usages, attach refs to the parent but still recurse into children
     let name = match &usage.name {

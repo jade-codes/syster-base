@@ -100,7 +100,9 @@ fn test_observation_kerml_loads_without_duplicates() {
         load_stdlib_file("Kernel Libraries/Kernel Semantic Library/Observation.kerml");
     let analysis = host.analysis();
 
-    // Count 'observations' symbols
+    // Count 'observations' symbols - there are 2 in the file:
+    // 1. private composite feature observations[0..*] : ObserveChange; (line 108)
+    // 2. private feature observations[0..*] : ObserveChange = ... (line 151, inside cancelObservation)
     let obs_count = analysis
         .symbol_index()
         .all_symbols()
@@ -108,8 +110,8 @@ fn test_observation_kerml_loads_without_duplicates() {
         .count();
 
     assert_eq!(
-        obs_count, 1,
-        "Should have exactly one 'observations' definition in {}, got {}",
+        obs_count, 2,
+        "Should have exactly two 'observations' definitions in {}, got {}",
         filename, obs_count
     );
 }

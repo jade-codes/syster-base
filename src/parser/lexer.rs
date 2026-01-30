@@ -80,7 +80,7 @@ pub enum LogosToken {
     #[regex(r"[0-9]+")]
     Integer,
 
-    #[regex(r"[0-9]+\.[0-9]+([eE][+-]?[0-9]+)?")]
+    #[regex(r"[0-9]*\.[0-9]+([eE][+-]?[0-9]+)?")]
     Decimal,
 
     #[regex(r#""([^"\\]|\\.)*""#)]
@@ -100,6 +100,9 @@ pub enum LogosToken {
     
     #[token("::")]
     ColonColon,
+    
+    #[token(":=")]
+    ColonEq,
     
     #[token("..")]
     DotDot,
@@ -230,6 +233,8 @@ pub enum LogosToken {
     AsKw,
     #[token("assert")]
     AssertKw,
+    #[token("assign")]
+    AssignKw,
     #[token("assoc")]
     AssocKw,
     #[token("assume")]
@@ -260,10 +265,14 @@ pub enum LogosToken {
     CompositeKw,
     #[token("concern")]
     ConcernKw,
+    #[token("connect")]
+    ConnectKw,
     #[token("connection")]
     ConnectionKw,
     #[token("connector")]
     ConnectorKw,
+    #[token("constant")]
+    ConstantKw,
     #[token("constraint")]
     ConstraintKw,
     #[token("conjugates")]
@@ -442,6 +451,8 @@ pub enum LogosToken {
     RequireKw,
     #[token("requirement")]
     RequirementKw,
+    #[token("return")]
+    ReturnKw,
     #[token("satisfy")]
     SatisfyKw,
     #[token("send")]
@@ -534,6 +545,7 @@ impl From<LogosToken> for SyntaxKind {
             ColonGtGt => SyntaxKind::COLON_GT_GT,
             ColonGt => SyntaxKind::COLON_GT,
             ColonColon => SyntaxKind::COLON_COLON,
+            ColonEq => SyntaxKind::COLON_EQ,
             DotDot => SyntaxKind::DOT_DOT,
             EqEqEq => SyntaxKind::EQ_EQ_EQ,
             BangEqEq => SyntaxKind::BANG_EQ_EQ,
@@ -592,6 +604,7 @@ impl From<LogosToken> for SyntaxKind {
             AndKw => SyntaxKind::AND_KW,
             AsKw => SyntaxKind::AS_KW,
             AssertKw => SyntaxKind::ASSERT_KW,
+            AssignKw => SyntaxKind::ASSIGN_KW,
             AssocKw => SyntaxKind::ASSOC_KW,
             AssumeKw => SyntaxKind::ASSUME_KW,
             AtKw => SyntaxKind::AT_KW,
@@ -607,8 +620,10 @@ impl From<LogosToken> for SyntaxKind {
             CommentKw => SyntaxKind::COMMENT_KW,
             CompositeKw => SyntaxKind::COMPOSITE_KW,
             ConcernKw => SyntaxKind::CONCERN_KW,
+            ConnectKw => SyntaxKind::CONNECT_KW,
             ConnectionKw => SyntaxKind::CONNECTION_KW,
             ConnectorKw => SyntaxKind::CONNECTOR_KW,
+            ConstantKw => SyntaxKind::CONSTANT_KW,
             ConstraintKw => SyntaxKind::CONSTRAINT_KW,
             ConjugatesKw => SyntaxKind::CONJUGATES_KW,
             CrossesKw => SyntaxKind::CROSSES_KW,
@@ -698,6 +713,7 @@ impl From<LogosToken> for SyntaxKind {
             RepKw => SyntaxKind::REP_KW,
             RequireKw => SyntaxKind::REQUIRE_KW,
             RequirementKw => SyntaxKind::REQUIREMENT_KW,
+            ReturnKw => SyntaxKind::RETURN_KW,
             SatisfyKw => SyntaxKind::SATISFY_KW,
             SendKw => SyntaxKind::SEND_KW,
             SpecializesKw => SyntaxKind::SPECIALIZES_KW,

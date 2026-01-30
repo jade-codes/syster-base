@@ -727,6 +727,12 @@ fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
 
 /// Parse filter package: [@expression]
 fn parse_filter_package<P: SysMLParser>(p: &mut P) {
+    if !p.at(SyntaxKind::L_BRACKET) {
+        return;
+    }
+    
+    p.start_node(SyntaxKind::FILTER_PACKAGE);
+    
     while p.at(SyntaxKind::L_BRACKET) {
         p.bump(); // [
         p.skip_trivia();
@@ -746,6 +752,8 @@ fn parse_filter_package<P: SysMLParser>(p: &mut P) {
         p.expect(SyntaxKind::R_BRACKET);
         p.skip_trivia();
     }
+    
+    p.finish_node(); // FILTER_PACKAGE
 }
 
 // =============================================================================
@@ -1088,6 +1096,12 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         SyntaxKind::REDEFINES_KW | SyntaxKind::COLON_GT_GT |
         SyntaxKind::SUBSETS_KW | SyntaxKind::COLON_GT => p.parse_redefines_feature_member(),
         
+        // Anonymous usage: `: Type;` - no name, just a colon and type
+        // This is an anonymous feature typed by the given type
+        SyntaxKind::COLON | SyntaxKind::TYPED_KW => {
+            parse_anonymous_usage(p);
+        }
+        
         // Enum variant without name: = value;
         SyntaxKind::EQ => {
             // Parse as shorthand feature with just value assignment
@@ -1423,6 +1437,9 @@ pub fn parse_first_action<P: SysMLParser>(p: &mut P) {
     
     expect_and_skip(p, SyntaxKind::FIRST_KW);
     
+    // First endpoint wrapped in SUCCESSION_ITEM
+    p.start_node(SyntaxKind::SUCCESSION_ITEM);
+    
     // Optional multiplicity before first endpoint
     if p.at(SyntaxKind::L_BRACKET) {
         p.parse_multiplicity();
@@ -1430,12 +1447,16 @@ pub fn parse_first_action<P: SysMLParser>(p: &mut P) {
     }
     
     p.parse_qualified_name();
+    p.finish_node(); // SUCCESSION_ITEM
     p.skip_trivia();
     
     // Optional 'then' clause
     if p.at(SyntaxKind::THEN_KW) {
         p.bump();
         p.skip_trivia();
+        
+        // Second endpoint wrapped in SUCCESSION_ITEM
+        p.start_node(SyntaxKind::SUCCESSION_ITEM);
         
         // Optional multiplicity before second endpoint
         if p.at(SyntaxKind::L_BRACKET) {
@@ -1444,6 +1465,7 @@ pub fn parse_first_action<P: SysMLParser>(p: &mut P) {
         }
         
         p.parse_qualified_name();
+        p.finish_node(); // SUCCESSION_ITEM
         p.skip_trivia();
     }
     
@@ -1504,7 +1526,9 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
             } else if p.at(SyntaxKind::PERFORM_KW) {
                 parse_perform_action(p);
             } else if p.at_name_token() {
+                p.start_node(SyntaxKind::SUCCESSION_ITEM);
                 p.parse_qualified_name();
+                p.finish_node();
                 p.skip_trivia();
                 p.expect(SyntaxKind::SEMICOLON);
             }
@@ -1551,14 +1575,18 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
         bump_keyword(p); // terminate
         // Optional target name
         if p.at_name_token() {
+            p.start_node(SyntaxKind::SUCCESSION_ITEM);
             p.parse_qualified_name();
+            p.finish_node();
             p.skip_trivia();
         }
         p.expect(SyntaxKind::SEMICOLON);
     }
-    // Otherwise it's a reference
+    // Otherwise it's a reference - wrap in SUCCESSION_ITEM
     else {
+        p.start_node(SyntaxKind::SUCCESSION_ITEM);
         p.parse_qualified_name();
+        p.finish_node();
         p.skip_trivia();
         p.expect(SyntaxKind::SEMICOLON);
     }
@@ -2199,9 +2227,16 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
     
     p.finish_node(); // REQUIREMENT_CONSTRAINT
     
-    // Optional name - wrap in NAME node for identification
+    // Optional name or reference
+    // When 'constraint' keyword present: parse as identification (defining new constraint)
+    // When no 'constraint' keyword: parse as qualified name (referencing existing requirement)
     if p.at_name_token() || p.at(SyntaxKind::LT) {
-        p.parse_identification();
+        if has_constraint_kw {
+            p.parse_identification();
+        } else {
+            // Reference to existing requirement (allow feature chains like X.Y)
+            p.parse_qualified_name();
+        }
         p.skip_trivia();
     }
     
@@ -2904,6 +2939,16 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
     }
     p.skip_trivia();
     
+    // For message usages: handle 'of' payload type after name
+    // Pattern: message sendSensedSpeed of SensedSpeed from ... to ...
+    if is_message && p.at(SyntaxKind::OF_KW) {
+        bump_keyword(p);
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        }
+    }
+    
     // Handle feature chain continuation (e.g., producerBehavior.publish[1])
     while p.at(SyntaxKind::DOT) {
         bump_keyword(p); // .
@@ -3304,9 +3349,9 @@ pub fn parse_assign_action<P: SysMLParser>(p: &mut P) {
     p.expect(SyntaxKind::ASSIGN_KW);
     p.skip_trivia();
     
-    // Assignment target
+    // Assignment target (can be a feature chain like counter.count)
     if p.at_name_token() {
-        p.parse_qualified_name();
+        p.parse_qualified_name(); // handles feature chains via dots
         p.skip_trivia();
     }
     
@@ -3876,6 +3921,45 @@ pub fn parse_redefines_feature_member<P: SysMLParser>(p: &mut P) {
 }
 
 /// Shorthand feature member
+/// Parse anonymous usage: `: Type;` or `typed by Type;`
+/// This is an anonymous feature/usage that has no name, just a type
+fn parse_anonymous_usage<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::USAGE);
+    
+    // Parse typing (: Type or typed by Type)
+    p.parse_typing();
+    p.skip_trivia();
+    
+    // Optional specializations
+    parse_specializations(p);
+    p.skip_trivia();
+    
+    // Optional value assignment
+    if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) || p.at(SyntaxKind::DEFAULT_KW) {
+        if p.at(SyntaxKind::DEFAULT_KW) {
+            p.bump();
+            p.skip_trivia();
+        }
+        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
+            p.bump();
+            p.skip_trivia();
+        }
+        if p.can_start_expression() {
+            parse_expression(p);
+        }
+        p.skip_trivia();
+    }
+    
+    // Body or semicolon
+    if p.at(SyntaxKind::L_BRACE) {
+        p.parse_body();
+    } else {
+        p.expect(SyntaxKind::SEMICOLON);
+    }
+    
+    p.finish_node();
+}
+
 pub fn parse_shorthand_feature_member<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
     

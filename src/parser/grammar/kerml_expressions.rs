@@ -325,7 +325,8 @@ fn handle_feature_chain<P: ExpressionParser>(p: &mut P) {
     p.bump(); // .
     p.skip_trivia();
     
-    if p.at(SyntaxKind::IDENT) {
+    // Handle identifier or 'this' keyword in feature chain
+    if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::THIS_KW) {
         p.bump();
         p.skip_trivia();
         // Check for invocation
