@@ -53,9 +53,10 @@ fn debug_vehicle_example_transition_refs() {
     use syster::ide::find_type_ref_at_position;
     let result = find_type_ref_at_position(&index, FileId::new(0), 53, 35);
     
-    println!("\nfind_type_ref_at_position(line=53, col=35) = {:?}", result.is_some());
-    if let Some((ref target, _tr, sym)) = result {
-        println!("  Found: target='{}', symbol='{:?}'", target, sym.map(|s| &s.qualified_name));
+    let found = result.is_some();
+    println!("\nfind_type_ref_at_position(line=53, col=35) = {:?}", found);
+    if let Some(ctx) = &result {
+        println!("  Found: target='{}', symbol='{:?}'", ctx.target_name, ctx.containing_symbol.map(|s| &s.qualified_name));
     } else {
         println!("  NOT FOUND - dumping all type_refs around line 53:");
         for sym in index.symbols_in_file(FileId::new(0)) {
@@ -83,5 +84,5 @@ fn debug_vehicle_example_transition_refs() {
         }
     }
     
-    assert!(result.is_some(), "Should find type_ref for 'initial' at line 53 col 35");
+    assert!(found, "Should find type_ref for 'initial' at line 53 col 35");
 }

@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use crate::base::FileId;
-use crate::hir::{HirSymbol, ResolveResult, SymbolIndex, TypeRef};
+use crate::hir::{HirSymbol, ResolveResult, SymbolIndex, TypeRef, TypeRefKind};
 
 /// Information about a type reference at a position.
 #[derive(Clone, Debug)]
@@ -32,6 +32,18 @@ impl TypeInfo {
     }
 }
 
+/// Context for a type reference found at a position
+pub struct TypeRefContext<'a> {
+    /// The target name of this part
+    pub target_name: Arc<str>,
+    /// The TypeRef for this part
+    pub type_ref: &'a TypeRef,
+    /// The containing symbol
+    pub containing_symbol: Option<&'a HirSymbol>,
+    /// If part of a chain, the previous parts (for resolving member access)
+    pub chain_prefix: Vec<&'a TypeRef>,
+}
+
 /// Get type information at a specific position.
 ///
 /// Returns info if the cursor is on a type annotation (`:`, `:>`, `::>`, etc.).
@@ -45,18 +57,113 @@ impl TypeInfo {
 /// # Returns
 /// Type information if cursor is on a type reference, None otherwise.
 pub fn type_info_at(index: &SymbolIndex, file: FileId, line: u32, col: u32) -> Option<TypeInfo> {
-    let (target_name, type_ref, containing_symbol) =
-        find_type_ref_at_position(index, file, line, col)?;
+    let ctx = find_type_ref_at_position(index, file, line, col)?;
 
     // Try to resolve the target symbol
-    let resolved_symbol = resolve_type_ref(index, type_ref, &target_name, containing_symbol);
+    let resolved_symbol = resolve_type_ref_with_chain(index, &ctx);
 
     Some(TypeInfo {
-        target_name,
-        type_ref: type_ref.clone(),
+        target_name: ctx.target_name,
+        type_ref: ctx.type_ref.clone(),
         resolved_symbol,
-        container: containing_symbol.map(|s| s.qualified_name.clone()),
+        container: ctx.containing_symbol.map(|s| s.qualified_name.clone()),
     })
+}
+
+/// Resolve a type reference to its target symbol, handling feature chains.
+pub fn resolve_type_ref_with_chain(
+    index: &SymbolIndex,
+    ctx: &TypeRefContext<'_>,
+) -> Option<HirSymbol> {
+    // Use pre-resolved target if available
+    if let Some(resolved) = &ctx.type_ref.resolved_target {
+        return index.lookup_qualified(resolved).cloned();
+    }
+
+    // If this is part of a chain (not the first element), resolve through the chain
+    if !ctx.chain_prefix.is_empty() {
+        return resolve_chain_member(index, ctx);
+    }
+
+    // Fallback: try to resolve at query time from containing scope
+    let scope = ctx.containing_symbol
+        .map(|s| s.qualified_name.as_ref())
+        .unwrap_or("");
+    let resolver = index.resolver_for_scope(scope);
+
+    match resolver.resolve(&ctx.target_name) {
+        ResolveResult::Found(sym) => Some(sym),
+        ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
+        ResolveResult::NotFound => {
+            // Try qualified name directly
+            index.lookup_qualified(&ctx.target_name).cloned()
+        }
+    }
+}
+
+/// Resolve a chain member like `mass` in `fuelTank.mass` by following the chain.
+fn resolve_chain_member(
+    index: &SymbolIndex,
+    ctx: &TypeRefContext<'_>,
+) -> Option<HirSymbol> {
+    // Start from the containing symbol's scope
+    let base_scope = ctx.containing_symbol
+        .map(|s| s.qualified_name.as_ref())
+        .unwrap_or("");
+    
+    // Resolve the first part of the chain
+    let first_part = ctx.chain_prefix.first()?;
+    let resolver = index.resolver_for_scope(base_scope);
+    
+    let mut current_symbol = match resolver.resolve(&first_part.target) {
+        ResolveResult::Found(sym) => sym,
+        ResolveResult::Ambiguous(syms) => syms.into_iter().next()?,
+        ResolveResult::NotFound => return None,
+    };
+    
+    // Follow the chain through types
+    for part in ctx.chain_prefix.iter().skip(1) {
+        current_symbol = resolve_member_in_type(index, &current_symbol, &part.target)?;
+    }
+    
+    // Finally, resolve the target in the type of the last prefix part
+    resolve_member_in_type(index, &current_symbol, &ctx.target_name)
+}
+
+/// Resolve a member name within the type of a symbol.
+/// e.g., for `fuelTank : FuelTank`, looking up `mass` should find `FuelTank::mass`
+fn resolve_member_in_type(
+    index: &SymbolIndex,
+    symbol: &HirSymbol,
+    member_name: &str,
+) -> Option<HirSymbol> {
+    // Get the type of the symbol from its supertypes (the first one is usually the type)
+    // or from type_refs with TypedBy kind
+    let type_name = symbol.supertypes.first()
+        .or_else(|| {
+            symbol.type_refs.iter()
+                .filter_map(|tr| tr.as_refs().into_iter().next())
+                .find(|tr| matches!(tr.kind, crate::hir::RefKind::TypedBy))
+                .and_then(|tr| tr.resolved_target.as_ref().or(Some(&tr.target)))
+        })?;
+    
+    // Look up the member in the type's scope
+    let type_symbol = index.lookup_qualified(type_name)
+        .or_else(|| index.lookup_definition(type_name))?;
+    
+    // The member should be qualified as TypeName::memberName
+    let member_qualified = format!("{}::{}", type_symbol.qualified_name, member_name);
+    
+    index.lookup_qualified(&member_qualified).cloned()
+        .or_else(|| {
+            // Try looking in the type's scope with resolver
+            let resolver = index.resolver_for_scope(&type_symbol.qualified_name);
+            match resolver.resolve(member_name) {
+                ResolveResult::Found(sym) => Some(sym),
+                ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
+                ResolveResult::NotFound => None,
+            }
+        })
 }
 
 /// Resolve a type reference to its target symbol.
@@ -89,22 +196,34 @@ pub fn resolve_type_ref(
 
 /// Find a type reference at a specific position in a file.
 ///
-/// Returns the target type name, the TypeRef containing the position,
-/// and the symbol that contains this type_ref (for scope resolution).
+/// Returns context including the chain prefix if the position is on part of a feature chain.
 pub fn find_type_ref_at_position(
     index: &SymbolIndex,
     file: FileId,
     line: u32,
     col: u32,
-) -> Option<(Arc<str>, &TypeRef, Option<&HirSymbol>)> {
+) -> Option<TypeRefContext<'_>> {
     let symbols = index.symbols_in_file(file);
 
     for symbol in symbols {
         for type_ref_kind in symbol.type_refs.iter() {
             if type_ref_kind.contains(line, col) {
                 // Find which part contains the position
-                if let Some((_part_idx, tr)) = type_ref_kind.part_at(line, col) {
-                    return Some((tr.target.clone(), tr, Some(symbol)));
+                if let Some((part_idx, tr)) = type_ref_kind.part_at(line, col) {
+                    // Collect chain prefix (all parts before the current one)
+                    let chain_prefix = match type_ref_kind {
+                        TypeRefKind::Simple(_) => Vec::new(),
+                        TypeRefKind::Chain(chain) => {
+                            chain.parts.iter().take(part_idx).collect()
+                        }
+                    };
+                    
+                    return Some(TypeRefContext {
+                        target_name: tr.target.clone(),
+                        type_ref: tr,
+                        containing_symbol: Some(symbol),
+                        chain_prefix,
+                    });
                 }
             }
         }

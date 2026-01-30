@@ -174,9 +174,15 @@ fn is_usage_keyword(kind: SyntaxKind) -> bool {
 
 /// Trait for SysML parsing operations
 /// 
-/// Extends ExpressionParser with SysML-specific methods.
+/// This trait defines the interface for SysML-specific parsing.
+/// SysML is a superset of KerML but this trait is independent.
+/// For KerML constructs (package, import, class, struct), use KerMLParser methods.
 /// The main parser implements this trait.
 pub trait SysMLParser: ExpressionParser {
+    // -----------------------------------------------------------------
+    // Core parsing methods
+    // -----------------------------------------------------------------
+    
     /// Get the current token (for text inspection)
     fn current_token_text(&self) -> Option<&str>;
     
@@ -192,25 +198,28 @@ pub trait SysMLParser: ExpressionParser {
     /// Parse a comma-separated list of qualified names
     fn parse_qualified_name_list(&mut self);
     
-    /// Parse a package
-    fn parse_package(&mut self);
-    
-    /// Parse a library package
-    fn parse_library_package(&mut self);
-    
-    /// Parse an import
-    fn parse_import(&mut self);
-    
-    /// Parse an alias
-    fn parse_alias(&mut self);
-    
     /// Report a parse error
     fn error(&mut self, message: impl Into<String>);
     
     /// Error recovery - skip to recovery tokens
     fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]);
     
-
+    // -----------------------------------------------------------------
+    // SysML namespace member parsing
+    // -----------------------------------------------------------------
+    
+    /// Parse a namespace member (SysML level)
+    /// 
+    /// This handles all SysML namespace body elements:
+    /// - Definitions: part def, action def, etc.
+    /// - Usages: part, attribute, action, state, etc.
+    /// - Relationships, annotations, import/alias
+    fn parse_namespace_member(&mut self)
+    where
+        Self: Sized,
+    {
+        parse_package_body_element(self);
+    }
     
     // -----------------------------------------------------------------
     // SysML-specific methods
@@ -404,15 +413,34 @@ fn parse_optional_to<P: SysMLParser>(p: &mut P) {
 }
 
 /// Helper to parse optional from/to clause: from <name> to <name>
+/// Creates FROM_TO_CLAUSE, FROM_TO_SOURCE, and FROM_TO_TARGET nodes for AST extraction
 fn parse_optional_from_to<P: SysMLParser>(p: &mut P) {
     if p.at(SyntaxKind::FROM_KW) {
-        bump_keyword(p);
-        parse_optional_qualified_name(p);
+        p.start_node(SyntaxKind::FROM_TO_CLAUSE);
+        p.bump(); // from
+        p.skip_trivia();
+        
+        // Parse source wrapped in FROM_TO_SOURCE
+        if p.at_name_token() {
+            p.start_node(SyntaxKind::FROM_TO_SOURCE);
+            p.parse_qualified_name();
+            p.finish_node();
+            p.skip_trivia();
+        }
         
         if p.at(SyntaxKind::TO_KW) {
-            bump_keyword(p);
-            parse_optional_qualified_name(p);
+            p.bump(); // to
+            p.skip_trivia();
+            
+            // Parse target wrapped in FROM_TO_TARGET
+            if p.at_name_token() {
+                p.start_node(SyntaxKind::FROM_TO_TARGET);
+                p.parse_qualified_name();
+                p.finish_node();
+                p.skip_trivia();
+            }
         }
+        p.finish_node(); // FROM_TO_CLAUSE
     }
 }
 
@@ -500,6 +528,227 @@ fn parse_inline_action<P: SysMLParser>(p: &mut P) {
 }
 
 // =============================================================================
+// SysML Body Parsing
+// =============================================================================
+
+/// Parse a SysML body (semicolon or braced block with SysML members)
+/// Per pest: package_body = { semi_colon | ( "{" ~ package_body_items ~ "}" ) }
+pub fn parse_body<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::NAMESPACE_BODY);
+    
+    if p.at(SyntaxKind::SEMICOLON) {
+        p.bump();
+    } else if p.at(SyntaxKind::L_BRACE) {
+        p.bump();
+        p.skip_trivia();
+        
+        while !p.at(SyntaxKind::ERROR) && !p.at(SyntaxKind::R_BRACE) {
+            let start_pos = p.get_pos();
+            
+            parse_package_body_element(p);
+            
+            p.skip_trivia();
+            
+            // Recovery if no progress made
+            if p.get_pos() == start_pos && !p.at(SyntaxKind::ERROR) && !p.at(SyntaxKind::R_BRACE) {
+                let got = if let Some(text) = p.current_token_text() {
+                    format!("'{}'", text)
+                } else {
+                    kind_to_name(p.current_kind()).to_string()
+                };
+                p.error(format!("unexpected {} in body", got));
+                p.bump();
+            }
+        }
+        
+        p.expect(SyntaxKind::R_BRACE);
+    } else {
+        p.error("expected ';' or '{'")
+    }
+    
+    p.finish_node();
+}
+
+// =============================================================================
+// SysML Package/Import/Alias (Per sysml.pest)
+// =============================================================================
+
+/// Parse a package
+/// Per pest: package = { prefix_metadata? ~ package_declaration ~ package_body }
+/// Per pest: package_declaration = { package_token ~ identification? }
+/// Per pest: package_body = { semi_colon | ( "{" ~ package_body_items ~ "}" ) }
+pub fn parse_package<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::PACKAGE);
+    
+    p.expect(SyntaxKind::PACKAGE_KW);
+    p.skip_trivia();
+    
+    // Optional identification
+    if p.at_name_token() || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+        p.skip_trivia();
+    }
+    
+    // Package body: ; or { ... }
+    parse_namespace_body(p);
+    
+    p.finish_node();
+}
+
+/// Parse a library package
+/// Per pest: library_package = { standard_token? ~ library_token ~ prefix_metadata? ~ package_declaration ~ package_body }
+pub fn parse_library_package<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::LIBRARY_PACKAGE);
+    
+    // Optional 'standard'
+    if p.at(SyntaxKind::STANDARD_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
+    
+    p.expect(SyntaxKind::LIBRARY_KW);
+    p.skip_trivia();
+    
+    p.expect(SyntaxKind::PACKAGE_KW);
+    p.skip_trivia();
+    
+    // Optional identification
+    if p.at_name_token() || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+        p.skip_trivia();
+    }
+    
+    // Package body
+    parse_namespace_body(p);
+    
+    p.finish_node();
+}
+
+/// Parse an import
+/// Per pest: import = { (namespace_import | membership_import) ~ filter_package? ~ relationship_body }
+/// Per pest: import_prefix = { visibility? ~ import_token ~ all_token? }
+/// Per pest: imported_membership = { qualified_name }
+/// Per pest: imported_namespace = { qualified_name ~ "::" ~ "*" ~ ("::*"*")? }
+pub fn parse_import<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::IMPORT);
+    
+    p.expect(SyntaxKind::IMPORT_KW);
+    p.skip_trivia();
+    
+    // Optional 'all'
+    if p.at(SyntaxKind::ALL_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
+    
+    // Qualified name
+    p.parse_qualified_name();
+    p.skip_trivia();
+    
+    // Optional wildcards: ::* or ::**, or ::**::*
+    while p.at(SyntaxKind::COLON_COLON) {
+        p.bump();
+        p.skip_trivia();
+        if p.at(SyntaxKind::STAR_STAR) {
+            // Recursive wildcard: **
+            p.bump();
+            p.skip_trivia();
+        } else if p.at(SyntaxKind::STAR) {
+            // Simple wildcard: *
+            p.bump();
+            p.skip_trivia();
+        } else {
+            break;
+        }
+    }
+    
+    // Optional filter package: [@filter]
+    if p.at(SyntaxKind::L_BRACKET) {
+        parse_filter_package(p);
+        p.skip_trivia();
+    }
+    
+    // Relationship body: ; or { ... }
+    if p.at(SyntaxKind::SEMICOLON) {
+        p.bump();
+    } else if p.at(SyntaxKind::L_BRACE) {
+        p.parse_body();
+    } else {
+        p.error("expected ';' or '{'");
+    }
+    
+    p.finish_node();
+}
+
+/// Parse an alias
+/// Per pest: alias_member_element = { visibility? ~ alias_token ~ identification? ~ for_token ~ element_reference ~ relationship_body }
+pub fn parse_alias<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::ALIAS_MEMBER);
+    
+    p.expect(SyntaxKind::ALIAS_KW);
+    p.skip_trivia();
+    
+    // Optional identification (alias name)
+    if p.at_name_token() || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+        p.skip_trivia();
+    }
+    
+    // 'for' keyword
+    p.expect(SyntaxKind::FOR_KW);
+    p.skip_trivia();
+    
+    // Element reference (qualified name)
+    p.parse_qualified_name();
+    p.skip_trivia();
+    
+    // Relationship body: ; or { ... }
+    if p.at(SyntaxKind::SEMICOLON) {
+        p.bump();
+    } else if p.at(SyntaxKind::L_BRACE) {
+        p.parse_body();
+    } else {
+        p.error("expected ';' or '{'");
+    }
+    
+    p.finish_node();
+}
+
+/// Parse a namespace body: ; or { members* }
+fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
+    if p.at(SyntaxKind::SEMICOLON) {
+        p.bump();
+    } else if p.at(SyntaxKind::L_BRACE) {
+        p.parse_body();
+    } else {
+        p.error("expected ';' or '{'");
+    }
+}
+
+/// Parse filter package: [@expression]
+fn parse_filter_package<P: SysMLParser>(p: &mut P) {
+    while p.at(SyntaxKind::L_BRACKET) {
+        p.bump(); // [
+        p.skip_trivia();
+        
+        // Optional @ prefix
+        if p.at(SyntaxKind::AT) {
+            p.bump();
+            p.skip_trivia();
+        }
+        
+        // Filter expression (qualified name or expression)
+        if p.at_name_token() {
+            p.parse_qualified_name();
+        }
+        p.skip_trivia();
+        
+        p.expect(SyntaxKind::R_BRACKET);
+        p.skip_trivia();
+    }
+}
+
+// =============================================================================
 // SysML File Entry Point
 // =============================================================================
 
@@ -549,6 +798,8 @@ pub fn parse_sysml_file<P: SysMLParser>(p: &mut P) {
 ///     | usage_member | definition_member_element
 ///     | relationship_member_element | dependency
 /// }\n/// Per pest: package_body_item = { (metadata_usage | visibility_prefix? ~ (package_member | import_alias)) ~ \";\"? }\n/// Per pest: package_member = { definition | usage | alias_member | annotation_element | ... }\n/// Pattern: Dispatch to appropriate parser based on current token (package, import, def, usage keywords, annotations, etc.)
+/// 
+/// Pattern: Dispatch to appropriate parser based on current token (package, import, def, usage keywords, annotations, etc.)
 pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
     
@@ -565,12 +816,12 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
 
     match p.current_kind() {
         // Package
-        SyntaxKind::PACKAGE_KW => p.parse_package(),
-        SyntaxKind::LIBRARY_KW | SyntaxKind::STANDARD_KW => p.parse_library_package(),
+        SyntaxKind::PACKAGE_KW => parse_package(p),
+        SyntaxKind::LIBRARY_KW | SyntaxKind::STANDARD_KW => parse_library_package(p),
         
         // Import/Alias
-        SyntaxKind::IMPORT_KW => p.parse_import(),
-        SyntaxKind::ALIAS_KW => p.parse_alias(),
+        SyntaxKind::IMPORT_KW => parse_import(p),
+        SyntaxKind::ALIAS_KW => parse_alias(p),
         
         // Dependency (SysML-specific)
         SyntaxKind::DEPENDENCY_KW => p.parse_dependency(),
@@ -876,6 +1127,8 @@ fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
 /// Per pest: action_declaration_header = { action_token ~ usage_declaration? }
 /// Per pest: usage_declaration = { identification ~ multiplicity_part? ~ feature_specialization_part }
 pub fn parse_perform_action<P: SysMLParser>(p: &mut P) {
+    // Wrap in USAGE so it's recognized as a NamespaceMember
+    p.start_node(SyntaxKind::USAGE);
     p.start_node(SyntaxKind::PERFORM_ACTION_USAGE);
     
     expect_and_skip(p, SyntaxKind::PERFORM_KW);
@@ -893,8 +1146,10 @@ pub fn parse_perform_action<P: SysMLParser>(p: &mut P) {
         // Optional specializations
         parse_specializations_with_skip(p);
     } else {
-        // Otherwise just a qualified name
+        // Otherwise just a qualified name - parse as specialization for relationship extraction
+        p.start_node(SyntaxKind::SPECIALIZATION);
         p.parse_qualified_name();
+        p.finish_node();
         p.skip_trivia();
         
         // Optional specializations (redefines, subsets, etc.)
@@ -904,7 +1159,8 @@ pub fn parse_perform_action<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
     p.parse_body();
     
-    p.finish_node();
+    p.finish_node(); // PERFORM_ACTION_USAGE
+    p.finish_node(); // USAGE
 }
 
 /// Parse frame usage
@@ -1427,6 +1683,9 @@ pub fn parse_state_body<P: SysMLParser>(p: &mut P) {
         return;
     }
     
+    // Start NAMESPACE_BODY node so members can be extracted
+    p.start_node(SyntaxKind::NAMESPACE_BODY);
+    
     p.expect(SyntaxKind::L_BRACE);
     p.skip_trivia();
     
@@ -1436,6 +1695,8 @@ pub fn parse_state_body<P: SysMLParser>(p: &mut P) {
     }
     
     p.expect(SyntaxKind::R_BRACE);
+    
+    p.finish_node(); // NAMESPACE_BODY
 }
 
 /// Parse a state body element
@@ -1673,6 +1934,8 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
 /// Per pest: transition_succession = { succession_as_usage | transition_feature_membership }
 /// Pattern: transition [name] [first] <source>? accept [trigger] [if guard] [do effect] then <target> body
 pub fn parse_transition<P: SysMLParser>(p: &mut P) {
+    // Wrap in USAGE so it gets extracted by NamespaceMember::cast
+    p.start_node(SyntaxKind::USAGE);
     p.start_node(SyntaxKind::TRANSITION_USAGE);
     
     p.expect(SyntaxKind::TRANSITION_KW);
@@ -1698,11 +1961,13 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
         bump_keyword(p);
     }
     
-    // Source state (transition_source_member)
+    // Source state (transition_source_member) - wrap in SPECIALIZATION for type_ref extraction
     if p.at_name_token() && !p.at(SyntaxKind::ACCEPT_KW) && !p.at(SyntaxKind::IF_KW) 
         && !p.at(SyntaxKind::DO_KW) && !p.at(SyntaxKind::THEN_KW) 
     {
+        p.start_node(SyntaxKind::SPECIALIZATION);
         p.parse_qualified_name();
+        p.finish_node();
         p.skip_trivia();
     }
     
@@ -1782,18 +2047,24 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
     
-    // 'then' target state
+    // 'then' target state - wrap in SPECIALIZATION for type_ref extraction
     if p.at(SyntaxKind::THEN_KW) {
         p.bump();
         p.skip_trivia();
-        p.parse_qualified_name();
-        p.skip_trivia();
+        if p.at_name_token() {
+            p.start_node(SyntaxKind::SPECIALIZATION);
+            p.parse_qualified_name();
+            p.finish_node();
+            p.skip_trivia();
+        }
     }
+    
+    p.finish_node(); // TRANSITION_USAGE
     
     // Body (action_body)
     p.parse_body();
     
-    p.finish_node();
+    p.finish_node(); // USAGE
 }
 
 // =============================================================================
@@ -1903,6 +2174,10 @@ pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
 /// Per pest: constraint_prefix = { ("assert"|"assume"|"require") }
 /// Pattern: assert|assume|require [#metadata] [constraint] <name>? <typing|specializations>? <body|semicolon>
 pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
+    // Wrap in USAGE node so it gets extracted by NamespaceMember::cast
+    p.start_node(SyntaxKind::USAGE);
+    
+    // Also wrap in REQUIREMENT_CONSTRAINT for semantic info
     p.start_node(SyntaxKind::REQUIREMENT_CONSTRAINT);
     
     // assert/assume/require
@@ -1915,12 +2190,18 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
     
-    // Optional 'constraint' keyword
-    consume_if(p, SyntaxKind::CONSTRAINT_KW);
+    // Optional 'constraint' keyword - bump it to set usage kind
+    let has_constraint_kw = p.at(SyntaxKind::CONSTRAINT_KW);
+    if has_constraint_kw {
+        p.bump();
+        p.skip_trivia();
+    }
     
-    // Optional reference (can be qualified name with feature chain)
+    p.finish_node(); // REQUIREMENT_CONSTRAINT
+    
+    // Optional name - wrap in NAME node for identification
     if p.at_name_token() || p.at(SyntaxKind::LT) {
-        p.parse_qualified_name();
+        p.parse_identification();
         p.skip_trivia();
     }
     
@@ -1930,10 +2211,15 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
             p.parse_typing();
             p.skip_trivia();
         } else {
-            // Handle redefines/subsets
-            bump_keyword(p); // :> or :>>
-            parse_qualified_name_and_skip(p);
-            // Don't early return - we still need to parse semicolon and finish node
+            // Handle redefines/subsets as SPECIALIZATION
+            p.start_node(SyntaxKind::SPECIALIZATION);
+            p.bump(); // :> or :>>
+            p.skip_trivia();
+            if p.at_name_token() {
+                p.parse_qualified_name();
+            }
+            p.finish_node();
+            p.skip_trivia();
         }
     }
     
@@ -1944,7 +2230,7 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
         p.expect(SyntaxKind::SEMICOLON);
     }
     
-    p.finish_node();
+    p.finish_node(); // USAGE
 }
 
 /// RequirementVerification = ('assert'? 'not'? 'satisfy' | 'verify') 'requirement'? Identification? ('by' QualifiedName)? ';'
@@ -1953,6 +2239,9 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
 /// Per pest: verify_requirement_usage = { "verify" ~ "requirement"? ~ usage_declaration? ~ ("by" ~ qualified_name)? ~ (";"|requirement_body) }
 /// Pattern: [assert] [not] satisfy|verify [requirement] <name|typing>? [by <verifier>]? <body|semicolon>
 pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
+    // Wrap in USAGE node so it gets extracted by NamespaceMember::cast
+    p.start_node(SyntaxKind::USAGE);
+    
     p.start_node(SyntaxKind::REQUIREMENT_VERIFICATION);
     
     // Optional 'assert' modifier
@@ -1991,6 +2280,8 @@ pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
     
+    p.finish_node(); // REQUIREMENT_VERIFICATION
+    
     // Body or semicolon (body allows binding parameters)
     if p.at(SyntaxKind::L_BRACE) {
         p.parse_constraint_body();
@@ -1998,7 +2289,7 @@ pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
         p.expect(SyntaxKind::SEMICOLON);
     }
     
-    p.finish_node();
+    p.finish_node(); // USAGE
 }
 
 /// ExhibitUsage = 'exhibit' 'state'? QualifiedName ';'
@@ -2741,31 +3032,6 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
         while p.at(SyntaxKind::COMMA) {
             bump_keyword(p);
             parse_optional_qualified_name(p);
-        }
-    }
-    
-    // Message from...to clause
-    // Pattern: message name of Type from source to target;
-    if is_message && p.at(SyntaxKind::FROM_KW) {
-        p.bump(); // from
-        p.skip_trivia();
-        
-        // Parse source (qualified name or feature chain)
-        if p.at_name_token() {
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
-        
-        // Expect 'to'
-        if p.at(SyntaxKind::TO_KW) {
-            p.bump();
-            p.skip_trivia();
-            
-            // Parse target (qualified name or feature chain)
-            if p.at_name_token() {
-                p.parse_qualified_name();
-                p.skip_trivia();
-            }
         }
     }
     
@@ -4322,7 +4588,7 @@ pub fn parse_specializations<P: SysMLParser>(p: &mut P) {
     while p.at_any(&[
         SyntaxKind::COLON,
         SyntaxKind::TYPED_KW,
-        SyntaxKind::OF_KW,
+        // Note: OF_KW removed - it's handled separately in message/flow parsing
         SyntaxKind::COLON_GT,
         SyntaxKind::COLON_GT_GT,
         SyntaxKind::COLON_COLON_GT,
@@ -4343,7 +4609,7 @@ pub fn parse_specializations<P: SysMLParser>(p: &mut P) {
         SyntaxKind::FAT_ARROW,
     ]) {
         // Handle typing specially as it has different structure
-        if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::TYPED_KW) || p.at(SyntaxKind::OF_KW) {
+        if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::TYPED_KW) {
             p.parse_typing();
             p.skip_trivia();
             continue;

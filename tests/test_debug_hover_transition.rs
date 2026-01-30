@@ -6,7 +6,21 @@ use syster::base::FileId;
 use syster::hir::{extract_symbols_unified, SymbolIndex, TypeRefKind};
 use syster::syntax::parser::parse_content;
 use syster::syntax::SyntaxFile;
+use syster::parser::SyntaxNode;
 use std::path::Path;
+
+fn print_tree(node: &SyntaxNode, indent: usize) {
+    let kind = node.kind();
+    let text = if node.children().next().is_none() {
+        format!(" {:?}", node.text())
+    } else {
+        String::new()
+    };
+    println!("{}{:?}{}", "  ".repeat(indent), kind, text);
+    for child in node.children() {
+        print_tree(&child, indent + 1);
+    }
+}
 
 #[test]
 fn debug_hover_on_transition_initial() {
@@ -20,6 +34,11 @@ fn debug_hover_on_transition_initial() {
 "#;
     
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
+    
+    // Print the AST structure
+    println!("\n=== AST Structure ===");
+    print_tree(&parse.parse().syntax(), 0);
+    
     let syntax = parse;
     let symbols = extract_symbols_unified(FileId::new(0), &syntax);
     
@@ -54,10 +73,10 @@ fn debug_hover_on_transition_initial() {
     
     let found = result.is_some();
     println!("\nfind_type_ref_at_position(line={}, col={}) = {:?}", target_line, target_col, found);
-    if let Some((ref target, tr, sym)) = result {
-        println!("  target: {}", target);
-        println!("  type_ref: {:?}", tr);
-        println!("  symbol: {:?}", sym.map(|s| &s.qualified_name));
+    if let Some(ctx) = result {
+        println!("  target: {}", ctx.target_name);
+        println!("  type_ref: {:?}", ctx.type_ref);
+        println!("  symbol: {:?}", ctx.containing_symbol.map(|s| &s.qualified_name));
     } else {
         // Debug: print all type_refs to see their line/col
         println!("\nNo match found. All type_refs in index:");

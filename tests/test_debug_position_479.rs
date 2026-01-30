@@ -61,12 +61,10 @@ fn debug_position_line_479() {
     use syster::ide::find_type_ref_at_position;
     
     println!("\n=== find_type_ref_at_position at line {} col {} ===", search_line, target_col);
-    if let Some((target_name, type_ref, containing_symbol)) = 
-        find_type_ref_at_position(&index, FileId::new(0), search_line, target_col) 
-    {
-        println!("target_name: {}", target_name);
-        println!("type_ref: {:?}", type_ref);
-        if let Some(sym) = containing_symbol {
+    if let Some(ctx) = find_type_ref_at_position(&index, FileId::new(0), search_line, target_col) {
+        println!("target_name: {}", ctx.target_name);
+        println!("type_ref: {:?}", ctx.type_ref);
+        if let Some(sym) = ctx.containing_symbol {
             println!("containing_symbol: {}", sym.qualified_name);
         }
     } else {

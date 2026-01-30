@@ -34,21 +34,12 @@ mod syntax_kind;
 mod lexer;
 mod parser;
 pub mod ast;
+pub mod grammar;
 
 pub use syntax_kind::{SyntaxKind, SysMLLanguage, SyntaxNode, SyntaxToken, SyntaxElement};
 pub use lexer::{Lexer, Token};
-pub use parser::{parse, Parse, SyntaxError};
+pub use parser::{parse_sysml, parse_kerml, Parse, SyntaxError};
 pub use ast::*;
-
-/// Parse SysML source (alias for parse, since parser handles both)
-pub fn parse_sysml(input: &str) -> Parse {
-    parse(input)
-}
-
-/// Parse KerML source (alias for parse, since parser handles both)
-pub fn parse_kerml(input: &str) -> Parse {
-    parse(input)
-}
 
 /// Re-export rowan types for convenience
 pub use rowan::{GreenNode, TextRange, TextSize};

@@ -123,6 +123,25 @@ pub trait KerMLParser: ExpressionParser {
     fn parse_qualified_name_list(&mut self);
     
     // -----------------------------------------------------------------
+    // KerML namespace member parsing
+    // -----------------------------------------------------------------
+    
+    /// Parse a namespace member (KerML level)
+    /// 
+    /// This handles all KerML namespace body elements:
+    /// - Definitions: class, struct, datatype, behavior, function, etc.
+    /// - Usages: feature, step, expr
+    /// - Relationships: specialization, subclassification, etc.
+    /// - Annotations: comment, doc
+    /// - Import/alias
+    fn parse_namespace_member(&mut self)
+    where
+        Self: Sized,
+    {
+        parse_namespace_element(self);
+    }
+    
+    // -----------------------------------------------------------------
     // KerML-specific element parsers (called by parse_namespace_element)
     // -----------------------------------------------------------------
     
@@ -138,14 +157,17 @@ pub trait KerMLParser: ExpressionParser {
     /// Parse an alias
     fn parse_alias(&mut self);
     
-    /// Parse a KerML definition (class, struct, datatype, etc.)
-    fn parse_kerml_definition(&mut self);
+    /// Parse a definition (class, struct, datatype, etc.)
+    fn parse_definition(&mut self);
     
-    /// Parse a KerML usage (feature, step, expr)
-    fn parse_kerml_usage(&mut self);
+    /// Parse a usage (feature, step, expr)
+    fn parse_usage(&mut self);
     
-    /// Parse a KerML parameter (in, out, inout, return)
-    fn parse_kerml_parameter(&mut self);
+    /// Parse an invariant (inv [not]? name? { expr })
+    fn parse_invariant(&mut self);
+    
+    /// Parse a parameter (in, out, inout, return)
+    fn parse_parameter(&mut self);
     
     /// Parse end feature or parameter
     fn parse_end_feature_or_parameter(&mut self);
@@ -377,17 +399,18 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         SyntaxKind::BEHAVIOR_KW | SyntaxKind::FUNCTION_KW | SyntaxKind::ASSOC_KW |
         SyntaxKind::CLASSIFIER_KW | SyntaxKind::INTERACTION_KW |
         SyntaxKind::PREDICATE_KW | SyntaxKind::METACLASS_KW |
-        SyntaxKind::TYPE_KW => p.parse_kerml_definition(),
+        SyntaxKind::TYPE_KW => p.parse_definition(),
         
         SyntaxKind::ABSTRACT_KW => handle_abstract_prefix(p),
         
-        SyntaxKind::FEATURE_KW | SyntaxKind::STEP_KW | SyntaxKind::EXPR_KW |
-        SyntaxKind::INV_KW => p.parse_kerml_usage(),
+        SyntaxKind::FEATURE_KW | SyntaxKind::STEP_KW | SyntaxKind::EXPR_KW => p.parse_usage(),
+        
+        SyntaxKind::INV_KW => p.parse_invariant(),
         
         SyntaxKind::REP_KW | SyntaxKind::LANGUAGE_KW => parse_textual_representation(p),
         
         SyntaxKind::IN_KW | SyntaxKind::OUT_KW | SyntaxKind::INOUT_KW |
-        SyntaxKind::RETURN_KW => p.parse_kerml_parameter(),
+        SyntaxKind::RETURN_KW => p.parse_parameter(),
         
         SyntaxKind::END_KW => p.parse_end_feature_or_parameter(),
         
@@ -415,14 +438,14 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         SyntaxKind::FILTER_KW => parse_filter(p),
         
         SyntaxKind::REDEFINES_KW | SyntaxKind::COLON_GT_GT |
-        SyntaxKind::SUBSETS_KW | SyntaxKind::COLON_GT => p.parse_kerml_usage(),
+        SyntaxKind::SUBSETS_KW | SyntaxKind::COLON_GT => p.parse_usage(),
         
         SyntaxKind::VAR_KW | SyntaxKind::COMPOSITE_KW | SyntaxKind::PORTION_KW |
         SyntaxKind::MEMBER_KW | SyntaxKind::DERIVED_KW | SyntaxKind::READONLY_KW => {
             handle_feature_modifier_prefix(p);
         }
         
-        SyntaxKind::IDENT => p.parse_kerml_usage(),
+        SyntaxKind::IDENT => p.parse_usage(),
         
         _ => {
             p.error_recover(
@@ -454,13 +477,13 @@ fn handle_abstract_prefix<P: KerMLParser>(p: &mut P) {
         SyntaxKind::CLASSIFIER_KW | SyntaxKind::PREDICATE_KW | SyntaxKind::METACLASS_KW |
         SyntaxKind::INTERACTION_KW | SyntaxKind::TYPE_KW
     ) {
-        p.parse_kerml_definition();
+        p.parse_definition();
     } else if next == SyntaxKind::FLOW_KW {
         p.parse_flow_usage();
     } else if matches!(next, SyntaxKind::CONNECTOR_KW | SyntaxKind::BINDING_KW | SyntaxKind::SUCCESSION_KW) {
         p.parse_connector_usage();
     } else {
-        p.parse_kerml_usage();
+        p.parse_usage();
     }
 }
 
@@ -472,7 +495,7 @@ fn handle_const_prefix<P: KerMLParser>(p: &mut P) {
         p.parse_end_feature_or_parameter();
     } else {
         // const feature ..., const derived feature ..., etc. -> regular usage with const modifier
-        p.parse_kerml_usage();
+        p.parse_usage();
     }
 }
 
@@ -482,7 +505,7 @@ fn handle_feature_modifier_prefix<P: KerMLParser>(p: &mut P) {
     if matches!(next, SyntaxKind::CONNECTOR_KW | SyntaxKind::BINDING_KW | SyntaxKind::SUCCESSION_KW) {
         p.parse_connector_usage();
     } else {
-        p.parse_kerml_usage();
+        p.parse_usage();
     }
 }
 
@@ -1561,7 +1584,7 @@ pub fn parse_alias<P: KerMLParser>(p: &mut P) {
 /// Per pest: datatype = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ datatype_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ namespace_body }
 /// Per pest: behavior = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ behavior_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ namespace_body }
 /// Per pest: function = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ function_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ result_expression_membership? ~ namespace_body }
-pub fn parse_kerml_definition<P: KerMLParser>(p: &mut P) {
+pub fn parse_definition_impl<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::DEFINITION);
     
     // Prefixes
@@ -1622,7 +1645,7 @@ pub fn parse_kerml_definition<P: KerMLParser>(p: &mut P) {
 /// Parse a single element in a calc body (parameter, namespace element, or expression)
 fn parse_calc_body_element<P: KerMLParser>(p: &mut P) -> bool {
     if p.at_any(&[SyntaxKind::IN_KW, SyntaxKind::OUT_KW, SyntaxKind::INOUT_KW, SyntaxKind::RETURN_KW]) {
-        parse_kerml_parameter(p);
+        parse_parameter_impl(p);
         true
     } else if p.at_any(&[
         SyntaxKind::ATTRIBUTE_KW, SyntaxKind::PART_KW, SyntaxKind::ITEM_KW,
@@ -1787,7 +1810,7 @@ fn parse_optional_default_value<P: KerMLParser>(p: &mut P) {
 /// Per pest: feature = { prefix_metadata? ~ visibility_kind? ~ feature_direction_kind? ~ feature_prefix_modifiers ~ feature_token ~ all_token? ~ identification? ~ feature_specialization_part? ~ ordering_modifiers ~ feature_relationship_part* ~ feature_value? ~ namespace_body }
 /// Per pest: step = { prefix_metadata? ~ feature_direction_kind? ~ connector_feature_modifiers ~ step_token ~ identification? ~ feature_specialization_part? ~ feature_value? ~ membership? ~ owning_membership? ~ namespace_body }
 /// Per pest: expression = similar to feature with expr_token
-pub fn parse_kerml_usage<P: KerMLParser>(p: &mut P) {
+pub fn parse_usage_impl<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
     
     parse_feature_prefix_modifiers(p);
@@ -1805,11 +1828,52 @@ pub fn parse_kerml_usage<P: KerMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+/// KerML invariant (inv [not]? name? { expression })
+/// Per pest: invariant = { prefix_metadata? ~ inv_token ~ not_token? ~ identification? ~ invariant_body }
+pub fn parse_invariant<P: KerMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::USAGE);
+    
+    p.expect(SyntaxKind::INV_KW);
+    p.skip_trivia();
+    
+    // Optional 'not'
+    if p.at(SyntaxKind::NOT_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
+    
+    // Optional identification
+    if p.at_name_token() || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+        p.skip_trivia();
+    }
+    
+    // Body: { expression }
+    if p.at(SyntaxKind::L_BRACE) {
+        p.start_node(SyntaxKind::NAMESPACE_BODY);
+        p.bump(); // {
+        p.skip_trivia();
+        
+        // Parse the invariant expression
+        if !p.at(SyntaxKind::R_BRACE) {
+            super::kerml_expressions::parse_expression(p);
+        }
+        
+        p.skip_trivia();
+        p.expect(SyntaxKind::R_BRACE);
+        p.finish_node();
+    } else {
+        p.parse_body();
+    }
+    
+    p.finish_node();
+}
+
 /// KerML parameter (in, out, inout, return)
 /// Per pest: feature_direction_kind = { inout_token | in_token | out_token }
 /// Per pest: parameter_membership = { direction ~ (type_name ~ name | name | ...) ~ ... }
 /// Parameters are features with explicit direction keywords
-pub fn parse_kerml_parameter<P: KerMLParser>(p: &mut P) {
+pub fn parse_parameter_impl<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
     
     // Parse parameter direction keyword

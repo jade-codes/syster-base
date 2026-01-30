@@ -73,6 +73,8 @@ pub enum SyntaxKind {
     AMP,                // &
     AMP_AMP,            // &&
     PIPE_PIPE,          // ||
+    COLON_EQ,           // :=
+    DOLLAR,             // $
 
     // =========================================================================
     // KEYWORDS - SysML v2
@@ -94,6 +96,8 @@ pub enum SyntaxKind {
     // Definition keywords
     DEF_KW,
     ABSTRACT_KW,
+    COMPOSITE_KW,
+    PORTION_KW,
     VARIATION_KW,
     VARIANT_KW,
     
@@ -113,6 +117,7 @@ pub enum SyntaxKind {
     BINDING_KW,
     FLOW_KW,
     ALLOCATION_KW,
+    ALLOCATE_KW,
     
     // Behavior keywords
     ACTION_KW,
@@ -146,6 +151,21 @@ pub enum SyntaxKind {
     MERGE_KW,
     DECIDE_KW,
     FIRST_KW,
+    DONE_KW,
+    START_KW,
+    TERMINATE_KW,
+    PARALLEL_KW,
+    ASSIGN_KW,
+    CONNECT_KW,
+    
+    // Action-specific
+    BIND_KW,
+    NEW_KW,
+    AFTER_KW,
+    AT_KW,
+    WHEN_KW,
+    VIA_KW,
+    THIS_KW,
     
     // Calculation/constraint
     CALC_KW,
@@ -179,6 +199,7 @@ pub enum SyntaxKind {
     EXPOSE_KW,
     
     // Metadata
+    METACLASS_KW,
     METADATA_KW,
     ABOUT_KW,
     
@@ -197,6 +218,32 @@ pub enum SyntaxKind {
     TYPED_KW,
     DEFINED_KW,
     BY_KW,
+    INTERSECTS_KW,
+    UNIONS_KW,
+    DISJOINT_KW,
+    DISJOINING_KW,
+    CONJUGATES_KW,
+    CONJUGATE_KW,
+    DIFFERS_KW,
+    CROSSES_KW,
+    INVERSE_KW,
+    CHAINS_KW,
+    DIFFERENCES_KW,
+    FEATURED_KW,
+    FEATURING_KW,
+    INVERTING_KW,
+    OF_KW,
+    
+    // Standalone relationship keywords
+    SPECIALIZATION_KW,
+    SUBCLASSIFIER_KW,
+    REDEFINITION_KW,
+    SUBSET_KW,
+    SUBTYPE_KW,
+    TYPING_KW,
+    CONJUGATION_KW,
+    MULTIPLICITY_KW,
+    NAMESPACE_KW,
     
     // Feature modifiers
     REF_KW,
@@ -206,6 +253,10 @@ pub enum SyntaxKind {
     ORDERED_KW,
     NONUNIQUE_KW,
     DEFAULT_KW,
+    VAR_KW,
+    CONST_KW,
+    MEMBER_KW,
+    RETURN_KW,
     
     // Direction
     IN_KW,
@@ -385,6 +436,41 @@ pub enum SyntaxKind {
     // Body items
     BODY_ITEM,
     MEMBER,
+    
+    // Additional node types for grammar modules
+    ACCEPT_ACTION_USAGE,
+    ACTOR_USAGE,
+    BINDING_CONNECTOR,
+    CONNECTION_END,
+    CONNECTOR,
+    CONNECTOR_END,
+    CONNECTOR_END_REFERENCE,
+    CONNECTOR_PART,
+    CONNECT_USAGE,
+    CONSTRAINT_BODY,
+    CONTROL_NODE,
+    FOR_LOOP_ACTION_USAGE,
+    IF_ACTION_USAGE,
+    OBJECTIVE_USAGE,
+    PERFORM_ACTION_USAGE,
+    RELATIONSHIP,
+    REQUIREMENT_CONSTRAINT,
+    REQUIREMENT_VERIFICATION,
+    SEND_ACTION_USAGE,
+    STAKEHOLDER_USAGE,
+    STATE_SUBACTION,
+    SUBJECT_USAGE,
+    SUCCESSION,
+    SUCCESSION_ITEM,
+    TEXTUAL_REPRESENTATION,
+    TRANSITION_USAGE,
+    WHILE_LOOP_ACTION_USAGE,
+    CONSTANT_KW,
+    
+    // Message/flow from-to clause
+    FROM_TO_CLAUSE,
+    FROM_TO_SOURCE,
+    FROM_TO_TARGET,
     
     // Special
     ERROR,

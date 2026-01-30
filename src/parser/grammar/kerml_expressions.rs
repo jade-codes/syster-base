@@ -96,6 +96,7 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
     p.start_node(SyntaxKind::EXPRESSION);
     
     if p.at(SyntaxKind::IF_KW) {
+        // KerML if-expression: if cond ? then else | if cond then then else
         p.bump(); // if
         p.skip_trivia();
         parse_null_coalescing_expression(p); // condition
@@ -108,7 +109,20 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
             parse_keyword_conditional(p);
         }
     } else {
+        // Standard ternary: cond ? then : else
         parse_null_coalescing_expression(p);
+        p.skip_trivia();
+        
+        // Check for standard ternary operator (not ??)
+        if p.at(SyntaxKind::QUESTION) && !p.at(SyntaxKind::QUESTION_QUESTION) {
+            p.bump(); // ?
+            p.skip_trivia();
+            parse_expression(p); // then expression
+            p.skip_trivia();
+            p.expect(SyntaxKind::COLON);
+            p.skip_trivia();
+            parse_expression(p); // else expression
+        }
     }
     
     p.finish_node();
@@ -854,4 +868,26 @@ pub fn parse_argument_list<P: ExpressionParser>(p: &mut P) {
 /// Delegates to the main parser via ExpressionParser trait for named argument handling
 fn parse_argument_via_trait<P: ExpressionParser>(p: &mut P) {
     p.parse_argument();
+}
+
+/// Parse a single argument (potentially named)
+/// Argument = (Name '=')? Expression
+pub fn parse_argument<P: ExpressionParser>(p: &mut P) {
+    p.start_node(SyntaxKind::ARGUMENT_LIST);
+    
+    // Check for named argument: name = value
+    if p.at(SyntaxKind::IDENT) {
+        let next = p.peek_kind(1);
+        if next == SyntaxKind::EQ {
+            p.bump(); // name
+            p.skip_trivia();
+            p.bump(); // =
+            p.skip_trivia();
+        }
+    }
+    
+    // Parse the expression value
+    parse_expression(p);
+    
+    p.finish_node();
 }

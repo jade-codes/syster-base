@@ -75,14 +75,25 @@ fn debug_vehicle_structure() {
     println!("\n=== Visibility for vehicle_b ===");
     let vb_scope = "SimpleVehicleModel::VehicleConfigurations::VehicleConfiguration_b::PartsTree::vehicle_b";
     if let Some(vis) = index.visibility_for_scope(vb_scope) {
-        println!("  Direct:");
+        println!("  Direct (all):");
         for (name, qname) in vis.direct_defs() {
-            if name.contains("providePower") || name.contains("rearAxle") {
-                println!("    {} -> {}", name, qname);
-            }
+            println!("    {} -> {}", name, qname);
         }
     } else {
         println!("  NO visibility map");
+    }
+    
+    // Also check what symbols exist with vehicle_b as prefix
+    println!("\n=== Symbols with vehicle_b prefix ===");
+    for sym in index.symbols_in_file(FileId::new(0)) {
+        if sym.qualified_name.contains("vehicle_b") {
+            println!("  {} ({:?})", sym.qualified_name, sym.kind);
+            println!("    supertypes: {:?}", sym.supertypes);
+            println!("    type_refs: {:?}", sym.type_refs.len());
+            for tr in &sym.type_refs {
+                println!("      {:?}", tr);
+            }
+        }
     }
     
     // Check visibility for rearAxleAssembly

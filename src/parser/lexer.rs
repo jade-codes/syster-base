@@ -212,12 +212,16 @@ pub enum LogosToken {
     ActionKw,
     #[token("actor")]
     ActorKw,
+    #[token("after")]
+    AfterKw,
     #[token("alias")]
     AliasKw,
     #[token("all")]
     AllKw,
     #[token("allocation")]
     AllocationKw,
+    #[token("allocate")]
+    AllocateKw,
     #[token("analysis")]
     AnalysisKw,
     #[token("and")]
@@ -230,10 +234,14 @@ pub enum LogosToken {
     AssocKw,
     #[token("assume")]
     AssumeKw,
+    #[token("at")]
+    AtKw,
     #[token("attribute")]
     AttributeKw,
     #[token("behavior")]
     BehaviorKw,
+    #[token("bind")]
+    BindKw,
     #[token("binding")]
     BindingKw,
     #[token("by")]
@@ -248,6 +256,8 @@ pub enum LogosToken {
     ClassifierKw,
     #[token("comment")]
     CommentKw,
+    #[token("composite")]
+    CompositeKw,
     #[token("concern")]
     ConcernKw,
     #[token("connection")]
@@ -256,6 +266,10 @@ pub enum LogosToken {
     ConnectorKw,
     #[token("constraint")]
     ConstraintKw,
+    #[token("conjugates")]
+    ConjugatesKw,
+    #[token("crosses")]
+    CrossesKw,
     #[token("datatype")]
     DatatypeKw,
     #[token("decide")]
@@ -270,10 +284,18 @@ pub enum LogosToken {
     DependencyKw,
     #[token("derived")]
     DerivedKw,
+    #[token("differs")]
+    DiffersKw,
+    #[token("disjoint")]
+    DisjointKw,
+    #[token("disjoining")]
+    DisjoiningKw,
     #[token("do")]
     DoKw,
     #[token("doc")]
     DocKw,
+    #[token("done")]
+    DoneKw,
     #[token("else")]
     ElseKw,
     #[token("end")]
@@ -334,8 +356,12 @@ pub enum LogosToken {
     InteractionKw,
     #[token("interface")]
     InterfaceKw,
+    #[token("intersects")]
+    IntersectsKw,
     #[token("inv")]
     InvKw,
+    #[token("inverse")]
+    InverseKw,
     #[token("istype")]
     IstypeKw,
     #[token("item")]
@@ -356,18 +382,24 @@ pub enum LogosToken {
     MessageKw,
     #[token("meta")]
     MetaKw,
+    #[token("metaclass")]
+    MetaclassKw,
     #[token("metadata")]
     MetadataKw,
     #[token("nonunique")]
     NonuniqueKw,
     #[token("not")]
     NotKw,
+    #[token("new")]
+    NewKw,
     #[token("null")]
     NullKw,
     #[token("objective")]
     ObjectiveKw,
     #[token("occurrence")]
     OccurrenceKw,
+    #[token("of")]
+    OfKw,
     #[token("or")]
     OrKw,
     #[token("ordered")]
@@ -382,6 +414,8 @@ pub enum LogosToken {
     PerformKw,
     #[token("port")]
     PortKw,
+    #[token("portion")]
+    PortionKw,
     #[token("predicate")]
     PredicateKw,
     #[token("private")]
@@ -418,6 +452,8 @@ pub enum LogosToken {
     StakeholderKw,
     #[token("standard")]
     StandardKw,
+    #[token("start")]
+    StartKw,
     #[token("state")]
     StateKw,
     #[token("step")]
@@ -432,8 +468,12 @@ pub enum LogosToken {
     SubsetsKw,
     #[token("succession")]
     SuccessionKw,
+    #[token("terminate")]
+    TerminateKw,
     #[token("then")]
     ThenKw,
+    #[token("this")]
+    ThisKw,
     #[token("timeslice")]
     TimesliceKw,
     #[token("to")]
@@ -446,6 +486,8 @@ pub enum LogosToken {
     TypeKw,
     #[token("typed")]
     TypedKw,
+    #[token("unions")]
+    UnionsKw,
     #[token("until")]
     UntilKw,
     #[token("use")]
@@ -458,10 +500,14 @@ pub enum LogosToken {
     VerificationKw,
     #[token("verify")]
     VerifyKw,
+    #[token("via")]
+    ViaKw,
     #[token("view")]
     ViewKw,
     #[token("viewpoint")]
     ViewpointKw,
+    #[token("when")]
+    WhenKw,
     #[token("while")]
     WhileKw,
     #[token("xor")]
@@ -537,17 +583,21 @@ impl From<LogosToken> for SyntaxKind {
             AcceptKw => SyntaxKind::ACCEPT_KW,
             ActionKw => SyntaxKind::ACTION_KW,
             ActorKw => SyntaxKind::ACTOR_KW,
+            AfterKw => SyntaxKind::AFTER_KW,
             AliasKw => SyntaxKind::ALIAS_KW,
             AllKw => SyntaxKind::ALL_KW,
             AllocationKw => SyntaxKind::ALLOCATION_KW,
+            AllocateKw => SyntaxKind::ALLOCATE_KW,
             AnalysisKw => SyntaxKind::ANALYSIS_KW,
             AndKw => SyntaxKind::AND_KW,
             AsKw => SyntaxKind::AS_KW,
             AssertKw => SyntaxKind::ASSERT_KW,
             AssocKw => SyntaxKind::ASSOC_KW,
             AssumeKw => SyntaxKind::ASSUME_KW,
+            AtKw => SyntaxKind::AT_KW,
             AttributeKw => SyntaxKind::ATTRIBUTE_KW,
             BehaviorKw => SyntaxKind::BEHAVIOR_KW,
+            BindKw => SyntaxKind::BIND_KW,
             BindingKw => SyntaxKind::BINDING_KW,
             ByKw => SyntaxKind::BY_KW,
             CalcKw => SyntaxKind::CALC_KW,
@@ -555,10 +605,13 @@ impl From<LogosToken> for SyntaxKind {
             ClassKw => SyntaxKind::CLASS_KW,
             ClassifierKw => SyntaxKind::CLASSIFIER_KW,
             CommentKw => SyntaxKind::COMMENT_KW,
+            CompositeKw => SyntaxKind::COMPOSITE_KW,
             ConcernKw => SyntaxKind::CONCERN_KW,
             ConnectionKw => SyntaxKind::CONNECTION_KW,
             ConnectorKw => SyntaxKind::CONNECTOR_KW,
             ConstraintKw => SyntaxKind::CONSTRAINT_KW,
+            ConjugatesKw => SyntaxKind::CONJUGATES_KW,
+            CrossesKw => SyntaxKind::CROSSES_KW,
             DatatypeKw => SyntaxKind::DATATYPE_KW,
             DecideKw => SyntaxKind::DECIDE_KW,
             DefKw => SyntaxKind::DEF_KW,
@@ -566,8 +619,12 @@ impl From<LogosToken> for SyntaxKind {
             DefinedKw => SyntaxKind::DEFINED_KW,
             DependencyKw => SyntaxKind::DEPENDENCY_KW,
             DerivedKw => SyntaxKind::DERIVED_KW,
+            DiffersKw => SyntaxKind::DIFFERS_KW,
+            DisjointKw => SyntaxKind::DISJOINT_KW,
+            DisjoiningKw => SyntaxKind::DISJOINING_KW,
             DoKw => SyntaxKind::DO_KW,
             DocKw => SyntaxKind::DOC_KW,
+            DoneKw => SyntaxKind::DONE_KW,
             ElseKw => SyntaxKind::ELSE_KW,
             EndKw => SyntaxKind::END_KW,
             EntryKw => SyntaxKind::ENTRY_KW,
@@ -598,7 +655,9 @@ impl From<LogosToken> for SyntaxKind {
             InoutKw => SyntaxKind::INOUT_KW,
             InteractionKw => SyntaxKind::INTERACTION_KW,
             InterfaceKw => SyntaxKind::INTERFACE_KW,
+            IntersectsKw => SyntaxKind::INTERSECTS_KW,
             InvKw => SyntaxKind::INV_KW,
+            InverseKw => SyntaxKind::INVERSE_KW,
             IstypeKw => SyntaxKind::ISTYPE_KW,
             ItemKw => SyntaxKind::ITEM_KW,
             JoinKw => SyntaxKind::JOIN_KW,
@@ -609,12 +668,15 @@ impl From<LogosToken> for SyntaxKind {
             MergeKw => SyntaxKind::MERGE_KW,
             MessageKw => SyntaxKind::MESSAGE_KW,
             MetaKw => SyntaxKind::META_KW,
+            MetaclassKw => SyntaxKind::METACLASS_KW,
             MetadataKw => SyntaxKind::METADATA_KW,
             NonuniqueKw => SyntaxKind::NONUNIQUE_KW,
             NotKw => SyntaxKind::NOT_KW,
+            NewKw => SyntaxKind::NEW_KW,
             NullKw => SyntaxKind::NULL_KW,
             ObjectiveKw => SyntaxKind::OBJECTIVE_KW,
             OccurrenceKw => SyntaxKind::OCCURRENCE_KW,
+            OfKw => SyntaxKind::OF_KW,
             OrKw => SyntaxKind::OR_KW,
             OrderedKw => SyntaxKind::ORDERED_KW,
             OutKw => SyntaxKind::OUT_KW,
@@ -622,6 +684,7 @@ impl From<LogosToken> for SyntaxKind {
             PartKw => SyntaxKind::PART_KW,
             PerformKw => SyntaxKind::PERFORM_KW,
             PortKw => SyntaxKind::PORT_KW,
+            PortionKw => SyntaxKind::PORTION_KW,
             PredicateKw => SyntaxKind::PREDICATE_KW,
             PrivateKw => SyntaxKind::PRIVATE_KW,
             ProtectedKw => SyntaxKind::PROTECTED_KW,
@@ -640,6 +703,7 @@ impl From<LogosToken> for SyntaxKind {
             SpecializesKw => SyntaxKind::SPECIALIZES_KW,
             StakeholderKw => SyntaxKind::STAKEHOLDER_KW,
             StandardKw => SyntaxKind::STANDARD_KW,
+            StartKw => SyntaxKind::START_KW,
             StateKw => SyntaxKind::STATE_KW,
             StepKw => SyntaxKind::STEP_KW,
             StructKw => SyntaxKind::STRUCT_KW,
@@ -647,21 +711,26 @@ impl From<LogosToken> for SyntaxKind {
             SubjectKw => SyntaxKind::SUBJECT_KW,
             SubsetsKw => SyntaxKind::SUBSETS_KW,
             SuccessionKw => SyntaxKind::SUCCESSION_KW,
+            TerminateKw => SyntaxKind::TERMINATE_KW,
             ThenKw => SyntaxKind::THEN_KW,
+            ThisKw => SyntaxKind::THIS_KW,
             TimesliceKw => SyntaxKind::TIMESLICE_KW,
             ToKw => SyntaxKind::TO_KW,
             TransitionKw => SyntaxKind::TRANSITION_KW,
             TrueKw => SyntaxKind::TRUE_KW,
             TypeKw => SyntaxKind::TYPE_KW,
             TypedKw => SyntaxKind::TYPED_KW,
+            UnionsKw => SyntaxKind::UNIONS_KW,
             UntilKw => SyntaxKind::UNTIL_KW,
             UseKw => SyntaxKind::USE_KW,
             VariantKw => SyntaxKind::VARIANT_KW,
             VariationKw => SyntaxKind::VARIATION_KW,
             VerificationKw => SyntaxKind::VERIFICATION_KW,
             VerifyKw => SyntaxKind::VERIFY_KW,
+            ViaKw => SyntaxKind::VIA_KW,
             ViewKw => SyntaxKind::VIEW_KW,
             ViewpointKw => SyntaxKind::VIEWPOINT_KW,
+            WhenKw => SyntaxKind::WHEN_KW,
             WhileKw => SyntaxKind::WHILE_KW,
             XorKw => SyntaxKind::XOR_KW,
         }

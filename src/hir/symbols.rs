@@ -979,6 +979,7 @@ fn extract_from_normalized_definition(
     ctx: &mut ExtractionContext,
     def: &NormalizedDefinition,
 ) {
+    eprintln!("[TRACE extract_def] def name={:?}, kind={:?}, children count={}", def.name, def.kind, def.children.len());
     let name = match &def.name {
         Some(n) => strip_quotes(n),
         None => return,
@@ -1106,6 +1107,38 @@ fn extract_from_normalized_usage(
                         NormalizedRelKind::Crosses => "crosses:",
                         NormalizedRelKind::Expression => "~",
                         NormalizedRelKind::FeatureChain => "chain:",
+                        NormalizedRelKind::Conjugates => "~:",
+                        // State/Transition
+                        NormalizedRelKind::TransitionSource => "from:",
+                        NormalizedRelKind::TransitionTarget => "then:",
+                        NormalizedRelKind::SuccessionSource => "first:",
+                        NormalizedRelKind::SuccessionTarget => "then:",
+                        // Message
+                        NormalizedRelKind::AcceptedMessage => "accept:",
+                        NormalizedRelKind::AcceptVia => "via:",
+                        NormalizedRelKind::SentMessage => "send:",
+                        NormalizedRelKind::SendVia => "via:",
+                        NormalizedRelKind::SendTo => "to:",
+                        NormalizedRelKind::MessageSource => "from:",
+                        NormalizedRelKind::MessageTarget => "to:",
+                        // Requirement/Constraint
+                        NormalizedRelKind::Assumes => "assume:",
+                        NormalizedRelKind::Requires => "require:",
+                        // Allocation/Connection
+                        NormalizedRelKind::AllocateSource => "allocate:",
+                        NormalizedRelKind::AllocateTo => "to:",
+                        NormalizedRelKind::BindSource => "bind:",
+                        NormalizedRelKind::BindTarget => "=:",
+                        NormalizedRelKind::ConnectSource => "connect:",
+                        NormalizedRelKind::ConnectTarget => "to:",
+                        NormalizedRelKind::FlowItem => "flow:",
+                        NormalizedRelKind::FlowSource => "from:",
+                        NormalizedRelKind::FlowTarget => "to:",
+                        NormalizedRelKind::InterfaceEnd => "end:",
+                        // View
+                        NormalizedRelKind::Exposes => "expose:",
+                        NormalizedRelKind::Renders => "render:",
+                        NormalizedRelKind::Filters => "filter:",
                     };
                     ctx.next_anon_scope(prefix, &r.target.as_str(), line)
                 })
@@ -1207,6 +1240,32 @@ fn extract_from_normalized_usage(
         })
         .map(|r| Arc::from(r.target.as_str().as_ref()))
         .collect();
+
+    // Detect implicit redefinition: if parent has a type, and that type has a member
+    // with the same name as this usage, then this usage implicitly redefines that member.
+    // e.g., `action transport : TransportScenario { action trigger { ... } }`
+    // Here `transport::trigger` implicitly redefines `TransportScenario::trigger`
+    if supertypes.is_empty() && !ctx.prefix.is_empty() {
+        // Find the parent symbol
+        if let Some(parent) = symbols.iter().rev().find(|s| s.qualified_name.as_ref() == ctx.prefix) {
+            // Check if parent has a type
+            if let Some(parent_type) = parent.supertypes.first() {
+                // The parent_type might be unqualified (e.g., "TransportScenario")
+                // We need to find the fully qualified version
+                let parent_type_qualified = symbols.iter()
+                    .find(|s| s.name.as_ref() == parent_type.as_ref() || s.qualified_name.as_ref() == parent_type.as_ref())
+                    .map(|s| s.qualified_name.clone());
+                
+                if let Some(type_qname) = parent_type_qualified {
+                    // Look for a member in the parent's type with the same name
+                    let potential_redef = format!("{}::{}", type_qname, name);
+                    if symbols.iter().any(|s| s.qualified_name.as_ref() == potential_redef) {
+                        supertypes.push(Arc::from(potential_redef));
+                    }
+                }
+            }
+        }
+    }
 
     // Add implicit supertypes from SysML kernel library if not already specialized
     // This models the implicit inheritance: message → Message, flow → Flow, etc.
