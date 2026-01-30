@@ -96,6 +96,10 @@ pub enum NamespaceMember {
     Connector(Connector),
     /// Connect usage (e.g., `connect p ::> a to b;`)
     ConnectUsage(ConnectUsage),
+    /// Send action usage (e.g., `send x via port`)
+    SendAction(SendActionUsage),
+    /// Accept action usage (e.g., `accept e : Signal via port`)
+    AcceptAction(AcceptActionUsage),
 }
 
 impl AstNode for NamespaceMember {
@@ -117,6 +121,8 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::TRANSITION_USAGE
                 | SyntaxKind::CONNECTOR
                 | SyntaxKind::CONNECT_USAGE
+                | SyntaxKind::SEND_ACTION_USAGE
+                | SyntaxKind::ACCEPT_ACTION_USAGE
         )
     }
 
@@ -137,6 +143,8 @@ impl AstNode for NamespaceMember {
             SyntaxKind::TRANSITION_USAGE => Some(Self::Transition(TransitionUsage(node))),
             SyntaxKind::CONNECTOR => Some(Self::Connector(Connector(node))),
             SyntaxKind::CONNECT_USAGE => Some(Self::ConnectUsage(ConnectUsage(node))),
+            SyntaxKind::SEND_ACTION_USAGE => Some(Self::SendAction(SendActionUsage(node))),
+            SyntaxKind::ACCEPT_ACTION_USAGE => Some(Self::AcceptAction(AcceptActionUsage(node))),
             _ => None,
         }
     }
@@ -158,6 +166,8 @@ impl AstNode for NamespaceMember {
             Self::Transition(n) => n.syntax(),
             Self::Connector(n) => n.syntax(),
             Self::ConnectUsage(n) => n.syntax(),
+            Self::SendAction(n) => n.syntax(),
+            Self::AcceptAction(n) => n.syntax(),
         }
     }
 }
@@ -335,6 +345,56 @@ impl Alias {
 
 ast_node!(Dependency, DEPENDENCY);
 
+impl Dependency {
+    /// Get all qualified names (sources and target)
+    pub fn qualified_names(&self) -> impl Iterator<Item = QualifiedName> + '_ {
+        self.0.children().filter_map(QualifiedName::cast)
+    }
+    
+    /// Get the source qualified name(s) - everything before "to"
+    /// For `dependency a, b to c` returns [a, b]
+    pub fn sources(&self) -> Vec<QualifiedName> {
+        let mut sources = Vec::new();
+        let mut found_to = false;
+        
+        for elem in self.0.children_with_tokens() {
+            if let Some(token) = elem.as_token() {
+                if token.kind() == SyntaxKind::TO_KW {
+                    found_to = true;
+                }
+            } else if let Some(node) = elem.as_node() {
+                if !found_to {
+                    if let Some(qn) = QualifiedName::cast(node.clone()) {
+                        sources.push(qn);
+                    }
+                }
+            }
+        }
+        sources
+    }
+    
+    /// Get the target qualified name - after "to"
+    /// For `dependency a to c` returns c
+    pub fn target(&self) -> Option<QualifiedName> {
+        let mut found_to = false;
+        
+        for elem in self.0.children_with_tokens() {
+            if let Some(token) = elem.as_token() {
+                if token.kind() == SyntaxKind::TO_KW {
+                    found_to = true;
+                }
+            } else if let Some(node) = elem.as_node() {
+                if found_to {
+                    if let Some(qn) = QualifiedName::cast(node.clone()) {
+                        return Some(qn);
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 // ============================================================================
 // Filter
 // ============================================================================
@@ -377,6 +437,25 @@ impl ElementFilter {
 // ============================================================================
 
 ast_node!(Comment, COMMENT_ELEMENT);
+
+impl Comment {
+    /// Get the comment name if present
+    pub fn name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+    
+    /// Get the about target(s) - references after the 'about' keyword
+    pub fn about_targets(&self) -> impl Iterator<Item = QualifiedName> + '_ {
+        self.0.children().filter_map(QualifiedName::cast)
+    }
+    
+    /// Check if this comment has an about clause
+    pub fn has_about(&self) -> bool {
+        self.0.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::ABOUT_KW)
+    }
+}
 
 // ============================================================================
 // Metadata
@@ -556,6 +635,26 @@ impl Usage {
     pub fn typing(&self) -> Option<Typing> {
         self.0.children().find_map(Typing::cast)
     }
+    
+    /// Get the "of Type" qualified name for messages/items
+    /// e.g., `message sendCmd of SensedSpeed` -> returns "SensedSpeed" QualifiedName
+    /// This handles the `of` clause which is different from regular typing `:`.
+    pub fn of_type(&self) -> Option<QualifiedName> {
+        // Look for `of` keyword followed by a qualified name
+        let mut found_of = false;
+        for elem in self.0.children_with_tokens() {
+            if let Some(token) = elem.as_token() {
+                if token.kind() == SyntaxKind::OF_KW {
+                    found_of = true;
+                }
+            } else if let Some(node) = elem.as_node() {
+                if found_of && node.kind() == SyntaxKind::QUALIFIED_NAME {
+                    return QualifiedName::cast(node.clone());
+                }
+            }
+        }
+        None
+    }
 
     pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
         self.0.children().filter_map(Specialization::cast)
@@ -608,6 +707,12 @@ impl Usage {
     /// Get the nested connect usage (for connect statements)
     pub fn connect_usage(&self) -> Option<ConnectUsage> {
         self.0.children().find_map(ConnectUsage::cast)
+    }
+    
+    /// Get the connector part directly (for connection usages with inline connect)
+    /// e.g., `connection multicausation connect ( cause1 ::> causer1 )`
+    pub fn connector_part(&self) -> Option<ConnectorPart> {
+        self.0.children().find_map(ConnectorPart::cast)
     }
     
     /// Get the nested binding connector (for bind statements)
@@ -794,6 +899,25 @@ impl QualifiedName {
                 )
             })
             .map(|t| t.text().to_string())
+            .collect()
+    }
+    
+    /// Get all name segments with their text ranges
+    /// Includes IDENT tokens and contextual keywords that can be used as identifiers
+    pub fn segments_with_ranges(&self) -> Vec<(String, rowan::TextRange)> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .filter(|t| {
+                // Include IDENT and contextual keywords that can be used as names
+                matches!(t.kind(), 
+                    SyntaxKind::IDENT |
+                    SyntaxKind::START_KW |
+                    SyntaxKind::END_KW |
+                    SyntaxKind::DONE_KW
+                )
+            })
+            .map(|t| (t.text().to_string(), t.text_range()))
             .collect()
     }
 

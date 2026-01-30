@@ -326,6 +326,10 @@ pub enum NormalizedRelKind {
     Renders,
     Filters,
     
+    // Dependency relationships
+    DependencySource,
+    DependencyTarget,
+    
     // Other
     Crosses,
 }
@@ -339,11 +343,13 @@ pub enum NormalizedRelKind {
 /// Helper to create a feature chain or simple target from a qualified name
 fn make_chain_or_simple(target_str: &str, qn: &crate::parser::QualifiedName) -> RelTarget {
     if target_str.contains('.') {
-        let parts: Vec<FeatureChainPart> = target_str
-            .split('.')
-            .map(|s| FeatureChainPart {
-                name: s.to_string(),
-                range: None,
+        // Get segments with their ranges for proper hover resolution
+        let segments_with_ranges = qn.segments_with_ranges();
+        let parts: Vec<FeatureChainPart> = segments_with_ranges
+            .into_iter()
+            .map(|(name, range)| FeatureChainPart {
+                name,
+                range: Some(range),
             })
             .collect();
         RelTarget::Chain(FeatureChain {
@@ -387,15 +393,8 @@ impl NormalizedElement {
             NamespaceMember::Alias(alias) => {
                 NormalizedElement::Alias(NormalizedAlias::from_rowan(alias))
             }
-            NamespaceMember::Dependency(_dep) => {
-                // TODO: Implement dependency conversion
-                NormalizedElement::Dependency(NormalizedDependency {
-                    name: None,
-                    short_name: None,
-                    sources: Vec::new(),
-                    targets: Vec::new(),
-                    range: None,
-                })
+            NamespaceMember::Dependency(dep) => {
+                NormalizedElement::Dependency(NormalizedDependency::from_rowan(&dep))
             }
             NamespaceMember::Filter(filter) => {
                 NormalizedElement::Filter(NormalizedFilter {
@@ -429,13 +428,24 @@ impl NormalizedElement {
                     children: Vec::new(),
                 })
             }
-            NamespaceMember::Comment(_comment) => {
+            NamespaceMember::Comment(comment) => {
+                // Extract about references
+                let mut about = Vec::new();
+                for qn in comment.about_targets() {
+                    let target_str = qn.to_string();
+                    about.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::About,
+                        target: RelTarget::Simple(target_str),
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+                
                 NormalizedElement::Comment(NormalizedComment {
-                    name: None,
-                    short_name: None,
+                    name: comment.name().and_then(|n| n.text()),
+                    short_name: comment.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
                     content: String::new(), // TODO: Extract comment content
-                    about: Vec::new(),
-                    range: None,
+                    about,
+                    range: Some(comment.syntax().text_range()),
                 })
             }
             NamespaceMember::Bind(bind) => {
@@ -457,6 +467,14 @@ impl NormalizedElement {
             NamespaceMember::ConnectUsage(conn) => {
                 // Convert connect usage to a normalized usage with connection relationships
                 NormalizedElement::Usage(NormalizedUsage::from_connect_usage(&conn))
+            }
+            NamespaceMember::SendAction(send) => {
+                // Convert send action to a usage with its children
+                NormalizedElement::Usage(NormalizedUsage::from_send_action(&send))
+            }
+            NamespaceMember::AcceptAction(accept) => {
+                // Convert accept action to a usage
+                NormalizedElement::Usage(NormalizedUsage::from_accept_action(&accept))
             }
         }
     }
@@ -654,6 +672,16 @@ impl NormalizedUsage {
                 });
             }
         }
+        
+        // Extract "of Type" clause (for messages, items, etc.)
+        // e.g., `message sendCmd of SensedSpeed`
+        if let Some(of_type) = usage.of_type() {
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::TypedBy,
+                target: RelTarget::Simple(of_type.to_string()),
+                range: Some(of_type.syntax().text_range()),
+            });
+        }
 
         // Extract specializations
         for spec in usage.specializations() {
@@ -734,25 +762,9 @@ impl NormalizedUsage {
             if let Some(source) = from_to.source() {
                 if let Some(qn) = source.target() {
                     let target_str = qn.to_string();
-                    // Check if this is a feature chain (contains .)
-                    let rel_target = if target_str.contains('.') {
-                        // Parse as chain
-                        let parts: Vec<FeatureChainPart> = target_str
-                            .split('.')
-                            .map(|s| FeatureChainPart {
-                                name: s.to_string(),
-                                range: None, // TODO: compute individual ranges
-                            })
-                            .collect();
-                        RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(qn.syntax().text_range()),
-                        })
-                    } else {
-                        RelTarget::Simple(target_str)
-                    };
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::FeatureChain,
+                        kind: NormalizedRelKind::FlowSource,
                         target: rel_target,
                         range: Some(qn.syntax().text_range()),
                     });
@@ -763,25 +775,9 @@ impl NormalizedUsage {
             if let Some(target) = from_to.target() {
                 if let Some(qn) = target.target() {
                     let target_str = qn.to_string();
-                    // Check if this is a feature chain (contains .)
-                    let rel_target = if target_str.contains('.') {
-                        // Parse as chain
-                        let parts: Vec<FeatureChainPart> = target_str
-                            .split('.')
-                            .map(|s| FeatureChainPart {
-                                name: s.to_string(),
-                                range: None, // TODO: compute individual ranges
-                            })
-                            .collect();
-                        RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(qn.syntax().text_range()),
-                        })
-                    } else {
-                        RelTarget::Simple(target_str)
-                    };
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::FeatureChain,
+                        kind: NormalizedRelKind::FlowTarget,
                         target: rel_target,
                         range: Some(qn.syntax().text_range()),
                     });
@@ -835,13 +831,15 @@ impl NormalizedUsage {
             }
         }
         
-        // Extract perform action (e.g., `perform engineStart`)
+        // Extract perform action (e.g., `perform engineStart` or `perform takePicture.focus`)
         if let Some(perform) = usage.perform_action_usage() {
             if let Some(spec) = perform.performed() {
                 if let Some(qn) = spec.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
                         kind: NormalizedRelKind::Performs,
-                        target: RelTarget::Simple(qn.to_string()),
+                        target: rel_target,
                         range: Some(qn.syntax().text_range()),
                     });
                 }
@@ -874,29 +872,25 @@ impl NormalizedUsage {
         }
         
         // Extract connect endpoints (e.g., `connect engine.output to wheel.input`)
-        if let Some(connect) = usage.connect_usage() {
-            if let Some(part) = connect.connector_part() {
-                if let Some(source) = part.source() {
-                    if let Some(qn) = source.target() {
-                        let target_str = qn.to_string();
-                        let rel_target = make_chain_or_simple(&target_str, &qn);
-                        relationships.push(NormalizedRelationship {
-                            kind: NormalizedRelKind::ConnectSource,
-                            target: rel_target,
-                            range: Some(qn.syntax().text_range()),
-                        });
-                    }
-                }
-                if let Some(target) = part.target() {
-                    if let Some(qn) = target.target() {
-                        let target_str = qn.to_string();
-                        let rel_target = make_chain_or_simple(&target_str, &qn);
-                        relationships.push(NormalizedRelationship {
-                            kind: NormalizedRelKind::ConnectTarget,
-                            target: rel_target,
-                            range: Some(qn.syntax().text_range()),
-                        });
-                    }
+        // First check for nested connect_usage, then direct connector_part on the usage
+        let connector_part = if let Some(connect) = usage.connect_usage() {
+            connect.connector_part()
+        } else {
+            // For connection usages with inline connect: `connection x connect (...)`
+            usage.connector_part()
+        };
+        
+        if let Some(part) = connector_part {
+            // Extract all connector ends, not just source/target
+            for end in part.ends() {
+                if let Some(qn) = end.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::ConnectTarget,
+                        target: rel_target,
+                        range: Some(qn.syntax().text_range()),
+                    });
                 }
             }
         }
@@ -1282,6 +1276,89 @@ impl NormalizedUsage {
             children: Vec::new(), // ConnectUsage typically has no body children
         }
     }
+    
+    fn from_send_action(send: &parser::SendActionUsage) -> Self {
+        // Extract children from the send action's body
+        let children: Vec<NormalizedElement> = send.syntax()
+            .children()
+            .find_map(parser::NamespaceBody::cast)
+            .map(|body| {
+                body.members()
+                    .map(|m| NormalizedElement::from_rowan(&m))
+                    .collect()
+            })
+            .unwrap_or_default();
+        
+        // Extract name if present
+        let name = send.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .and_then(|n| n.text());
+        let name_range = send.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .map(|n| n.syntax().text_range());
+            
+        Self {
+            name,
+            short_name: None,
+            kind: NormalizedUsageKind::Action,
+            range: Some(send.syntax().text_range()),
+            name_range,
+            short_name_range: None,
+            doc: None,
+            relationships: Vec::new(),
+            children,
+        }
+    }
+    
+    fn from_accept_action(accept: &parser::AcceptActionUsage) -> Self {
+        let mut relationships = Vec::new();
+        
+        // Extract typing (: Type) for the accepted signal
+        if let Some(typing) = accept.syntax().children().find_map(parser::Typing::cast) {
+            if let Some(target) = typing.target() {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TypedBy,
+                    target: RelTarget::Simple(target.to_string()),
+                    range: Some(typing.syntax().text_range()),
+                });
+            }
+        }
+        
+        // Extract name if present
+        let name = accept.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .and_then(|n| n.text());
+        let name_range = accept.syntax()
+            .children()
+            .find_map(parser::Name::cast)
+            .map(|n| n.syntax().text_range());
+            
+        // Extract children from the accept action's body (if any)
+        let children: Vec<NormalizedElement> = accept.syntax()
+            .children()
+            .find_map(parser::NamespaceBody::cast)
+            .map(|body| {
+                body.members()
+                    .map(|m| NormalizedElement::from_rowan(&m))
+                    .collect()
+            })
+            .unwrap_or_default();
+            
+        Self {
+            name,
+            short_name: None,
+            kind: NormalizedUsageKind::Action,
+            range: Some(accept.syntax().text_range()),
+            name_range,
+            short_name_range: None,
+            doc: None,
+            relationships,
+            children,
+        }
+    }
 }
 
 impl NormalizedImport {
@@ -1329,6 +1406,43 @@ impl NormalizedAlias {
             target: alias.target().map(|t| t.to_string()).unwrap_or_default(),
             target_range: alias.target().map(|t| t.syntax().text_range()),
             range: Some(alias.syntax().text_range()),
+        }
+    }
+}
+
+impl NormalizedDependency {
+    fn from_rowan(dep: &parser::Dependency) -> Self {
+        let mut sources = Vec::new();
+        let mut targets = Vec::new();
+        
+        // Extract source references (before "to")
+        for source in dep.sources() {
+            let target_str = source.to_string();
+            let rel_target = make_chain_or_simple(&target_str, &source);
+            sources.push(NormalizedRelationship {
+                kind: NormalizedRelKind::DependencySource,
+                target: rel_target,
+                range: Some(source.syntax().text_range()),
+            });
+        }
+        
+        // Extract target reference (after "to")
+        if let Some(target) = dep.target() {
+            let target_str = target.to_string();
+            let rel_target = make_chain_or_simple(&target_str, &target);
+            targets.push(NormalizedRelationship {
+                kind: NormalizedRelKind::DependencyTarget,
+                target: rel_target,
+                range: Some(target.syntax().text_range()),
+            });
+        }
+        
+        Self {
+            name: None, // Dependencies typically don't have names
+            short_name: None,
+            sources,
+            targets,
+            range: Some(dep.syntax().text_range()),
         }
     }
 }

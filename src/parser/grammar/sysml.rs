@@ -4527,20 +4527,8 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
             p.skip_trivia();
         }
         
-        // Flow part: from X to Y or X to Y
-        if p.at(SyntaxKind::FROM_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
-        
-        if p.at(SyntaxKind::TO_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
+        // Flow part: from X to Y or X to Y - wrap in FROM_TO_CLAUSE
+        parse_optional_from_to(p);
     } else {
         // Pattern: flow [name] [: Type] [...] [from X to Y]
         // But skip identification if we're directly at FROM_KW (pattern: flow from X to Y)
@@ -4585,20 +4573,8 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
             }
         }
         
-        // Flow part: from X to Y
-        if p.at(SyntaxKind::FROM_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
-        
-        if p.at(SyntaxKind::TO_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
+        // Flow part: from X to Y - wrap in FROM_TO_CLAUSE
+        parse_optional_from_to(p);
     }
     
     p.skip_trivia();

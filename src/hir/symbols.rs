@@ -1182,6 +1182,9 @@ fn extract_from_normalized_usage(
                         NormalizedRelKind::Exposes => "expose:",
                         NormalizedRelKind::Renders => "render:",
                         NormalizedRelKind::Filters => "filter:",
+                        // Dependency
+                        NormalizedRelKind::DependencySource => "dep:",
+                        NormalizedRelKind::DependencyTarget => "to:",
                     };
                     ctx.next_anon_scope(prefix, &r.target.as_str(), line)
                 })
