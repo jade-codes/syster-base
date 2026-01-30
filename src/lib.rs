@@ -50,8 +50,8 @@ pub mod core {
     // Re-export from base
     pub use crate::base::{FileId, Position};
 
-    // Re-export from parser
-    pub use crate::parser::{ParseError, ParseResult};
+    // Re-export from syntax parser (now has ParseError/ParseResult)
+    pub use crate::syntax::parser::{ParseError, ParseResult};
 
     // Re-export constants (with is_supported_extension)
     pub mod constants {
@@ -63,7 +63,7 @@ pub mod core {
 }
 
 // Re-export commonly needed items
-pub use parser::keywords;
+// pub use parser::keywords; // TODO: Re-enable when keywords module is available
 
 // Re-export foundation types
 pub use base::{FileId, Interner, LineCol, LineIndex, Name, Position, Span, TextRange, TextSize};

@@ -15,7 +15,6 @@ use crate::syntax::normalized::{
     NormalizedDependency, NormalizedElement, NormalizedImport, NormalizedPackage,
     NormalizedRelKind, NormalizedRelationship, NormalizedUsage, NormalizedUsageKind,
 };
-use crate::syntax::sysml::ast::enums::{DefinitionKind, UsageKind};
 
 /// The kind of reference - determines resolution strategy.
 ///
@@ -444,61 +443,52 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Create from a DefinitionKind.
-    pub fn from_definition_kind(kind: &DefinitionKind) -> Self {
+    /// Create from a NormalizedDefKind.
+    pub fn from_definition_kind(kind: &NormalizedDefKind) -> Self {
         match kind {
-            DefinitionKind::Part => Self::PartDef,
-            DefinitionKind::Item => Self::ItemDef,
-            DefinitionKind::Action => Self::ActionDef,
-            DefinitionKind::Port => Self::PortDef,
-            DefinitionKind::Attribute => Self::AttributeDef,
-            DefinitionKind::Connection => Self::ConnectionDef,
-            DefinitionKind::Interface => Self::InterfaceDef,
-            DefinitionKind::Allocation => Self::AllocationDef,
-            DefinitionKind::Requirement => Self::RequirementDef,
-            DefinitionKind::Constraint => Self::ConstraintDef,
-            DefinitionKind::State => Self::StateDef,
-            DefinitionKind::Calculation => Self::CalculationDef,
-            DefinitionKind::UseCase | DefinitionKind::Case => Self::UseCaseDef,
-            DefinitionKind::AnalysisCase | DefinitionKind::VerificationCase => {
-                Self::AnalysisCaseDef
-            }
-            DefinitionKind::Concern => Self::ConcernDef,
-            DefinitionKind::View => Self::ViewDef,
-            DefinitionKind::Viewpoint => Self::ViewpointDef,
-            DefinitionKind::Rendering => Self::RenderingDef,
-            DefinitionKind::Enumeration => Self::EnumerationDef,
+            NormalizedDefKind::Part => Self::PartDef,
+            NormalizedDefKind::Item => Self::ItemDef,
+            NormalizedDefKind::Action => Self::ActionDef,
+            NormalizedDefKind::Port => Self::PortDef,
+            NormalizedDefKind::Attribute => Self::AttributeDef,
+            NormalizedDefKind::Connection => Self::ConnectionDef,
+            NormalizedDefKind::Interface => Self::InterfaceDef,
+            NormalizedDefKind::Allocation => Self::AllocationDef,
+            NormalizedDefKind::Requirement => Self::RequirementDef,
+            NormalizedDefKind::Constraint => Self::ConstraintDef,
+            NormalizedDefKind::State => Self::StateDef,
+            NormalizedDefKind::Calculation => Self::CalculationDef,
+            NormalizedDefKind::UseCase => Self::UseCaseDef,
+            NormalizedDefKind::AnalysisCase => Self::AnalysisCaseDef,
+            NormalizedDefKind::Concern => Self::ConcernDef,
+            NormalizedDefKind::View => Self::ViewDef,
+            NormalizedDefKind::Viewpoint => Self::ViewpointDef,
+            NormalizedDefKind::Rendering => Self::RenderingDef,
+            NormalizedDefKind::Enumeration => Self::EnumerationDef,
             _ => Self::Other,
         }
     }
 
-    /// Create from a UsageKind.
-    pub fn from_usage_kind(kind: &UsageKind) -> Self {
+    /// Create from a NormalizedUsageKind.
+    pub fn from_usage_kind(kind: &NormalizedUsageKind) -> Self {
         match kind {
-            UsageKind::Part => Self::PartUsage,
-            UsageKind::Item => Self::ItemUsage,
-            UsageKind::Action
-            | UsageKind::PerformAction
-            | UsageKind::SendAction
-            | UsageKind::AcceptAction => Self::ActionUsage,
-            UsageKind::Port => Self::PortUsage,
-            UsageKind::Attribute => Self::AttributeUsage,
-            UsageKind::Connection => Self::ConnectionUsage,
-            UsageKind::Interface => Self::InterfaceUsage,
-            UsageKind::Allocation => Self::AllocationUsage,
-            UsageKind::Requirement | UsageKind::SatisfyRequirement => Self::RequirementUsage,
-            UsageKind::Constraint => Self::ConstraintUsage,
-            UsageKind::State { is_parallel: _ }
-            | UsageKind::ExhibitState { is_parallel: _ }
-            | UsageKind::Transition => Self::StateUsage,
-            UsageKind::Calculation => Self::CalculationUsage,
-            UsageKind::Reference => Self::ReferenceUsage,
-            UsageKind::Occurrence
-            | UsageKind::Individual
-            | UsageKind::Snapshot
-            | UsageKind::Timeslice => Self::OccurrenceUsage,
-            UsageKind::Flow | UsageKind::Message => Self::FlowUsage,
-            _ => Self::Other,
+            NormalizedUsageKind::Part => Self::PartUsage,
+            NormalizedUsageKind::Item => Self::ItemUsage,
+            NormalizedUsageKind::Action => Self::ActionUsage,
+            NormalizedUsageKind::Port => Self::PortUsage,
+            NormalizedUsageKind::Attribute => Self::AttributeUsage,
+            NormalizedUsageKind::Connection => Self::ConnectionUsage,
+            NormalizedUsageKind::Interface => Self::InterfaceUsage,
+            NormalizedUsageKind::Allocation => Self::AllocationUsage,
+            NormalizedUsageKind::Requirement => Self::RequirementUsage,
+            NormalizedUsageKind::Constraint => Self::ConstraintUsage,
+            NormalizedUsageKind::State => Self::StateUsage,
+            NormalizedUsageKind::Calculation => Self::CalculationUsage,
+            NormalizedUsageKind::Reference => Self::ReferenceUsage,
+            NormalizedUsageKind::Occurrence => Self::OccurrenceUsage,
+            NormalizedUsageKind::Flow => Self::FlowUsage,
+            NormalizedUsageKind::Feature => Self::PartUsage, // KerML features map to part usage
+            NormalizedUsageKind::Other => Self::Other,
         }
     }
 
@@ -620,6 +610,8 @@ struct ExtractionContext {
     anon_counter: u32,
     /// Stack of scope segments for proper push/pop
     scope_stack: Vec<String>,
+    /// Line index for converting byte offsets to line/column
+    line_index: crate::base::LineIndex,
 }
 
 impl ExtractionContext {
@@ -663,6 +655,35 @@ impl ExtractionContext {
         self.anon_counter += 1;
         format!("<{}{}#{}@L{}>", rel_prefix, target, self.anon_counter, line)
     }
+
+    /// Convert a TextRange to SpanInfo using the line index
+    fn range_to_info(&self, range: Option<rowan::TextRange>) -> SpanInfo {
+        match range {
+            Some(r) => {
+                let start = self.line_index.line_col(r.start());
+                let end = self.line_index.line_col(r.end());
+                SpanInfo {
+                    start_line: start.line,
+                    start_col: start.col,
+                    end_line: end.line,
+                    end_col: end.col,
+                }
+            }
+            None => SpanInfo::default(),
+        }
+    }
+
+    /// Convert a TextRange to optional line/col values (for short_name fields)
+    fn range_to_optional(&self, range: Option<rowan::TextRange>) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
+        match range {
+            Some(r) => {
+                let start = self.line_index.line_col(r.start());
+                let end = self.line_index.line_col(r.end());
+                (Some(start.line), Some(start.col), Some(end.line), Some(end.col))
+            }
+            None => (None, None, None, None),
+        }
+    }
 }
 
 // ============================================================================
@@ -695,36 +716,21 @@ pub fn extract_symbols_unified(file: FileId, syntax: &crate::syntax::SyntaxFile)
 ///
 /// Returns both symbols and scope filter information for import filtering.
 pub fn extract_with_filters(file: FileId, syntax: &crate::syntax::SyntaxFile) -> ExtractionResult {
-    use crate::syntax::SyntaxFile;
-
     let mut result = ExtractionResult::default();
+    let line_index = syntax.line_index();
     let mut context = ExtractionContext {
         file,
         prefix: String::new(),
         anon_counter: 0,
         scope_stack: Vec::new(),
+        line_index,
     };
 
-    match syntax {
-        SyntaxFile::SysML(sysml) => {
-            // Set namespace prefix if present
-            if let Some(ns) = &sysml.namespace {
-                context.prefix = ns.name.clone();
-            }
-            for element in &sysml.elements {
-                let normalized = NormalizedElement::from_sysml(element);
-                extract_from_normalized(&mut result, &mut context, &normalized);
-            }
-        }
-        SyntaxFile::KerML(kerml) => {
-            // Set namespace prefix if present
-            if let Some(ns) = &kerml.namespace {
-                context.prefix = ns.name.clone();
-            }
-            for element in &kerml.elements {
-                let normalized = NormalizedElement::from_kerml(element);
-                extract_from_normalized(&mut result, &mut context, &normalized);
-            }
+    // Get the rowan SourceFile and iterate over its members
+    if let Some(source_file) = syntax.source_file() {
+        for member in source_file.members() {
+            let normalized = NormalizedElement::from_rowan(&member);
+            extract_from_normalized(&mut result, &mut context, &normalized);
         }
     }
 
@@ -810,17 +816,18 @@ fn extract_from_normalized_package(
     ctx: &mut ExtractionContext,
     pkg: &NormalizedPackage,
 ) {
-    let name = match pkg.name {
+    let name = match &pkg.name {
         Some(n) => strip_quotes(n),
         None => return,
     };
 
     let qualified_name = ctx.qualified_name(&name);
-    let span = span_to_info(pkg.span);
+    // Use name_range for precise position, fall back to full range
+    let span = ctx.range_to_info(pkg.name_range.or(pkg.range));
 
     result.symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
-        short_name: pkg.short_name.map(Arc::from),
+        short_name: pkg.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
         kind: SymbolKind::Package,
         file: ctx.file,
@@ -891,29 +898,27 @@ fn implicit_supertype_for_usage_kind(kind: NormalizedUsageKind) -> Option<&'stat
 /// Extract relationships from normalized relationships.
 fn extract_relationships_from_normalized(
     relationships: &[NormalizedRelationship],
+    line_index: &crate::base::LineIndex,
 ) -> Vec<HirRelationship> {
     relationships
         .iter()
         .filter_map(|rel| {
             RelationshipKind::from_normalized(rel.kind).map(|kind| {
                 let (start_line, start_col, end_line, end_col) = rel
-                    .span
-                    .map(|s| {
-                        (
-                            s.start.line.saturating_sub(1),
-                            s.start.column.saturating_sub(1),
-                            s.end.line.saturating_sub(1),
-                            s.end.column.saturating_sub(1),
-                        )
+                    .range
+                    .map(|r| {
+                        let start = line_index.line_col(r.start());
+                        let end = line_index.line_col(r.end());
+                        (start.line, start.col, end.line, end.col)
                     })
                     .unwrap_or((0, 0, 0, 0));
                 HirRelationship::with_span(
                     kind,
                     rel.target.as_str().as_ref(),
-                    start_line as u32,
-                    start_col as u32,
-                    end_line as u32,
-                    end_col as u32,
+                    start_line,
+                    start_col,
+                    end_line,
+                    end_col,
                 )
             })
         })
@@ -974,16 +979,17 @@ fn extract_from_normalized_definition(
     ctx: &mut ExtractionContext,
     def: &NormalizedDefinition,
 ) {
-    let name = match def.name {
+    let name = match &def.name {
         Some(n) => strip_quotes(n),
         None => return,
     };
 
     let qualified_name = ctx.qualified_name(&name);
     let kind = SymbolKind::from_normalized_def_kind(def.kind);
-    let span = span_to_info(def.span);
+    // Use name_range for precise position, fall back to full range
+    let span = ctx.range_to_info(def.name_range.or(def.range));
     let (sn_start_line, sn_start_col, sn_end_line, sn_end_col) =
-        span_to_optional(def.short_name_span);
+        ctx.range_to_optional(def.short_name_range);
 
     // Extract explicit supertypes from relationships
     let mut supertypes: Vec<Arc<str>> = def
@@ -1002,20 +1008,20 @@ fn extract_from_normalized_definition(
     }
 
     // Extract type references from relationships
-    let type_refs = extract_type_refs_from_normalized(&def.relationships);
+    let type_refs = extract_type_refs_from_normalized(&def.relationships, &ctx.line_index);
 
     // Extract all relationships for hover display
-    let relationships = extract_relationships_from_normalized(&def.relationships);
+    let relationships = extract_relationships_from_normalized(&def.relationships, &ctx.line_index);
 
     // Extract metadata annotations for filter imports
     let metadata_annotations = extract_metadata_annotations(&def.relationships, &def.children);
 
     // Extract doc comment
-    let doc = def.doc.map(|s| Arc::from(s.trim()));
+    let doc = def.doc.as_ref().map(|s| Arc::from(s.trim()));
 
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
-        short_name: def.short_name.map(Arc::from),
+        short_name: def.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
         kind,
         file: ctx.file,
@@ -1049,16 +1055,16 @@ fn extract_from_normalized_usage(
     usage: &NormalizedUsage,
 ) {
     // Extract type references even for anonymous usages
-    let type_refs = extract_type_refs_from_normalized(&usage.relationships);
+    let type_refs = extract_type_refs_from_normalized(&usage.relationships, &ctx.line_index);
 
     // Extract all relationships for hover display
-    let relationships = extract_relationships_from_normalized(&usage.relationships);
+    let relationships = extract_relationships_from_normalized(&usage.relationships, &ctx.line_index);
 
     // Extract metadata annotations for filter imports
     let metadata_annotations = extract_metadata_annotations(&usage.relationships, &usage.children);
 
     // For anonymous usages, attach refs to the parent but still recurse into children
-    let name = match usage.name {
+    let name = match &usage.name {
         Some(n) => strip_quotes(n),
         None => {
             // Attach type refs to parent for anonymous usages
@@ -1076,7 +1082,7 @@ fn extract_from_normalized_usage(
 
             // Generate unique anonymous scope name for children
             // Try to use relationship target for meaningful names, otherwise use generic anon
-            let line = usage.span.map(|s| s.start.line as u32).unwrap_or(0);
+            let line = usage.range.map(|r| ctx.line_index.line_col(r.start()).line).unwrap_or(0);
 
             let anon_scope = usage
                 .relationships
@@ -1099,6 +1105,7 @@ fn extract_from_normalized_usage(
                         NormalizedRelKind::Meta => "meta:",
                         NormalizedRelKind::Crosses => "crosses:",
                         NormalizedRelKind::Expression => "~",
+                        NormalizedRelKind::FeatureChain => "chain:",
                     };
                     ctx.next_anon_scope(prefix, &r.target.as_str(), line)
                 })
@@ -1110,7 +1117,39 @@ fn extract_from_normalized_usage(
             // redefines in the context of the satisfied/performed/exhibited element
             let qualified_name = ctx.qualified_name(&anon_scope);
             let kind = SymbolKind::from_normalized_usage_kind(usage.kind);
-            let span = span_to_info(usage.span);
+            let span = ctx.range_to_info(usage.range);
+
+            // Build supertypes for anonymous symbol:
+            // 1. From relationships (Redefines, Subsets, TypedBy, Specializes)
+            // 2. From parent's TypedBy (so we can resolve inherited members)
+            let mut anon_supertypes: Vec<Arc<str>> = usage
+                .relationships
+                .iter()
+                .filter(|r| {
+                    matches!(
+                        r.kind,
+                        NormalizedRelKind::TypedBy
+                            | NormalizedRelKind::Subsets
+                            | NormalizedRelKind::Specializes
+                            | NormalizedRelKind::Redefines
+                    )
+                })
+                .map(|r| Arc::from(r.target.as_str().as_ref()))
+                .collect();
+
+            // Add parent's TypedBy types so inherited members are visible
+            // This handles cases like: `spatialCF: Type { :>> mRefs }` where mRefs is from Type
+            if let Some(parent) = symbols
+                .iter()
+                .rev()
+                .find(|s| s.qualified_name.as_ref() == ctx.prefix)
+            {
+                for supertype in &parent.supertypes {
+                    if !anon_supertypes.contains(supertype) {
+                        anon_supertypes.push(supertype.clone());
+                    }
+                }
+            }
 
             let anon_symbol = HirSymbol {
                 file: ctx.file,
@@ -1126,7 +1165,7 @@ fn extract_from_normalized_usage(
                 short_name_start_col: None,
                 short_name_end_line: None,
                 short_name_end_col: None,
-                supertypes: Vec::new(),
+                supertypes: anon_supertypes,
                 relationships: relationships.clone(),
                 type_refs,
                 doc: None,
@@ -1137,6 +1176,7 @@ fn extract_from_normalized_usage(
 
             // Push scope for children of anonymous usages
             ctx.push_scope(&anon_scope);
+
 
             // Recurse into children for anonymous usages
             for child in &usage.children {
@@ -1150,9 +1190,10 @@ fn extract_from_normalized_usage(
 
     let qualified_name = ctx.qualified_name(&name);
     let kind = SymbolKind::from_normalized_usage_kind(usage.kind);
-    let span = span_to_info(usage.span);
+    // Use name_range for precise position, fall back to full range
+    let span = ctx.range_to_info(usage.name_range.or(usage.range));
     let (sn_start_line, sn_start_col, sn_end_line, sn_end_col) =
-        span_to_optional(usage.short_name_span);
+        ctx.range_to_optional(usage.short_name_range);
 
     // Extract typing and subsetting as supertypes
     let mut supertypes: Vec<Arc<str>> = usage
@@ -1180,11 +1221,11 @@ fn extract_from_normalized_usage(
     }
 
     // Extract doc comment
-    let doc = usage.doc.map(|s| Arc::from(s.trim()));
+    let doc = usage.doc.as_ref().map(|s| Arc::from(s.trim()));
 
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
-        short_name: usage.short_name.map(Arc::from),
+        short_name: usage.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
         kind,
         file: ctx.file,
@@ -1217,12 +1258,12 @@ fn extract_from_normalized_import(
     ctx: &mut ExtractionContext,
     import: &NormalizedImport,
 ) {
-    let path = import.path;
+    let path = &import.path;
     let qualified_name = ctx.qualified_name(&format!("import:{}", path));
-    let span = span_to_info(import.span);
+    let span = ctx.range_to_info(import.range);
 
     symbols.push(HirSymbol {
-        name: Arc::from(path),
+        name: Arc::from(path.as_str()),
         short_name: None, // Imports don't have short names
         qualified_name: Arc::from(qualified_name.as_str()),
         kind: SymbolKind::Import,
@@ -1249,24 +1290,26 @@ fn extract_from_normalized_alias(
     ctx: &mut ExtractionContext,
     alias: &NormalizedAlias,
 ) {
-    let name = match alias.name {
+    let name = match &alias.name {
         Some(n) => strip_quotes(n),
         None => return,
     };
 
     let qualified_name = ctx.qualified_name(&name);
-    let span = span_to_info(alias.span);
+    let span = ctx.range_to_info(alias.range);
 
     // Create type_ref for the alias target so hover works on it
-    let type_refs = if let Some(s) = alias.target_span {
+    let type_refs = if let Some(r) = alias.target_range {
+        let start = ctx.line_index.line_col(r.start());
+        let end = ctx.line_index.line_col(r.end());
         vec![TypeRefKind::Simple(TypeRef {
-            target: Arc::from(alias.target),
+            target: Arc::from(alias.target.as_str()),
             resolved_target: None,
             kind: RefKind::Other, // Alias targets are special
-            start_line: s.start.line as u32,
-            start_col: s.start.column as u32,
-            end_line: s.end.line as u32,
-            end_col: s.end.column as u32,
+            start_line: start.line,
+            start_col: start.col,
+            end_line: end.line,
+            end_col: end.col,
         })]
     } else {
         Vec::new()
@@ -1274,7 +1317,7 @@ fn extract_from_normalized_alias(
 
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
-        short_name: alias.short_name.map(Arc::from),
+        short_name: alias.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
         kind: SymbolKind::Alias,
         file: ctx.file,
@@ -1287,7 +1330,7 @@ fn extract_from_normalized_alias(
         short_name_end_line: None,
         short_name_end_col: None,
         doc: None,
-        supertypes: vec![Arc::from(alias.target)],
+        supertypes: vec![Arc::from(alias.target.as_str())],
         relationships: Vec::new(),
         type_refs,
         is_public: false,
@@ -1301,9 +1344,9 @@ fn extract_from_normalized_comment(
     comment: &NormalizedComment,
 ) {
     // Extract type_refs from about references
-    let type_refs = extract_type_refs_from_normalized(&comment.about);
+    let type_refs = extract_type_refs_from_normalized(&comment.about, &ctx.line_index);
 
-    let (name, is_anonymous) = match comment.name {
+    let (name, is_anonymous) = match &comment.name {
         Some(n) => (strip_quotes(n), false),
         None => {
             // Anonymous comment - if it has about refs, we need to track them
@@ -1311,11 +1354,12 @@ fn extract_from_normalized_comment(
             if type_refs.is_empty() {
                 return; // Nothing to track
             }
-            // Use a synthetic name based on the span
-            let anon_name = if let Some(span) = comment.span {
+            // Use a synthetic name based on the range
+            let anon_name = if let Some(r) = comment.range {
+                let pos = ctx.line_index.line_col(r.start());
                 format!(
                     "<anonymous_comment_{}_{}>",
-                    span.start.line, span.start.column
+                    pos.line, pos.col
                 )
             } else {
                 "<anonymous_comment>".to_string()
@@ -1325,11 +1369,11 @@ fn extract_from_normalized_comment(
     };
 
     let qualified_name = ctx.qualified_name(&name);
-    let span = span_to_info(comment.span);
+    let span = ctx.range_to_info(comment.range);
 
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
-        short_name: comment.short_name.map(Arc::from),
+        short_name: comment.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
         kind: SymbolKind::Comment,
         file: ctx.file,
@@ -1344,7 +1388,7 @@ fn extract_from_normalized_comment(
         doc: if is_anonymous {
             None
         } else {
-            Some(Arc::from(comment.content))
+            Some(Arc::from(comment.content.as_str()))
         },
         supertypes: Vec::new(),
         relationships: Vec::new(),
@@ -1359,7 +1403,10 @@ fn extract_from_normalized_comment(
 /// Chains are now preserved explicitly from the normalized layer.
 /// Each TypeRef now includes its RefKind so callers can distinguish
 /// type references from feature references.
-fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -> Vec<TypeRefKind> {
+fn extract_type_refs_from_normalized(
+    relationships: &[NormalizedRelationship],
+    line_index: &crate::base::LineIndex,
+) -> Vec<TypeRefKind> {
     use crate::syntax::normalized::RelTarget;
 
     let mut type_refs = Vec::new();
@@ -1374,22 +1421,16 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                     .parts
                     .iter()
                     .map(|part| {
-                        let (start_line, start_col, end_line, end_col) = if let Some(s) = &part.span
+                        let (start_line, start_col, end_line, end_col) = if let Some(r) = part.range
                         {
-                            (
-                                s.start.line as u32,
-                                s.start.column as u32,
-                                s.end.line as u32,
-                                s.end.column as u32,
-                            )
-                        } else if let Some(s) = rel.span {
-                            // Fallback to relationship span if part span is missing
-                            (
-                                s.start.line as u32,
-                                s.start.column as u32,
-                                s.end.line as u32,
-                                s.end.column as u32,
-                            )
+                            let start = line_index.line_col(r.start());
+                            let end = line_index.line_col(r.end());
+                            (start.line, start.col, end.line, end.col)
+                        } else if let Some(r) = rel.range {
+                            // Fallback to relationship range if part range is missing
+                            let start = line_index.line_col(r.start());
+                            let end = line_index.line_col(r.end());
+                            (start.line, start.col, end.line, end.col)
                         } else {
                             (0, 0, 0, 0)
                         };
@@ -1410,15 +1451,17 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                 }
             }
             RelTarget::Simple(target) => {
-                if let Some(s) = rel.span {
+                if let Some(r) = rel.range {
+                    let start = line_index.line_col(r.start());
+                    let end = line_index.line_col(r.end());
                     type_refs.push(TypeRefKind::Simple(TypeRef {
-                        target: Arc::from(*target),
+                        target: Arc::from(target.as_str()),
                         resolved_target: None,
                         kind: ref_kind,
-                        start_line: s.start.line as u32,
-                        start_col: s.start.column as u32,
-                        end_line: s.end.line as u32,
-                        end_col: s.end.column as u32,
+                        start_line: start.line,
+                        start_col: start.col,
+                        end_line: end.line,
+                        end_col: end.col,
                     }));
 
                     // Also add prefix segments as references (e.g., Vehicle::speed -> Vehicle)
@@ -1438,10 +1481,10 @@ fn extract_type_refs_from_normalized(relationships: &[NormalizedRelationship]) -
                                 target: Arc::from(prefix.as_str()),
                                 resolved_target: None,
                                 kind: ref_kind,
-                                start_line: s.start.line as u32,
-                                start_col: s.start.column as u32,
-                                end_line: s.end.line as u32,
-                                end_col: s.end.column as u32,
+                                start_line: start.line,
+                                start_col: start.col,
+                                end_line: end.line,
+                                end_col: end.col,
                             }));
                         }
                     }
@@ -1460,17 +1503,17 @@ fn extract_from_normalized_dependency(
     dep: &NormalizedDependency,
 ) {
     // Collect type refs from both sources and targets
-    let mut type_refs = extract_type_refs_from_normalized(&dep.sources);
-    type_refs.extend(extract_type_refs_from_normalized(&dep.targets));
+    let mut type_refs = extract_type_refs_from_normalized(&dep.sources, &ctx.line_index);
+    type_refs.extend(extract_type_refs_from_normalized(&dep.targets, &ctx.line_index));
 
     // If dependency has a name, create a symbol for it
-    if let Some(name) = dep.name {
+    if let Some(name) = &dep.name {
         let qualified_name = ctx.qualified_name(name);
-        let span = span_to_info(dep.span);
+        let span = ctx.range_to_info(dep.range);
 
         symbols.push(HirSymbol {
-            name: Arc::from(name),
-            short_name: dep.short_name.map(Arc::from),
+            name: Arc::from(name.as_str()),
+            short_name: dep.short_name.as_ref().map(|s| Arc::from(s.as_str())),
             qualified_name: Arc::from(qualified_name.as_str()),
             kind: SymbolKind::Dependency,
             file: ctx.file,
@@ -1492,7 +1535,7 @@ fn extract_from_normalized_dependency(
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
         // For now, create an anonymous symbol so refs are tracked
-        let span = span_to_info(dep.span);
+        let span = ctx.range_to_info(dep.range);
 
         symbols.push(HirSymbol {
             name: Arc::from("<anonymous-dependency>"),
@@ -1531,34 +1574,6 @@ struct SpanInfo {
     end_col: u32,
 }
 
-/// Convert an optional Span to SpanInfo.
-fn span_to_info(span: Option<crate::syntax::Span>) -> SpanInfo {
-    match span {
-        Some(s) => SpanInfo {
-            start_line: s.start.line as u32,
-            start_col: s.start.column as u32,
-            end_line: s.end.line as u32,
-            end_col: s.end.column as u32,
-        },
-        None => SpanInfo::default(),
-    }
-}
-
-/// Convert an optional span to the 4 Option<u32> fields for short_name_span.
-fn span_to_optional(
-    span: Option<crate::syntax::Span>,
-) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
-    match span {
-        Some(s) => (
-            Some(s.start.line as u32),
-            Some(s.start.column as u32),
-            Some(s.end.line as u32),
-            Some(s.end.column as u32),
-        ),
-        None => (None, None, None, None),
-    }
-}
-
 /// Strip single quotes from a string.
 fn strip_quotes(s: &str) -> String {
     if s.starts_with('\'') && s.ends_with('\'') && s.len() >= 2 {
@@ -1592,6 +1607,7 @@ mod tests {
             prefix: String::new(),
             anon_counter: 0,
             scope_stack: Vec::new(),
+            line_index: crate::base::LineIndex::new(""),
         };
 
         assert_eq!(ctx.qualified_name("Foo"), "Foo");

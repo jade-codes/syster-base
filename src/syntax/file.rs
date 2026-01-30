@@ -1,66 +1,136 @@
-use crate::syntax::kerml::KerMLFile;
-use crate::syntax::kerml::ast::Element as KerMLElement;
-use crate::syntax::sysml::ast::{Element as SysMLElement, SysMLFile};
+//! Syntax file wrapper for parsed SysML/KerML files.
+//!
+//! This module provides a unified interface for working with parsed files
+//! from the rowan-based parser.
 
-/// A parsed syntax file that can be either SysML or KerML
-#[derive(Debug, Clone, PartialEq)]
-pub enum SyntaxFile {
-    SysML(SysMLFile),
-    KerML(KerMLFile),
+use crate::base::LineIndex;
+use crate::parser::{parse, AstNode, NamespaceMember, Parse, SourceFile};
+
+/// A parsed syntax file that wraps a rowan Parse result.
+///
+/// This provides a language-agnostic interface for working with parsed
+/// SysML and KerML files.
+#[derive(Debug, Clone)]
+pub struct SyntaxFile {
+    /// The underlying rowan parse result
+    parse: Parse,
+    /// The file extension (sysml or kerml)
+    extension: FileExtension,
 }
 
-/// Extract import paths from a SysML file
-pub fn extract_sysml_imports(file: &SysMLFile) -> Vec<String> {
-    file.elements
-        .iter()
-        .filter_map(|element| {
-            if let SysMLElement::Import(import) = element {
-                Some(import.path.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+// Manual PartialEq implementation - two SyntaxFiles are equal if they have the same extension
+// and produce the same syntax tree (approximated by checking errors)
+impl PartialEq for SyntaxFile {
+    fn eq(&self, other: &Self) -> bool {
+        self.extension == other.extension && self.parse.errors == other.parse.errors
+    }
 }
 
-/// Extract import paths from a KerML file
-pub fn extract_kerml_imports(file: &KerMLFile) -> Vec<String> {
-    file.elements
-        .iter()
-        .filter_map(|element| {
-            if let KerMLElement::Import(import) = element {
-                Some(import.path.clone())
-            } else {
-                None
-            }
-        })
-        .collect()
+impl Eq for SyntaxFile {}
+
+/// File extension type
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FileExtension {
+    SysML,
+    KerML,
 }
 
 impl SyntaxFile {
-    /// Extracts import statements from the file
-    ///
-    /// Returns a vector of qualified import paths found in the file.
+    /// Create a new SyntaxFile from source code and extension
+    pub fn new(source: &str, extension: FileExtension) -> Self {
+        Self {
+            parse: parse(source),
+            extension,
+        }
+    }
+
+    /// Create a SysML syntax file
+    pub fn sysml(source: &str) -> Self {
+        Self::new(source, FileExtension::SysML)
+    }
+
+    /// Create a KerML syntax file
+    pub fn kerml(source: &str) -> Self {
+        Self::new(source, FileExtension::KerML)
+    }
+
+    /// Get the underlying parse result
+    pub fn parse(&self) -> &Parse {
+        &self.parse
+    }
+
+    /// Get the root source file AST node
+    pub fn source_file(&self) -> Option<SourceFile> {
+        SourceFile::cast(self.parse.syntax())
+    }
+
+    /// Check if parsing had errors
+    pub fn has_errors(&self) -> bool {
+        !self.parse.errors.is_empty()
+    }
+
+    /// Get parse errors
+    pub fn errors(&self) -> &[crate::parser::SyntaxError] {
+        &self.parse.errors
+    }
+
+    /// Check if this is a SysML file
+    pub fn is_sysml(&self) -> bool {
+        self.extension == FileExtension::SysML
+    }
+
+    /// Check if this is a KerML file
+    pub fn is_kerml(&self) -> bool {
+        self.extension == FileExtension::KerML
+    }
+
+    /// Extract import paths from the file
     pub fn extract_imports(&self) -> Vec<String> {
-        match self {
-            SyntaxFile::SysML(sysml_file) => extract_sysml_imports(sysml_file),
-            SyntaxFile::KerML(kerml_file) => extract_kerml_imports(kerml_file),
-        }
+        let Some(source_file) = self.source_file() else {
+            return Vec::new();
+        };
+
+        source_file
+            .members()
+            .filter_map(|member| {
+                if let NamespaceMember::Import(import) = member {
+                    import.target().map(|t| {
+                        let mut path = t.to_string();
+                        if import.is_wildcard() {
+                            path.push_str("::*");
+                        }
+                        if import.is_recursive() {
+                            if path.ends_with("::*") {
+                                path.push('*');
+                            } else {
+                                path.push_str("::**");
+                            }
+                        }
+                        path
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
 
-    /// Returns a reference to the SysML file if this is a SysML file
-    pub fn as_sysml(&self) -> Option<&SysMLFile> {
-        match self {
-            SyntaxFile::SysML(sysml_file) => Some(sysml_file),
-            SyntaxFile::KerML(_) => None,
-        }
+    /// Get the source text of the file
+    pub fn source_text(&self) -> String {
+        self.parse.syntax().text().to_string()
     }
 
-    /// Returns a reference to the KerML file if this is a KerML file
-    pub fn as_kerml(&self) -> Option<&KerMLFile> {
-        match self {
-            SyntaxFile::SysML(_) => None,
-            SyntaxFile::KerML(kerml_file) => Some(kerml_file),
-        }
+    /// Create a LineIndex for converting byte offsets to line/column positions
+    pub fn line_index(&self) -> LineIndex {
+        LineIndex::new(&self.source_text())
     }
 }
+
+// Legacy compatibility: provide SysML/KerML specific types as aliases
+// These will be removed once migration is complete
+
+/// Legacy type alias - use SyntaxFile instead
+pub type SysMLFile = SyntaxFile;
+
+/// Legacy type alias - use SyntaxFile instead  
+pub type KerMLFile = SyntaxFile;

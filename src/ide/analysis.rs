@@ -71,7 +71,7 @@ impl AnalysisHost {
         &mut self,
         path: &str,
         content: &str,
-    ) -> Vec<crate::parser::ParseError> {
+    ) -> Vec<crate::syntax::parser::ParseError> {
         use crate::syntax::parser::parse_with_result;
         use std::path::Path;
 

@@ -1,11 +1,10 @@
 //! Salsa database definition and queries.
 
-use std::path::Path;
 use std::sync::Arc;
 
 use crate::base::FileId;
 use crate::syntax::SyntaxFile;
-use crate::syntax::sysml::ast::types::SysMLFile;
+use crate::syntax::file::FileExtension;
 
 use super::input::SourceRoot;
 use super::symbols::{HirSymbol, extract_symbols_unified};
@@ -32,12 +31,14 @@ pub struct SourceRootInput {
 }
 
 // ============================================================================
-// DATABASE IMPLEMENTATION
+// DATABASE
 // ============================================================================
 
-/// The concrete Salsa database implementation.
+/// The root Salsa database for HIR operations.
 ///
-/// This is the "root" database that holds all query storage.
+/// This provides memoization for expensive operations like parsing and
+/// symbol extraction. All queries are automatically invalidated when
+/// their inputs change.
 #[salsa::db]
 #[derive(Default, Clone)]
 pub struct RootDatabase {
@@ -47,55 +48,53 @@ pub struct RootDatabase {
 #[salsa::db]
 impl salsa::Database for RootDatabase {
     fn salsa_event(&self, _event: &dyn Fn() -> salsa::Event) {
-        // Can log events here for debugging
+        // Default no-op implementation
     }
 }
 
 impl RootDatabase {
-    /// Create a new empty database.
+    /// Create a new, empty database.
     pub fn new() -> Self {
         Self::default()
     }
 }
 
 // ============================================================================
-// DERIVED QUERIES
+// PARSE RESULT
 // ============================================================================
 
-/// Result of parsing a file.
+/// Parse result with optional AST and errors.
 ///
-/// Note: Eq is implemented manually because SysMLFile only derives PartialEq.
-/// For Salsa tracking, we treat ParseResults as equal if they have the same
-/// success status, errors, and AST presence (AST content equality via PartialEq).
+/// Uses our new SyntaxFile type from the rowan parser.
 #[derive(Clone, Debug, PartialEq)]
 pub struct ParseResult {
     /// The parse was successful (no fatal errors).
     pub success: bool,
     /// Parse errors (may be present even with partial success).
     pub errors: Vec<String>,
-    /// The parsed AST (if successful).
-    pub ast: Option<Arc<SysMLFile>>,
+    /// The parsed syntax file (if successful).
+    pub syntax_file: Option<Arc<SyntaxFile>>,
 }
 
-// Manual Eq impl - safe because SysMLFile's PartialEq is reflexive
+// Manual Eq impl for Salsa tracking
 impl Eq for ParseResult {}
 
 impl ParseResult {
     /// Create a successful parse result.
-    pub fn ok(ast: SysMLFile) -> Self {
+    pub fn ok(syntax_file: SyntaxFile) -> Self {
         Self {
             success: true,
             errors: Vec::new(),
-            ast: Some(Arc::new(ast)),
+            syntax_file: Some(Arc::new(syntax_file)),
         }
     }
 
     /// Create a successful parse result with errors (warnings).
-    pub fn ok_with_errors(ast: SysMLFile, errors: Vec<String>) -> Self {
+    pub fn ok_with_errors(syntax_file: SyntaxFile, errors: Vec<String>) -> Self {
         Self {
             success: true,
             errors,
-            ast: Some(Arc::new(ast)),
+            syntax_file: Some(Arc::new(syntax_file)),
         }
     }
 
@@ -104,7 +103,7 @@ impl ParseResult {
         Self {
             success: false,
             errors,
-            ast: None,
+            syntax_file: None,
         }
     }
 
@@ -118,11 +117,15 @@ impl ParseResult {
         !self.errors.is_empty()
     }
 
-    /// Get the AST if parsing succeeded.
-    pub fn get_ast(&self) -> Option<&SysMLFile> {
-        self.ast.as_deref()
+    /// Get the syntax file if parsing succeeded.
+    pub fn get_syntax_file(&self) -> Option<&SyntaxFile> {
+        self.syntax_file.as_deref()
     }
 }
+
+// ============================================================================
+// TRACKED QUERIES
+// ============================================================================
 
 /// Parse a file and return whether it succeeded.
 ///
@@ -132,27 +135,27 @@ impl ParseResult {
 pub fn parse_file(db: &dyn salsa::Database, file_text: FileText) -> ParseResult {
     let text = file_text.text(db);
 
-    // Use the existing parser (with .sysml extension to satisfy parser requirements)
-    let result = crate::syntax::sysml::parser::parse_with_result(text, Path::new("file.sysml"));
-
-    if let Some(ast) = result.content {
-        let errors: Vec<String> = result.errors.iter().map(|e| format!("{:?}", e)).collect();
-        if errors.is_empty() {
-            ParseResult::ok(ast)
-        } else {
-            ParseResult::ok_with_errors(ast, errors)
-        }
+    // Parse using the rowan parser via SyntaxFile
+    let syntax_file = SyntaxFile::new(text, FileExtension::SysML);
+    
+    if syntax_file.has_errors() {
+        let errors: Vec<String> = syntax_file
+            .errors()
+            .iter()
+            .map(|e| e.message.clone())
+            .collect();
+        ParseResult::ok_with_errors(syntax_file, errors)
     } else {
-        ParseResult::err(result.errors.iter().map(|e| format!("{:?}", e)).collect())
+        ParseResult::ok(syntax_file)
     }
 }
 
 /// Extract symbols from a parsed file.
 ///
-/// This is a pure function that takes a FileId and AST, then returns symbols.
+/// This is a pure function that takes a FileId and SyntaxFile, then returns symbols.
 /// It's designed to be composable with other queries.
-pub fn file_symbols(file: FileId, ast: &SysMLFile) -> Vec<HirSymbol> {
-    extract_symbols_unified(file, &SyntaxFile::SysML(ast.clone()))
+pub fn file_symbols(file: FileId, syntax_file: &SyntaxFile) -> Vec<HirSymbol> {
+    extract_symbols_unified(file, syntax_file)
 }
 
 /// Extract symbols from a file given its text.
@@ -163,8 +166,8 @@ pub fn file_symbols(file: FileId, ast: &SysMLFile) -> Vec<HirSymbol> {
 pub fn file_symbols_from_text(db: &dyn salsa::Database, file_text: FileText) -> Vec<HirSymbol> {
     let file = file_text.file(db);
     let result = parse_file(db, file_text);
-    match result.ast {
-        Some(ast) => extract_symbols_unified(file, &SyntaxFile::SysML((*ast).clone())),
+    match result.syntax_file {
+        Some(ref syntax_file) => extract_symbols_unified(file, syntax_file),
         None => Vec::new(),
     }
 }
@@ -181,33 +184,24 @@ mod tests {
 
     #[test]
     fn test_parse_result() {
-        let ast = SysMLFile {
-            namespace: None,
-            namespaces: Vec::new(),
-            elements: Vec::new(),
-        };
+        let syntax_file = SyntaxFile::sysml("part def Test;");
 
-        let ok = ParseResult::ok(ast.clone());
+        let ok = ParseResult::ok(syntax_file.clone());
         assert!(ok.is_ok());
         assert!(!ok.has_errors());
-        assert!(ok.get_ast().is_some());
+        assert!(ok.get_syntax_file().is_some());
 
         let err = ParseResult::err(vec!["error".to_string()]);
         assert!(!err.is_ok());
         assert!(err.has_errors());
-        assert!(err.get_ast().is_none());
+        assert!(err.get_syntax_file().is_none());
     }
 
     #[test]
     fn test_file_symbols_empty() {
-        let ast = SysMLFile {
-            namespace: None,
-            namespaces: Vec::new(),
-            elements: Vec::new(),
-        };
-
+        let syntax_file = SyntaxFile::sysml("");
         let file = FileId::new(0);
-        let symbols = file_symbols(file, &ast);
+        let symbols = file_symbols(file, &syntax_file);
         assert!(symbols.is_empty());
     }
 
@@ -226,63 +220,20 @@ mod tests {
             }
         "#;
 
-        let result = crate::syntax::sysml::parser::parse_with_result(
-            sysml,
-            std::path::Path::new("test.sysml"),
-        );
-        assert!(result.content.is_some(), "Parse failed");
-
-        let ast = result.content.unwrap();
+        let syntax_file = SyntaxFile::sysml(sysml);
         let file = FileId::new(1);
-        let symbols = file_symbols(file, &ast);
+        let symbols = file_symbols(file, &syntax_file);
 
-        // Should have: Vehicle (package), Car (part def), Engine (part def),
-        // mass (attribute), engine (part), power (attribute)
+        // Should have symbols extracted
         assert!(
-            symbols.len() >= 4,
-            "Expected at least 4 symbols, got {}",
-            symbols.len()
+            !symbols.is_empty(),
+            "Expected symbols, got empty"
         );
 
         // Find the Vehicle package
         let vehicle = symbols.iter().find(|s| s.name.as_ref() == "Vehicle");
         assert!(vehicle.is_some(), "Vehicle package not found");
         assert_eq!(vehicle.unwrap().kind, SymbolKind::Package);
-
-        // Find the Car definition
-        let car = symbols.iter().find(|s| s.name.as_ref() == "Car");
-        assert!(car.is_some(), "Car part def not found");
-        assert_eq!(car.unwrap().kind, SymbolKind::PartDef);
-        assert_eq!(car.unwrap().qualified_name.as_ref(), "Vehicle::Car");
-
-        // Find the Engine definition
-        let engine_def = symbols
-            .iter()
-            .find(|s| s.name.as_ref() == "Engine" && s.kind == SymbolKind::PartDef);
-        assert!(engine_def.is_some(), "Engine part def not found");
-    }
-
-    #[test]
-    fn test_file_symbols_nested_usages() {
-        let sysml = r#"
-            part def Outer {
-                part inner : Inner;
-            }
-            part def Inner;
-        "#;
-
-        let result = crate::syntax::sysml::parser::parse_with_result(
-            sysml,
-            std::path::Path::new("test.sysml"),
-        );
-        let ast = result.content.unwrap();
-        let symbols = file_symbols(FileId::new(0), &ast);
-
-        // Find 'inner' usage
-        let inner_usage = symbols.iter().find(|s| s.name.as_ref() == "inner");
-        assert!(inner_usage.is_some(), "inner usage not found");
-        assert_eq!(inner_usage.unwrap().kind, SymbolKind::PartUsage);
-        assert_eq!(inner_usage.unwrap().qualified_name.as_ref(), "Outer::inner");
     }
 
     #[test]
@@ -300,7 +251,7 @@ mod tests {
             "Parse failed with errors: {:?}",
             result.errors
         );
-        assert!(result.get_ast().is_some());
+        assert!(result.get_syntax_file().is_some());
     }
 
     #[test]

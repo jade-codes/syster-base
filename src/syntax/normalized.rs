@@ -7,21 +7,56 @@
 //! The normalized types capture the essential structure needed for symbol
 //! extraction while abstracting away language-specific details.
 
-use crate::syntax::Span;
+use crate::parser::{
+    self, AstNode, Definition as RowanDefinition, DefinitionKind as RowanDefinitionKind,
+    Import as RowanImport, NamespaceMember, Package as RowanPackage, SourceFile,
+    SpecializationKind, Usage as RowanUsage,
+};
+pub use rowan::TextRange;
 
-use crate::syntax::sysml::ast::parsers::ExtractedRef;
-use crate::syntax::sysml::ast::types::FeatureChain;
+// ============================================================================
+// Feature Chain - for dotted references like `engine.power.value`
+// ============================================================================
+
+/// A feature chain representing a dotted path like `engine.power.value`
+#[derive(Debug, Clone)]
+pub struct FeatureChain {
+    pub parts: Vec<FeatureChainPart>,
+    pub range: Option<TextRange>,
+}
+
+/// A single part of a feature chain
+#[derive(Debug, Clone)]
+pub struct FeatureChainPart {
+    pub name: String,
+    pub range: Option<TextRange>,
+}
+
+impl FeatureChain {
+    /// Get the chain as a dotted string
+    pub fn as_dotted_string(&self) -> String {
+        self.parts
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
+// ============================================================================
+// RelTarget - relationship target
+// ============================================================================
 
 /// A normalized relationship target - either a simple name or a feature chain.
 #[derive(Debug, Clone)]
-pub enum RelTarget<'a> {
+pub enum RelTarget {
     /// A simple reference like `Vehicle`
-    Simple(&'a str),
+    Simple(String),
     /// A feature chain like `engine.power.value`
     Chain(FeatureChain),
 }
 
-impl<'a> RelTarget<'a> {
+impl RelTarget {
     /// Get the target name (for simple refs) or the full dotted path (for chains)
     pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
         match self {
@@ -42,78 +77,73 @@ impl<'a> RelTarget<'a> {
             _ => None,
         }
     }
-
-    /// Create a RelTarget from an ExtractedRef (owned version for chains)
-    pub fn from_extracted(extracted: &ExtractedRef) -> RelTarget<'static> {
-        match extracted {
-            ExtractedRef::Simple { name, .. } => {
-                // We need to leak the string to get 'static lifetime
-                // This is acceptable for symbols that live for the duration of the index
-                RelTarget::Simple(Box::leak(name.clone().into_boxed_str()))
-            }
-            ExtractedRef::Chain(chain) => {
-                // Chain parts are used directly in the clone below
-                RelTarget::Chain(chain.clone())
-            }
-        }
-    }
 }
+
+// ============================================================================
+// Normalized Element Types
+// ============================================================================
 
 /// A normalized element that can appear in either SysML or KerML files.
 #[derive(Debug, Clone)]
-pub enum NormalizedElement<'a> {
-    Package(NormalizedPackage<'a>),
-    Definition(NormalizedDefinition<'a>),
-    Usage(NormalizedUsage<'a>),
-    Import(NormalizedImport<'a>),
-    Alias(NormalizedAlias<'a>),
-    Comment(NormalizedComment<'a>),
-    Dependency(NormalizedDependency<'a>),
+pub enum NormalizedElement {
+    Package(NormalizedPackage),
+    Definition(NormalizedDefinition),
+    Usage(NormalizedUsage),
+    Import(NormalizedImport),
+    Alias(NormalizedAlias),
+    Comment(NormalizedComment),
+    Dependency(NormalizedDependency),
     Filter(NormalizedFilter),
 }
 
 /// A normalized package with its children.
 #[derive(Debug, Clone)]
-pub struct NormalizedPackage<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
-    pub span: Option<Span>,
-    pub children: Vec<NormalizedElement<'a>>,
+pub struct NormalizedPackage {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
+    pub range: Option<TextRange>,
+    /// Range of just the name identifier (for semantic tokens and hover)
+    pub name_range: Option<TextRange>,
+    pub children: Vec<NormalizedElement>,
 }
 
 /// A normalized definition (SysML definition or KerML classifier).
 #[derive(Debug, Clone)]
-pub struct NormalizedDefinition<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
+pub struct NormalizedDefinition {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
     pub kind: NormalizedDefKind,
-    pub span: Option<Span>,
-    /// Span of the short name (for hover support on short names)
-    pub short_name_span: Option<Span>,
-    pub doc: Option<&'a str>,
-    pub relationships: Vec<NormalizedRelationship<'a>>,
-    pub children: Vec<NormalizedElement<'a>>,
+    pub range: Option<TextRange>,
+    /// Range of just the name identifier (for semantic tokens and hover)
+    pub name_range: Option<TextRange>,
+    /// Range of the short name (for hover support on short names)
+    pub short_name_range: Option<TextRange>,
+    pub doc: Option<String>,
+    pub relationships: Vec<NormalizedRelationship>,
+    pub children: Vec<NormalizedElement>,
 }
 
 /// A normalized usage (SysML usage or KerML feature).
 #[derive(Debug, Clone)]
-pub struct NormalizedUsage<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
+pub struct NormalizedUsage {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
     pub kind: NormalizedUsageKind,
-    pub span: Option<Span>,
-    /// Span of the short name (for hover support on short names)
-    pub short_name_span: Option<Span>,
-    pub doc: Option<&'a str>,
-    pub relationships: Vec<NormalizedRelationship<'a>>,
-    pub children: Vec<NormalizedElement<'a>>,
+    pub range: Option<TextRange>,
+    /// Range of just the name identifier (for semantic tokens and hover)
+    pub name_range: Option<TextRange>,
+    /// Range of the short name (for hover support on short names)
+    pub short_name_range: Option<TextRange>,
+    pub doc: Option<String>,
+    pub relationships: Vec<NormalizedRelationship>,
+    pub children: Vec<NormalizedElement>,
 }
 
 /// A normalized import statement.
 #[derive(Debug, Clone)]
-pub struct NormalizedImport<'a> {
-    pub path: &'a str,
-    pub span: Option<Span>,
+pub struct NormalizedImport {
+    pub path: String,
+    pub range: Option<TextRange>,
     pub is_public: bool,
     /// Filter metadata names from bracket syntax, e.g., `import X::*[@Safety]`
     pub filters: Vec<String>,
@@ -121,33 +151,33 @@ pub struct NormalizedImport<'a> {
 
 /// A normalized alias.
 #[derive(Debug, Clone)]
-pub struct NormalizedAlias<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
-    pub target: &'a str,
-    pub target_span: Option<Span>,
-    pub span: Option<Span>,
+pub struct NormalizedAlias {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
+    pub target: String,
+    pub target_range: Option<TextRange>,
+    pub range: Option<TextRange>,
 }
 
 /// A normalized comment.
 #[derive(Debug, Clone)]
-pub struct NormalizedComment<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
-    pub content: &'a str,
+pub struct NormalizedComment {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
+    pub content: String,
     /// References in the `about` clause
-    pub about: Vec<NormalizedRelationship<'a>>,
-    pub span: Option<Span>,
+    pub about: Vec<NormalizedRelationship>,
+    pub range: Option<TextRange>,
 }
 
 /// A normalized dependency (relationships like refinement, derivation, etc.).
 #[derive(Debug, Clone)]
-pub struct NormalizedDependency<'a> {
-    pub name: Option<&'a str>,
-    pub short_name: Option<&'a str>,
-    pub sources: Vec<NormalizedRelationship<'a>>,
-    pub targets: Vec<NormalizedRelationship<'a>>,
-    pub span: Option<Span>,
+pub struct NormalizedDependency {
+    pub name: Option<String>,
+    pub short_name: Option<String>,
+    pub sources: Vec<NormalizedRelationship>,
+    pub targets: Vec<NormalizedRelationship>,
+    pub range: Option<TextRange>,
 }
 
 /// A normalized filter statement (e.g., `filter @Safety;`).
@@ -156,8 +186,12 @@ pub struct NormalizedDependency<'a> {
 pub struct NormalizedFilter {
     /// Simple metadata type names that elements must have (e.g., ["Safety", "Approved"])
     pub metadata_refs: Vec<String>,
-    pub span: Option<Span>,
+    pub range: Option<TextRange>,
 }
+
+// ============================================================================
+// Normalized Kind Enums
+// ============================================================================
 
 /// Normalized definition kinds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -218,12 +252,16 @@ pub enum NormalizedUsageKind {
     Other,
 }
 
+// ============================================================================
+// Normalized Relationship
+// ============================================================================
+
 /// A normalized relationship (specialization, typing, subsetting, etc.).
 #[derive(Debug, Clone)]
-pub struct NormalizedRelationship<'a> {
+pub struct NormalizedRelationship {
     pub kind: NormalizedRelKind,
-    pub target: RelTarget<'a>,
-    pub span: Option<Span>,
+    pub target: RelTarget,
+    pub range: Option<TextRange>,
 }
 
 /// Kinds of relationships.
@@ -236,6 +274,7 @@ pub enum NormalizedRelKind {
     References,
     Expression, // For expression references like `time / distance`
     About,      // For comment `about` references
+    FeatureChain, // For dotted feature chains like `from source.endpoint to target.endpoint`
     // Domain-specific relationships
     Performs,
     Satisfies,
@@ -247,607 +286,293 @@ pub enum NormalizedRelKind {
     Crosses,
 }
 
+
+
 // ============================================================================
-// Adapters from SysML AST
+// Adapters from Rowan AST
 // ============================================================================
 
-impl<'a> NormalizedElement<'a> {
-    /// Create a normalized element from a SysML element.
-    pub fn from_sysml(element: &'a crate::syntax::sysml::ast::enums::Element) -> Self {
-        use crate::syntax::sysml::ast::enums::Element as SysMLElement;
-        match element {
-            SysMLElement::Package(pkg) => {
-                NormalizedElement::Package(NormalizedPackage::from_sysml(pkg))
+impl NormalizedElement {
+    /// Create a normalized element from a rowan NamespaceMember
+    pub fn from_rowan(member: &NamespaceMember) -> Self {
+        match member {
+            NamespaceMember::Package(pkg) => {
+                NormalizedElement::Package(NormalizedPackage::from_rowan(pkg))
             }
-            SysMLElement::Definition(def) => {
-                NormalizedElement::Definition(NormalizedDefinition::from_sysml(def))
+            NamespaceMember::LibraryPackage(pkg) => {
+                // Library packages are treated as regular packages
+                NormalizedElement::Package(NormalizedPackage {
+                    name: pkg.name().and_then(|n| n.text()),
+                    short_name: pkg.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+                    range: Some(pkg.syntax().text_range()),
+                    name_range: pkg.name().map(|n| n.syntax().text_range()),
+                    children: pkg
+                        .body()
+                        .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+                        .unwrap_or_default(),
+                })
             }
-            SysMLElement::Usage(usage) => {
-                NormalizedElement::Usage(NormalizedUsage::from_sysml(usage))
+            NamespaceMember::Definition(def) => {
+                NormalizedElement::Definition(NormalizedDefinition::from_rowan(def))
             }
-            SysMLElement::Import(import) => {
-                NormalizedElement::Import(NormalizedImport::from_sysml(import))
+            NamespaceMember::Usage(usage) => {
+                NormalizedElement::Usage(NormalizedUsage::from_rowan(usage))
             }
-            SysMLElement::Alias(alias) => {
-                NormalizedElement::Alias(NormalizedAlias::from_sysml(alias))
+            NamespaceMember::Import(import) => {
+                NormalizedElement::Import(NormalizedImport::from_rowan(import))
             }
-            SysMLElement::Comment(comment) => {
-                NormalizedElement::Comment(NormalizedComment::from_sysml(comment))
+            NamespaceMember::Alias(alias) => {
+                NormalizedElement::Alias(NormalizedAlias::from_rowan(alias))
             }
-            SysMLElement::Dependency(dep) => {
-                NormalizedElement::Dependency(NormalizedDependency::from_sysml(dep))
+            NamespaceMember::Dependency(_dep) => {
+                // TODO: Implement dependency conversion
+                NormalizedElement::Dependency(NormalizedDependency {
+                    name: None,
+                    short_name: None,
+                    sources: Vec::new(),
+                    targets: Vec::new(),
+                    range: None,
+                })
             }
-            SysMLElement::Filter(filter) => {
-                NormalizedElement::Filter(NormalizedFilter::from_sysml(filter))
+            NamespaceMember::Filter(filter) => {
+                NormalizedElement::Filter(NormalizedFilter {
+                    metadata_refs: Vec::new(), // TODO: Extract filter refs
+                    range: Some(filter.syntax().text_range()),
+                })
             }
-        }
-    }
-
-    /// Create a normalized element from a KerML element.
-    pub fn from_kerml(element: &'a crate::syntax::kerml::ast::enums::Element) -> Self {
-        use crate::syntax::kerml::ast::enums::Element as KerMLElement;
-        match element {
-            KerMLElement::Package(pkg) => {
-                NormalizedElement::Package(NormalizedPackage::from_kerml(pkg))
-            }
-            KerMLElement::Classifier(classifier) => {
-                NormalizedElement::Definition(NormalizedDefinition::from_kerml(classifier))
-            }
-            KerMLElement::Feature(feature) => {
-                NormalizedElement::Usage(NormalizedUsage::from_kerml(feature))
-            }
-            KerMLElement::Import(import) => {
-                NormalizedElement::Import(NormalizedImport::from_kerml(import))
-            }
-            KerMLElement::Comment(_) | KerMLElement::Annotation(_) => {
-                // Skip these - they don't produce symbols currently
+            NamespaceMember::Metadata(_meta) => {
+                // Metadata usages are skipped for now
                 NormalizedElement::Comment(NormalizedComment {
                     name: None,
                     short_name: None,
-                    content: "",
+                    content: String::new(),
                     about: Vec::new(),
-                    span: None,
+                    range: None,
+                })
+            }
+            NamespaceMember::Comment(_comment) => {
+                NormalizedElement::Comment(NormalizedComment {
+                    name: None,
+                    short_name: None,
+                    content: String::new(), // TODO: Extract comment content
+                    about: Vec::new(),
+                    range: None,
                 })
             }
         }
     }
 }
 
-impl<'a> NormalizedPackage<'a> {
-    fn from_sysml(pkg: &'a crate::syntax::sysml::ast::types::Package) -> Self {
+impl NormalizedPackage {
+    fn from_rowan(pkg: &RowanPackage) -> Self {
         Self {
-            name: pkg.name.as_deref(),
-            short_name: pkg.short_name.as_deref(),
-            span: pkg.span,
+            name: pkg.name().and_then(|n| n.text()),
+            short_name: pkg.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+            range: Some(pkg.syntax().text_range()),
+            name_range: pkg.name().map(|n| n.syntax().text_range()),
             children: pkg
-                .elements
-                .iter()
-                .map(NormalizedElement::from_sysml)
-                .collect(),
-        }
-    }
-
-    fn from_kerml(pkg: &'a crate::syntax::kerml::ast::types::Package) -> Self {
-        Self {
-            name: pkg.name.as_deref(),
-            short_name: pkg.short_name.as_deref(),
-            span: pkg.span,
-            children: pkg
-                .elements
-                .iter()
-                .map(NormalizedElement::from_kerml)
-                .collect(),
+                .body()
+                .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+                .unwrap_or_default(),
         }
     }
 }
 
-impl<'a> NormalizedDefinition<'a> {
-    fn from_sysml(def: &'a crate::syntax::sysml::ast::types::Definition) -> Self {
-        use crate::syntax::sysml::ast::enums::DefinitionKind;
-        use crate::syntax::sysml::ast::enums::DefinitionMember;
-
-        let kind = match def.kind {
-            DefinitionKind::Part => NormalizedDefKind::Part,
-            DefinitionKind::Item => NormalizedDefKind::Item,
-            DefinitionKind::Action => NormalizedDefKind::Action,
-            DefinitionKind::Port => NormalizedDefKind::Port,
-            DefinitionKind::Attribute => NormalizedDefKind::Attribute,
-            DefinitionKind::Connection => NormalizedDefKind::Connection,
-            DefinitionKind::Interface => NormalizedDefKind::Interface,
-            DefinitionKind::Allocation => NormalizedDefKind::Allocation,
-            DefinitionKind::Requirement => NormalizedDefKind::Requirement,
-            DefinitionKind::Constraint => NormalizedDefKind::Constraint,
-            DefinitionKind::State => NormalizedDefKind::State,
-            DefinitionKind::Calculation => NormalizedDefKind::Calculation,
-            DefinitionKind::UseCase | DefinitionKind::Case => NormalizedDefKind::UseCase,
-            DefinitionKind::AnalysisCase | DefinitionKind::VerificationCase => {
+impl NormalizedDefinition {
+    fn from_rowan(def: &RowanDefinition) -> Self {
+        let kind = match def.definition_kind() {
+            Some(RowanDefinitionKind::Part) => NormalizedDefKind::Part,
+            Some(RowanDefinitionKind::Item) => NormalizedDefKind::Item,
+            Some(RowanDefinitionKind::Action) => NormalizedDefKind::Action,
+            Some(RowanDefinitionKind::Port) => NormalizedDefKind::Port,
+            Some(RowanDefinitionKind::Attribute) => NormalizedDefKind::Attribute,
+            Some(RowanDefinitionKind::Connection) => NormalizedDefKind::Connection,
+            Some(RowanDefinitionKind::Interface) => NormalizedDefKind::Interface,
+            Some(RowanDefinitionKind::Allocation) => NormalizedDefKind::Allocation,
+            Some(RowanDefinitionKind::Requirement) => NormalizedDefKind::Requirement,
+            Some(RowanDefinitionKind::Constraint) => NormalizedDefKind::Constraint,
+            Some(RowanDefinitionKind::State) => NormalizedDefKind::State,
+            Some(RowanDefinitionKind::Calc) => NormalizedDefKind::Calculation,
+            Some(RowanDefinitionKind::Case) | Some(RowanDefinitionKind::UseCase) => {
+                NormalizedDefKind::UseCase
+            }
+            Some(RowanDefinitionKind::Analysis) | Some(RowanDefinitionKind::Verification) => {
                 NormalizedDefKind::AnalysisCase
             }
-            DefinitionKind::Concern => NormalizedDefKind::Concern,
-            DefinitionKind::View => NormalizedDefKind::View,
-            DefinitionKind::Viewpoint => NormalizedDefKind::Viewpoint,
-            DefinitionKind::Rendering => NormalizedDefKind::Rendering,
-            DefinitionKind::Enumeration => NormalizedDefKind::Enumeration,
-            _ => NormalizedDefKind::Other,
+            Some(RowanDefinitionKind::Concern) => NormalizedDefKind::Concern,
+            Some(RowanDefinitionKind::View) => NormalizedDefKind::View,
+            Some(RowanDefinitionKind::Viewpoint) => NormalizedDefKind::Viewpoint,
+            Some(RowanDefinitionKind::Rendering) => NormalizedDefKind::Rendering,
+            Some(RowanDefinitionKind::Enum) => NormalizedDefKind::Enumeration,
+            Some(RowanDefinitionKind::Flow) => NormalizedDefKind::Other, // Map flow def to Other
+            Some(RowanDefinitionKind::Metadata) => NormalizedDefKind::Other,
+            Some(RowanDefinitionKind::Occurrence) => NormalizedDefKind::Other,
+            None => NormalizedDefKind::Other,
         };
 
-        // Extract relationships
-        let mut relationships = Vec::new();
-        for spec in &def.relationships.specializes {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Specializes,
-                target: RelTarget::from_extracted(&spec.extracted),
-                span: spec.span(),
-            });
-        }
-        for redef in &def.relationships.redefines {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Redefines,
-                target: RelTarget::from_extracted(&redef.extracted),
-                span: redef.span(),
-            });
-        }
-        for subset in &def.relationships.subsets {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Subsets,
-                target: RelTarget::from_extracted(&subset.extracted),
-                span: subset.span(),
-            });
-        }
-        if let Some(ref typed) = def.relationships.typed_by {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::TypedBy,
-                target: RelTarget::Simple(Box::leak(typed.clone().into_boxed_str())),
-                span: def.relationships.typed_by_span,
-            });
-        }
-        for refs in &def.relationships.references {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::References,
-                target: RelTarget::from_extracted(&refs.extracted),
-                span: refs.span(),
-            });
-        }
+        // Extract relationships from specializations
+        let relationships: Vec<NormalizedRelationship> = def
+            .specializations()
+            .filter_map(|spec| {
+                let rel_kind = match spec.kind() {
+                    Some(SpecializationKind::Specializes) => NormalizedRelKind::Specializes,
+                    Some(SpecializationKind::Subsets) => NormalizedRelKind::Subsets,
+                    Some(SpecializationKind::Redefines) => NormalizedRelKind::Redefines,
+                    Some(SpecializationKind::References) => NormalizedRelKind::References,
+                    Some(SpecializationKind::Conjugates) => NormalizedRelKind::Specializes,
+                    Some(SpecializationKind::FeatureChain) => NormalizedRelKind::Specializes,
+                    None => return None,
+                };
+                let target = spec.target()?.to_string();
+                Some(NormalizedRelationship {
+                    kind: rel_kind,
+                    target: RelTarget::Simple(target),
+                    range: Some(spec.syntax().text_range()),
+                })
+            })
+            .collect();
 
-        // Convert body members to normalized elements
-        let mut children = Vec::new();
-        let mut doc = None;
-
-        for member in &def.body {
-            match member {
-                DefinitionMember::Usage(usage) => {
-                    children.push(NormalizedElement::Usage(NormalizedUsage::from_sysml(usage)));
-                }
-                DefinitionMember::Import(import) => {
-                    children.push(NormalizedElement::Import(NormalizedImport::from_sysml(
-                        import,
-                    )));
-                }
-                DefinitionMember::Comment(comment) => {
-                    // Check for doc comment
-                    let content = comment.content.trim();
-                    if content.starts_with("doc") {
-                        if let Some(start) = content.find("/*") {
-                            if let Some(end) = content.rfind("*/") {
-                                doc = Some(&content[start + 2..end]);
-                            }
-                        }
-                    }
-                    children.push(NormalizedElement::Comment(NormalizedComment::from_sysml(
-                        comment,
-                    )));
-                }
-            }
-        }
+        // Extract children from body
+        let children: Vec<NormalizedElement> = def
+            .body()
+            .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+            .unwrap_or_default();
 
         Self {
-            name: def.name.as_deref(),
-            short_name: def.short_name.as_deref(),
+            name: def.name().and_then(|n| n.text()),
+            short_name: def.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
             kind,
-            span: def.span,
-            short_name_span: def.short_name_span,
-            doc,
-            relationships,
-            children,
-        }
-    }
-
-    fn from_kerml(classifier: &'a crate::syntax::kerml::ast::types::Classifier) -> Self {
-        use crate::syntax::kerml::ast::enums::ClassifierKind;
-        use crate::syntax::kerml::ast::enums::ClassifierMember;
-
-        let kind = match classifier.kind {
-            ClassifierKind::DataType => NormalizedDefKind::DataType,
-            ClassifierKind::Class => NormalizedDefKind::Class,
-            ClassifierKind::Structure => NormalizedDefKind::Structure,
-            ClassifierKind::Behavior => NormalizedDefKind::Behavior,
-            ClassifierKind::Function => NormalizedDefKind::Function,
-            ClassifierKind::Association => NormalizedDefKind::Association,
-            ClassifierKind::AssociationStructure => NormalizedDefKind::Association,
-            ClassifierKind::Metaclass => NormalizedDefKind::Metaclass,
-            ClassifierKind::Interaction => NormalizedDefKind::Interaction,
-            // Type and Classifier are treated as Class (closest equivalent)
-            ClassifierKind::Type | ClassifierKind::Classifier => NormalizedDefKind::Class,
-        };
-
-        // Extract relationships from body
-        let mut relationships = Vec::new();
-        let mut children = Vec::new();
-
-        for member in &classifier.body {
-            match member {
-                ClassifierMember::Specialization(spec) => {
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Specializes,
-                        target: RelTarget::Simple(&spec.general),
-                        span: spec.span,
-                    });
-                }
-                ClassifierMember::Feature(feature) => {
-                    children.push(NormalizedElement::Usage(NormalizedUsage::from_kerml(
-                        feature,
-                    )));
-                }
-                ClassifierMember::Import(import) => {
-                    children.push(NormalizedElement::Import(NormalizedImport::from_kerml(
-                        import,
-                    )));
-                }
-                ClassifierMember::Comment(_) => {} // Skip comments for now
-            }
-        }
-
-        Self {
-            name: classifier.name.as_deref(),
-            short_name: None, // KerML classifiers don't have short names in AST yet
-            kind,
-            span: classifier.span,
-            short_name_span: None, // KerML classifiers don't have short names
-            doc: None,
+            range: Some(def.syntax().text_range()),
+            name_range: def.name().map(|n| n.syntax().text_range()),
+            short_name_range: def
+                .name()
+                .and_then(|n| n.short_name())
+                .map(|sn| sn.syntax().text_range()),
+            doc: None, // TODO: Extract doc comments
             relationships,
             children,
         }
     }
 }
 
-impl<'a> NormalizedUsage<'a> {
-    fn from_sysml(usage: &'a crate::syntax::sysml::ast::types::Usage) -> Self {
-        use crate::syntax::sysml::ast::enums::UsageKind;
-        use crate::syntax::sysml::ast::enums::UsageMember;
+impl NormalizedUsage {
+    fn from_rowan(usage: &RowanUsage) -> Self {
+        // Determine usage kind based on context (usage doesn't have explicit kind in rowan yet)
+        // Default to Part for now - the actual kind comes from the keyword tokens
+        let kind = NormalizedUsageKind::Part;
 
-        let kind = match usage.kind {
-            UsageKind::Part => NormalizedUsageKind::Part,
-            UsageKind::Item => NormalizedUsageKind::Item,
-            UsageKind::Action
-            | UsageKind::PerformAction
-            | UsageKind::SendAction
-            | UsageKind::AcceptAction => NormalizedUsageKind::Action,
-            UsageKind::Port => NormalizedUsageKind::Port,
-            UsageKind::Attribute => NormalizedUsageKind::Attribute,
-            UsageKind::Connection => NormalizedUsageKind::Connection,
-            UsageKind::Interface => NormalizedUsageKind::Interface,
-            UsageKind::Allocation => NormalizedUsageKind::Allocation,
-            UsageKind::Requirement | UsageKind::SatisfyRequirement => {
-                NormalizedUsageKind::Requirement
-            }
-            UsageKind::Constraint => NormalizedUsageKind::Constraint,
-            UsageKind::State { is_parallel: _ }
-            | UsageKind::ExhibitState { is_parallel: _ }
-            | UsageKind::Transition => NormalizedUsageKind::State,
-            UsageKind::Calculation => NormalizedUsageKind::Calculation,
-            UsageKind::Reference => NormalizedUsageKind::Reference,
-            UsageKind::Occurrence
-            | UsageKind::Individual
-            | UsageKind::Snapshot
-            | UsageKind::Timeslice => NormalizedUsageKind::Occurrence,
-            UsageKind::Flow | UsageKind::Message => NormalizedUsageKind::Flow,
-            _ => NormalizedUsageKind::Other,
-        };
+        // Extract typing as a relationship
+        let mut relationships: Vec<NormalizedRelationship> = Vec::new();
 
-        // Extract relationships
-        let mut relationships = Vec::new();
-        for spec in &usage.relationships.specializes {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Specializes,
-                target: RelTarget::from_extracted(&spec.extracted),
-                span: spec.span(),
-            });
-        }
-        for redef in &usage.relationships.redefines {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Redefines,
-                target: RelTarget::from_extracted(&redef.extracted),
-                span: redef.span(),
-            });
-        }
-        for subset in &usage.relationships.subsets {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Subsets,
-                target: RelTarget::from_extracted(&subset.extracted),
-                span: subset.span(),
-            });
-        }
-        if let Some(ref typed) = usage.relationships.typed_by {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::TypedBy,
-                target: RelTarget::Simple(Box::leak(typed.clone().into_boxed_str())),
-                span: usage.relationships.typed_by_span,
-            });
-        }
-        for refs in &usage.relationships.references {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::References,
-                target: RelTarget::from_extracted(&refs.extracted),
-                span: refs.span(),
-            });
-        }
-        // Domain-specific relationships
-        for perf in &usage.relationships.performs {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Performs,
-                target: RelTarget::from_extracted(&perf.extracted),
-                span: perf.span(),
-            });
-        }
-        for sat in &usage.relationships.satisfies {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Satisfies,
-                target: RelTarget::from_extracted(&sat.extracted),
-                span: sat.span(),
-            });
-        }
-        for exh in &usage.relationships.exhibits {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Exhibits,
-                target: RelTarget::from_extracted(&exh.extracted),
-                span: exh.span(),
-            });
-        }
-        for inc in &usage.relationships.includes {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Includes,
-                target: RelTarget::from_extracted(&inc.extracted),
-                span: inc.span(),
-            });
-        }
-        for cross in &usage.relationships.crosses {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Crosses,
-                target: RelTarget::from_extracted(&cross.extracted),
-                span: cross.span(),
-            });
-        }
-
-        // Meta type references (e.g., from "new Type()" instantiation expressions)
-        for meta_ref in &usage.relationships.meta {
-            relationships.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Meta,
-                target: RelTarget::from_extracted(&meta_ref.extracted),
-                span: meta_ref.span(),
-            });
-        }
-
-        // Expression references - now we can handle chains properly!
-        for expr_ref in &usage.expression_refs {
-            if expr_ref.is_chain() {
-                if let ExtractedRef::Chain(chain) = expr_ref {
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Chain(chain.clone()),
-                        span: chain.span,
-                    });
-                }
-            } else {
-                // For simple refs, we need to handle the owned string
-                // by storing it in the Chain variant with a single part
-                let chain = FeatureChain {
-                    parts: vec![super::sysml::ast::types::FeatureChainPart {
-                        name: expr_ref.name(),
-                        span: expr_ref.span(),
-                    }],
-                    span: expr_ref.span(),
-                };
+        if let Some(typing) = usage.typing() {
+            if let Some(target) = typing.target() {
                 relationships.push(NormalizedRelationship {
-                    kind: NormalizedRelKind::Expression,
-                    target: RelTarget::Chain(chain),
-                    span: expr_ref.span(),
+                    kind: NormalizedRelKind::TypedBy,
+                    target: RelTarget::Simple(target.to_string()),
+                    range: Some(typing.syntax().text_range()),
                 });
             }
         }
 
-        // Convert body to children
-        let mut children = Vec::new();
-        let mut doc = None;
-
-        for member in &usage.body {
-            match member {
-                UsageMember::Usage(nested) => {
-                    children.push(NormalizedElement::Usage(NormalizedUsage::from_sysml(
-                        nested,
-                    )));
-                }
-                UsageMember::Comment(comment) => {
-                    // Check for doc comment
-                    let content = comment.content.trim();
-                    if content.starts_with("doc") {
-                        if let Some(start) = content.find("/*") {
-                            if let Some(end) = content.rfind("*/") {
-                                doc = Some(&content[start + 2..end]);
-                            }
-                        }
-                    }
-                    children.push(NormalizedElement::Comment(
-                        NormalizedComment::from_sysml_comment(comment),
-                    ));
-                }
+        // Extract specializations
+        for spec in usage.specializations() {
+            let rel_kind = match spec.kind() {
+                Some(SpecializationKind::Specializes) => NormalizedRelKind::Specializes,
+                Some(SpecializationKind::Subsets) => NormalizedRelKind::Subsets,
+                Some(SpecializationKind::Redefines) => NormalizedRelKind::Redefines,
+                Some(SpecializationKind::References) => NormalizedRelKind::References,
+                Some(SpecializationKind::Conjugates) => NormalizedRelKind::Specializes,
+                Some(SpecializationKind::FeatureChain) => NormalizedRelKind::FeatureChain,
+                None => continue,
+            };
+            if let Some(target) = spec.target() {
+                let target_str = target.to_string();
+                // Check if this is a feature chain (contains .)
+                let rel_target = if target_str.contains('.') {
+                    // Parse as chain
+                    let parts: Vec<FeatureChainPart> = target_str
+                        .split('.')
+                        .map(|s| FeatureChainPart {
+                            name: s.to_string(),
+                            range: None, // TODO: compute individual ranges
+                        })
+                        .collect();
+                    RelTarget::Chain(FeatureChain {
+                        parts,
+                        range: Some(target.syntax().text_range()),
+                    })
+                } else {
+                    RelTarget::Simple(target_str)
+                };
+                relationships.push(NormalizedRelationship {
+                    kind: rel_kind,
+                    target: rel_target,
+                    range: Some(spec.syntax().text_range()),
+                });
             }
         }
 
+        // Extract children from body
+        let children: Vec<NormalizedElement> = usage
+            .body()
+            .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+            .unwrap_or_default();
+
         Self {
-            name: usage.name.as_deref(),
-            short_name: usage.short_name.as_deref(),
+            name: usage.name().and_then(|n| n.text()),
+            short_name: usage.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
             kind,
-            span: usage.span,
-            short_name_span: usage.short_name_span,
-            doc,
+            range: Some(usage.syntax().text_range()),
+            name_range: usage.name().map(|n| n.syntax().text_range()),
+            short_name_range: usage
+                .name()
+                .and_then(|n| n.short_name())
+                .map(|sn| sn.syntax().text_range()),
+            doc: None, // TODO: Extract doc comments
             relationships,
             children,
         }
     }
-
-    fn from_kerml(feature: &'a crate::syntax::kerml::ast::types::Feature) -> Self {
-        use crate::syntax::kerml::ast::enums::FeatureMember;
-
-        // Extract relationships from body
-        let mut relationships = Vec::new();
-        for member in &feature.body {
-            match member {
-                FeatureMember::Typing(typing) => {
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::TypedBy,
-                        target: RelTarget::Simple(&typing.typed),
-                        span: typing.span,
-                    });
-                }
-                FeatureMember::Subsetting(subset) => {
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Subsets,
-                        target: RelTarget::Simple(&subset.subset),
-                        span: subset.span,
-                    });
-                }
-                FeatureMember::Redefinition(redef) => {
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Redefines,
-                        target: RelTarget::Simple(&redef.redefined),
-                        span: redef.span,
-                    });
-                }
-                FeatureMember::Comment(_) => {}
-            }
-        }
-
-        Self {
-            name: feature.name.as_deref(),
-            short_name: None, // KerML features don't have short names in AST yet
-            kind: NormalizedUsageKind::Feature,
-            span: feature.span,
-            short_name_span: None, // KerML features don't have short names
-            doc: None,
-            relationships,
-            children: Vec::new(),
-        }
-    }
 }
 
-impl<'a> NormalizedImport<'a> {
-    fn from_sysml(import: &'a crate::syntax::sysml::ast::types::Import) -> Self {
-        Self {
-            path: &import.path,
-            span: import.span,
-            is_public: import.is_public,
-            filters: import.filters.clone(),
-        }
-    }
-
-    fn from_kerml(import: &'a crate::syntax::kerml::ast::types::Import) -> Self {
-        Self {
-            path: &import.path,
-            span: import.span,
-            is_public: import.is_public,
-            filters: Vec::new(), // KerML imports don't have filter syntax
-        }
-    }
-}
-
-impl<'a> NormalizedAlias<'a> {
-    fn from_sysml(alias: &'a crate::syntax::sysml::ast::types::Alias) -> Self {
-        Self {
-            name: alias.name.as_deref(),
-            short_name: None, // TODO: Add short_name to Alias AST type
-            target: &alias.target,
-            target_span: alias.target_span,
-            span: alias.span,
-        }
-    }
-}
-
-impl NormalizedFilter {
-    fn from_sysml(filter: &crate::syntax::sysml::ast::types::Filter) -> Self {
-        // Extract simple metadata type names from meta_refs
-        // e.g., @Safety -> "Safety", @Pkg::Safety -> "Safety"
-        let metadata_refs = filter
-            .meta_refs
-            .iter()
-            .map(|meta_rel| {
-                let target = meta_rel.target();
-                // Get simple name (last part after ::)
-                target.rsplit("::").next().unwrap_or(&target).to_string()
+impl NormalizedImport {
+    fn from_rowan(import: &RowanImport) -> Self {
+        let path = import
+            .target()
+            .map(|t| {
+                let mut path = t.to_string();
+                if import.is_wildcard() {
+                    path.push_str("::*");
+                }
+                if import.is_recursive() {
+                    // Change ::* to ::** if recursive
+                    if path.ends_with("::*") {
+                        path.push('*');
+                    } else {
+                        path.push_str("::**");
+                    }
+                }
+                path
             })
-            .collect();
+            .unwrap_or_default();
 
         Self {
-            metadata_refs,
-            span: filter.span,
+            path,
+            range: Some(import.syntax().text_range()),
+            is_public: false, // TODO: Detect public imports
+            filters: Vec::new(), // TODO: Extract filter metadata
         }
     }
 }
 
-impl<'a> NormalizedComment<'a> {
-    fn from_sysml(comment: &'a crate::syntax::sysml::ast::types::Comment) -> Self {
-        let about = comment
-            .about
-            .iter()
-            .map(|a| NormalizedRelationship {
-                kind: NormalizedRelKind::About,
-                target: RelTarget::Simple(&a.name),
-                span: a.span,
-            })
-            .collect();
-
+impl NormalizedAlias {
+    fn from_rowan(alias: &parser::Alias) -> Self {
         Self {
-            name: comment.name.as_deref(),
-            short_name: None, // TODO: Add short_name to Comment AST type
-            content: &comment.content,
-            about,
-            span: comment.span,
-        }
-    }
-
-    fn from_sysml_comment(comment: &'a crate::syntax::sysml::ast::types::Comment) -> Self {
-        Self::from_sysml(comment)
-    }
-}
-
-impl<'a> NormalizedDependency<'a> {
-    fn from_sysml(dep: &'a crate::syntax::sysml::ast::types::Dependency) -> Self {
-        let mut sources = Vec::new();
-        let mut targets = Vec::new();
-
-        // Convert source refs to relationships
-        for src in &dep.sources {
-            sources.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Expression,
-                target: RelTarget::Simple(&src.path),
-                span: src.span,
-            });
-        }
-
-        // Convert target refs to relationships
-        for tgt in &dep.targets {
-            targets.push(NormalizedRelationship {
-                kind: NormalizedRelKind::Expression,
-                target: RelTarget::Simple(&tgt.path),
-                span: tgt.span,
-            });
-        }
-
-        Self {
-            name: dep.name.as_deref(),
-            short_name: None, // TODO: Add short_name to Dependency AST type
-            sources,
-            targets,
-            span: dep.span,
+            name: alias.name().and_then(|n| n.text()),
+            short_name: alias.name().and_then(|n| n.short_name()).and_then(|sn| sn.text()),
+            target: alias.target().map(|t| t.to_string()).unwrap_or_default(),
+            target_range: alias.target().map(|t| t.syntax().text_range()),
+            range: Some(alias.syntax().text_range()),
         }
     }
 }
@@ -856,44 +581,35 @@ impl<'a> NormalizedDependency<'a> {
 // Iteration helpers for normalized files
 // ============================================================================
 
-/// An iterator over normalized elements from a SysML file.
-pub struct SysMLNormalizedIter<'a> {
-    elements: std::slice::Iter<'a, crate::syntax::sysml::ast::enums::Element>,
+/// An iterator over normalized elements from a rowan SourceFile.
+pub struct RowanNormalizedIter {
+    members: Vec<NamespaceMember>,
+    index: usize,
 }
 
-impl<'a> SysMLNormalizedIter<'a> {
-    pub fn new(file: &'a crate::syntax::sysml::ast::types::SysMLFile) -> Self {
+impl RowanNormalizedIter {
+    pub fn new(file: &SourceFile) -> Self {
         Self {
-            elements: file.elements.iter(),
+            members: file.members().collect(),
+            index: 0,
         }
     }
 }
 
-impl<'a> Iterator for SysMLNormalizedIter<'a> {
-    type Item = NormalizedElement<'a>;
+impl Iterator for RowanNormalizedIter {
+    type Item = NormalizedElement;
 
     fn next(&mut self) -> Option<Self::Item> {
-        self.elements.next().map(NormalizedElement::from_sysml)
-    }
-}
-
-/// An iterator over normalized elements from a KerML file.
-pub struct KerMLNormalizedIter<'a> {
-    elements: std::slice::Iter<'a, crate::syntax::kerml::ast::enums::Element>,
-}
-
-impl<'a> KerMLNormalizedIter<'a> {
-    pub fn new(file: &'a crate::syntax::kerml::ast::types::KerMLFile) -> Self {
-        Self {
-            elements: file.elements.iter(),
+        if self.index < self.members.len() {
+            let member = &self.members[self.index];
+            self.index += 1;
+            Some(NormalizedElement::from_rowan(member))
+        } else {
+            None
         }
     }
 }
 
-impl<'a> Iterator for KerMLNormalizedIter<'a> {
-    type Item = NormalizedElement<'a>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.elements.next().map(NormalizedElement::from_kerml)
-    }
-}
+// Legacy type aliases for backwards compatibility during migration
+pub type SysMLNormalizedIter = RowanNormalizedIter;
+pub type KerMLNormalizedIter = RowanNormalizedIter;

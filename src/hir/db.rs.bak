@@ -1,0 +1,341 @@
+//! Salsa database definition and queries.
+
+use std::path::Path;
+use std::sync::Arc;
+
+use crate::base::FileId;
+use crate::syntax::SyntaxFile;
+
+use super::input::SourceRoot;
+use super::symbols::{HirSymbol, extract_symbols_unified};
+
+// ============================================================================
+// INPUTS
+// ============================================================================
+
+/// Input: The raw text content of a file.
+///
+/// Set this explicitly when a file is opened or changed.
+#[salsa::input]
+pub struct FileText {
+    pub file: FileId,
+    #[return_ref]
+    pub text: String,
+}
+
+/// Input: Configuration for the source root.
+#[salsa::input]
+pub struct SourceRootInput {
+    #[return_ref]
+    pub root: SourceRoot,
+}
+
+// ============================================================================
+// DATABASE IMPLEMENTATION
+// ============================================================================
+
+/// The concrete Salsa database implementation.
+///
+/// This is the "root" database that holds all query storage.
+#[salsa::db]
+#[derive(Default, Clone)]
+pub struct RootDatabase {
+    storage: salsa::Storage<Self>,
+}
+
+#[salsa::db]
+impl salsa::Database for RootDatabase {
+    fn salsa_event(&self, _event: &dyn Fn() -> salsa::Event) {
+        // Can log events here for debugging
+    }
+}
+
+impl RootDatabase {
+    /// Create a new empty database.
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+// ============================================================================
+// DERIVED QUERIES
+// ============================================================================
+
+/// Result of parsing a file.
+///
+/// Note: Eq is implemented manually because SysMLFile only derives PartialEq.
+/// For Salsa tracking, we treat ParseResults as equal if they have the same
+/// success status, errors, and AST presence (AST content equality via PartialEq).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ParseResult {
+    /// The parse was successful (no fatal errors).
+    pub success: bool,
+    /// Parse errors (may be present even with partial success).
+    pub errors: Vec<String>,
+    /// The parsed AST (if successful).
+    pub ast: Option<Arc<SysMLFile>>,
+}
+
+// Manual Eq impl - safe because SysMLFile's PartialEq is reflexive
+impl Eq for ParseResult {}
+
+impl ParseResult {
+    /// Create a successful parse result.
+    pub fn ok(ast: SysMLFile) -> Self {
+        Self {
+            success: true,
+            errors: Vec::new(),
+            ast: Some(Arc::new(ast)),
+        }
+    }
+
+    /// Create a successful parse result with errors (warnings).
+    pub fn ok_with_errors(ast: SysMLFile, errors: Vec<String>) -> Self {
+        Self {
+            success: true,
+            errors,
+            ast: Some(Arc::new(ast)),
+        }
+    }
+
+    /// Create a failed parse result with errors.
+    pub fn err(errors: Vec<String>) -> Self {
+        Self {
+            success: false,
+            errors,
+            ast: None,
+        }
+    }
+
+    /// Check if parsing succeeded.
+    pub fn is_ok(&self) -> bool {
+        self.success
+    }
+
+    /// Check if there are any errors.
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Get the AST if parsing succeeded.
+    pub fn get_ast(&self) -> Option<&SysMLFile> {
+        self.ast.as_deref()
+    }
+}
+
+/// Parse a file and return whether it succeeded.
+///
+/// This is a tracked Salsa query - results are memoized and automatically
+/// invalidated when the input `FileText` changes.
+#[salsa::tracked]
+pub fn parse_file(db: &dyn salsa::Database, file_text: FileText) -> ParseResult {
+    let text = file_text.text(db);
+
+    // Use the existing parser (with .sysml extension to satisfy parser requirements)
+    let result = crate::syntax::sysml::parser::parse_with_result(text, Path::new("file.sysml"));
+
+    if let Some(ast) = result.content {
+        let errors: Vec<String> = result.errors.iter().map(|e| format!("{:?}", e)).collect();
+        if errors.is_empty() {
+            ParseResult::ok(ast)
+        } else {
+            ParseResult::ok_with_errors(ast, errors)
+        }
+    } else {
+        ParseResult::err(result.errors.iter().map(|e| format!("{:?}", e)).collect())
+    }
+}
+
+/// Extract symbols from a parsed file.
+///
+/// This is a pure function that takes a FileId and AST, then returns symbols.
+/// It's designed to be composable with other queries.
+pub fn file_symbols(file: FileId, ast: &SysMLFile) -> Vec<HirSymbol> {
+    extract_symbols_unified(file, &SyntaxFile::SysML(ast.clone()))
+}
+
+/// Extract symbols from a file given its text.
+///
+/// This is a tracked Salsa query that combines parsing + symbol extraction.
+/// Results are memoized per-file.
+#[salsa::tracked]
+pub fn file_symbols_from_text(db: &dyn salsa::Database, file_text: FileText) -> Vec<HirSymbol> {
+    let file = file_text.file(db);
+    let result = parse_file(db, file_text);
+    match result.ast {
+        Some(ast) => extract_symbols_unified(file, &SyntaxFile::SysML((*ast).clone())),
+        None => Vec::new(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::hir::symbols::SymbolKind;
+
+    #[test]
+    fn test_database_creation() {
+        let _db = RootDatabase::new();
+    }
+
+    #[test]
+    fn test_parse_result() {
+        let ast = SysMLFile {
+            namespace: None,
+            namespaces: Vec::new(),
+            elements: Vec::new(),
+        };
+
+        let ok = ParseResult::ok(ast.clone());
+        assert!(ok.is_ok());
+        assert!(!ok.has_errors());
+        assert!(ok.get_ast().is_some());
+
+        let err = ParseResult::err(vec!["error".to_string()]);
+        assert!(!err.is_ok());
+        assert!(err.has_errors());
+        assert!(err.get_ast().is_none());
+    }
+
+    #[test]
+    fn test_file_symbols_empty() {
+        let ast = SysMLFile {
+            namespace: None,
+            namespaces: Vec::new(),
+            elements: Vec::new(),
+        };
+
+        let file = FileId::new(0);
+        let symbols = file_symbols(file, &ast);
+        assert!(symbols.is_empty());
+    }
+
+    #[test]
+    fn test_file_symbols_from_real_sysml() {
+        let sysml = r#"
+            package Vehicle {
+                part def Car {
+                    attribute mass : Real;
+                    part engine : Engine;
+                }
+                
+                part def Engine {
+                    attribute power : Real;
+                }
+            }
+        "#;
+
+        let result = crate::syntax::sysml::parser::parse_with_result(
+            sysml,
+            std::path::Path::new("test.sysml"),
+        );
+        assert!(result.content.is_some(), "Parse failed");
+
+        let ast = result.content.unwrap();
+        let file = FileId::new(1);
+        let symbols = file_symbols(file, &ast);
+
+        // Should have: Vehicle (package), Car (part def), Engine (part def),
+        // mass (attribute), engine (part), power (attribute)
+        assert!(
+            symbols.len() >= 4,
+            "Expected at least 4 symbols, got {}",
+            symbols.len()
+        );
+
+        // Find the Vehicle package
+        let vehicle = symbols.iter().find(|s| s.name.as_ref() == "Vehicle");
+        assert!(vehicle.is_some(), "Vehicle package not found");
+        assert_eq!(vehicle.unwrap().kind, SymbolKind::Package);
+
+        // Find the Car definition
+        let car = symbols.iter().find(|s| s.name.as_ref() == "Car");
+        assert!(car.is_some(), "Car part def not found");
+        assert_eq!(car.unwrap().kind, SymbolKind::PartDef);
+        assert_eq!(car.unwrap().qualified_name.as_ref(), "Vehicle::Car");
+
+        // Find the Engine definition
+        let engine_def = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "Engine" && s.kind == SymbolKind::PartDef);
+        assert!(engine_def.is_some(), "Engine part def not found");
+    }
+
+    #[test]
+    fn test_file_symbols_nested_usages() {
+        let sysml = r#"
+            part def Outer {
+                part inner : Inner;
+            }
+            part def Inner;
+        "#;
+
+        let result = crate::syntax::sysml::parser::parse_with_result(
+            sysml,
+            std::path::Path::new("test.sysml"),
+        );
+        let ast = result.content.unwrap();
+        let symbols = file_symbols(FileId::new(0), &ast);
+
+        // Find 'inner' usage
+        let inner_usage = symbols.iter().find(|s| s.name.as_ref() == "inner");
+        assert!(inner_usage.is_some(), "inner usage not found");
+        assert_eq!(inner_usage.unwrap().kind, SymbolKind::PartUsage);
+        assert_eq!(inner_usage.unwrap().qualified_name.as_ref(), "Outer::inner");
+    }
+
+    #[test]
+    fn test_salsa_tracked_parse_query() {
+        // Test that the tracked parse_file query works through the database
+        let db = RootDatabase::new();
+
+        let sysml = "part def Car;";
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        // Call the tracked query
+        let result = parse_file(&db, file_text);
+        assert!(
+            result.is_ok(),
+            "Parse failed with errors: {:?}",
+            result.errors
+        );
+        assert!(result.get_ast().is_some());
+    }
+
+    #[test]
+    fn test_salsa_tracked_symbols_query() {
+        // Test that the tracked file_symbols_from_text query works
+        let db = RootDatabase::new();
+
+        let sysml = r#"
+            package Test {
+                part def Widget;
+            }
+        "#;
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        // Call the tracked query
+        let symbols = file_symbols_from_text(&db, file_text);
+
+        assert!(!symbols.is_empty());
+        let widget = symbols.iter().find(|s| s.name.as_ref() == "Widget");
+        assert!(widget.is_some(), "Widget not found in symbols");
+        assert_eq!(widget.unwrap().kind, SymbolKind::PartDef);
+    }
+
+    #[test]
+    fn test_salsa_memoization() {
+        // Test that queries are memoized (same input returns same result)
+        let db = RootDatabase::new();
+
+        let sysml = "part def MemoTest;";
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        // Call twice - should be memoized
+        let symbols1 = file_symbols_from_text(&db, file_text);
+        let symbols2 = file_symbols_from_text(&db, file_text);
+
+        // Results should be equal (memoized)
+        assert_eq!(symbols1, symbols2);
+    }
+}

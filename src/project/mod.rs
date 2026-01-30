@@ -5,9 +5,9 @@ pub mod workspace_loader;
 pub use stdlib_loader::StdLibLoader;
 pub use workspace_loader::WorkspaceLoader;
 
-// Re-export parse types for backwards compatibility
-pub use crate::parser::{ParseError, ParseErrorKind, ParseResult};
-pub use crate::parser::{get_extension, load_file, validate_extension};
+// Re-export parse types from syntax layer
+pub use crate::syntax::parser::{ParseError, ParseResult};
+pub use crate::syntax::parser::{get_extension, load_file, validate_extension};
 
 // Re-export language parsing convenience function
 pub use crate::syntax::parser::parse_with_result;

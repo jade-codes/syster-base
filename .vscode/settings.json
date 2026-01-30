@@ -1,0 +1,11 @@
+{
+    "rust-analyzer.checkOnSave.command": "check",
+    "rust-analyzer.cargo.buildScripts.enable": false,
+    "rust-analyzer.procMacro.enable": false,
+    "rust-analyzer.diagnostics.disabled": ["unresolved-proc-macro"],
+    "rust-analyzer.cargo.sysroot": "/usr",
+    "files.watcherExclude": {
+        "**/target/**": true,
+        "**/sysml.library/**": true
+    }
+}
