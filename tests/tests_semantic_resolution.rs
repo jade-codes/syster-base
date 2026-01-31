@@ -282,6 +282,84 @@ package Root {
     }
 }
 
+/// Debug test to understand nested allocate statements
+#[test]
+fn test_nested_allocate_layers() {
+    let content = r#"
+package Test {
+    // Define the types we're allocating between
+    allocation def LogicalToPhysical;
+    
+    part def Logical {
+        part torqueGenerator {
+            action generateTorque;
+        }
+    }
+    
+    part def Physical {
+        part engine {
+            action generateTorque;
+        }
+    }
+    
+    // Instances  
+    part vehicleLogical : Logical;
+    part vehicle_b : Physical;
+    
+    // The allocation with nested allocates
+    allocation vehicleLogicalToPhysicalAllocation : LogicalToPhysical
+        allocate vehicleLogical to vehicle_b {
+            allocate vehicleLogical.torqueGenerator to vehicle_b.engine {
+                allocate vehicleLogical.torqueGenerator.generateTorque to vehicle_b.engine.generateTorque;
+            }
+        }
+}
+"#;
+
+    let mut host = AnalysisHost::new();
+    let parse_errors = host.set_file_content("test.sysml", content);
+    eprintln!("Parse errors: {:?}", parse_errors);
+
+    let analysis = host.analysis();
+    let file_id = analysis
+        .get_file_id("test.sysml")
+        .expect("File not in index");
+    let index = analysis.symbol_index();
+
+    // Look at what symbols we got 
+    eprintln!("\n=== Symbols in file ===");
+    for sym in index.symbols_in_file(file_id) {
+        eprintln!("Symbol: {} (kind={:?})", sym.qualified_name, sym.kind);
+        if !sym.type_refs.is_empty() {
+            eprintln!("  type_refs:");
+            for tr in &sym.type_refs {
+                match tr {
+                    syster::hir::TypeRefKind::Simple(r) => {
+                        eprintln!("    {} -> {:?}", r.target, r.resolved_target);
+                    }
+                    syster::hir::TypeRefKind::Chain(c) => {
+                        let parts: Vec<_> = c.parts.iter().map(|p| format!("{} -> {:?}", p.target, p.resolved_target)).collect();
+                        eprintln!("    Chain: {:?}", parts);
+                    }
+                }
+            }
+        }
+    }
+
+    // Run semantic checks  
+    let diagnostics = syster::hir::check_file(index, file_id);
+
+    eprintln!("\n=== Diagnostics ===");
+    for diag in &diagnostics {
+        eprintln!(
+            "  [{:?}] Line {}: {}",
+            diag.severity,
+            diag.start_line + 1,
+            diag.message
+        );
+    }
+}
+
 /// Minimal test case for sibling package import resolution
 #[test]
 fn test_sibling_package_import_resolution() {

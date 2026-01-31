@@ -667,7 +667,15 @@ impl SymbolIndex {
         cache: &mut ResolutionCache,
     ) -> Option<Arc<str>> {
         // Get the scope for resolution
-        let scope = containing_symbol;
+        // For import symbols (e.g., "Pkg::import:Target" or "import:Target"), use the parent scope
+        let scope = if let Some(import_pos) = containing_symbol.find("::import:") {
+            &containing_symbol[..import_pos]
+        } else if containing_symbol.starts_with("import:") {
+            // Root-level import - use empty scope
+            ""
+        } else {
+            containing_symbol
+        };
 
         // Check if this is a feature chain member (index > 0)
         // Chain members can't be cached the same way (they depend on the full chain)
@@ -1790,13 +1798,15 @@ impl<'a> Resolver<'a> {
                 eprintln!("[TRACE Resolver::resolve]   No visibility map for scope");
             }
 
-            // For usages in scope, check inherited members from their type
+            // For usages AND definitions in scope, check inherited members from supertypes
             // E.g., missionContext: MissionContext has spatialCF via inheritance from Context
+            // E.g., use case def MyUseCase has start/done via inheritance from Actions::Action
             if !current.is_empty() {
                 if let Some(scope_sym) = self.index.lookup_qualified(&current) {
-                    if scope_sym.kind.is_usage() {
-                        eprintln!("[TRACE Resolver::resolve]   Scope is usage, checking inherited members");
-                        // This scope is a usage - check its type's members
+                    // Check inherited members for both usages and definitions
+                    // (both can have supertypes that define members like start/done)
+                    if !scope_sym.supertypes.is_empty() {
+                        eprintln!("[TRACE Resolver::resolve]   Scope has supertypes, checking inherited members");
                         if let Some(result) = self.resolve_inherited_member(scope_sym, name) {
                             eprintln!("[TRACE Resolver::resolve]   Found inherited member");
                             return result;

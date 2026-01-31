@@ -579,6 +579,24 @@ impl ElementFilter {
         }
         refs
     }
+    
+    /// Extract ALL qualified name references from the filter expression with their ranges.
+    /// This includes both @-prefixed metadata refs and feature refs like `Safety::isMandatory`.
+    /// Returns (name, range) pairs for IDE features (hover, go-to-def).
+    pub fn all_qualified_refs(&self) -> Vec<(String, rowan::TextRange)> {
+        let mut refs = Vec::new();
+        if let Some(expr) = self.expression() {
+            // Use descendants() to walk the entire tree, not just direct children
+            for node in expr.syntax().descendants() {
+                if node.kind() == SyntaxKind::QUALIFIED_NAME {
+                    if let Some(qn) = QualifiedName::cast(node.clone()) {
+                        refs.push((qn.to_string(), node.text_range()));
+                    }
+                }
+            }
+        }
+        refs
+    }
 }
 
 // ============================================================================

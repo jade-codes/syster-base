@@ -188,6 +188,9 @@ pub struct NormalizedDependency {
 pub struct NormalizedFilter {
     /// Simple metadata type names that elements must have (e.g., ["Safety", "Approved"])
     pub metadata_refs: Vec<String>,
+    /// All qualified name references in the filter expression with their ranges.
+    /// Used for IDE features (hover, go-to-def) on filter expressions.
+    pub all_refs: Vec<(String, TextRange)>,
     pub range: Option<TextRange>,
 }
 
@@ -408,6 +411,7 @@ impl NormalizedElement {
             NamespaceMember::Filter(filter) => {
                 NormalizedElement::Filter(NormalizedFilter {
                     metadata_refs: filter.metadata_refs(),
+                    all_refs: filter.all_qualified_refs(),
                     range: Some(filter.syntax().text_range()),
                 })
             }
@@ -1002,22 +1006,24 @@ impl NormalizedUsage {
         }
         
         // Extract allocate (e.g., `allocate function to component`)
-        // Allocations use qualified names directly
+        // Allocations use qualified names directly - may be feature chains like `a.b.c`
         if usage.is_allocate() {
             let qnames: Vec<_> = usage.syntax().children()
                 .filter_map(|n| crate::parser::QualifiedName::cast(n))
                 .collect();
             if qnames.len() >= 1 {
+                let source_str = qnames[0].to_string();
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::AllocateSource,
-                    target: RelTarget::Simple(qnames[0].to_string()),
+                    target: make_chain_or_simple(&source_str, &qnames[0]),
                     range: Some(qnames[0].syntax().text_range()),
                 });
             }
             if qnames.len() >= 2 {
+                let target_str = qnames[1].to_string();
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::AllocateTo,
-                    target: RelTarget::Simple(qnames[1].to_string()),
+                    target: make_chain_or_simple(&target_str, &qnames[1]),
                     range: Some(qnames[1].syntax().text_range()),
                 });
             }

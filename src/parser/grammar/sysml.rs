@@ -2697,6 +2697,7 @@ fn parse_definition<P: SysMLParser>(p: &mut P) {
     let is_analysis = p.at(SyntaxKind::ANALYSIS_KW);
     let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
+    let is_usecase = p.at(SyntaxKind::USE_KW);  // use case def
     
     
     // Definition keyword
@@ -2725,7 +2726,7 @@ fn parse_definition<P: SysMLParser>(p: &mut P) {
         parse_action_body(p);
     } else if is_state {
         parse_state_body(p);
-    } else if is_analysis || is_verification {
+    } else if is_analysis || is_verification || is_usecase {
         parse_case_body(p);
     } else if is_metadata {
         parse_metadata_body(p);
@@ -2824,6 +2825,7 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
     let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
     let is_message = p.at(SyntaxKind::MESSAGE_KW);
+    let is_usecase = p.at(SyntaxKind::USE_KW);  // use case usage
     
     
      // Usage keyword
@@ -2843,7 +2845,7 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
             parse_action_body(p);
         } else if is_state {
             parse_state_body(p);
-        } else if is_analysis || is_verification {
+        } else if is_analysis || is_verification || is_usecase {
             parse_case_body(p);
         } else if is_metadata {
             parse_metadata_body(p);
@@ -2929,7 +2931,7 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
             parse_action_body(p);
         } else if is_state {
             parse_state_body(p);
-        } else if is_analysis || is_verification {
+        } else if is_analysis || is_verification || is_usecase {
             parse_case_body(p);
         } else {
             p.parse_body();
@@ -3094,7 +3096,7 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
         parse_action_body(p);
     } else if is_state {
         parse_state_body(p);
-    } else if is_analysis || is_verification {
+    } else if is_analysis || is_verification || is_usecase {
         parse_case_body(p);
     } else if is_metadata {
         parse_metadata_body(p);

@@ -784,12 +784,55 @@ fn extract_from_normalized(
             extract_from_normalized_dependency(&mut result.symbols, ctx, dep)
         }
         NormalizedElement::Filter(filter) => {
-            // Store filter for current scope
+            // Store filter for current scope (for import filtering)
             let scope = ctx.current_scope_name();
             if !filter.metadata_refs.is_empty() {
                 result
                     .scope_filters
                     .push((Arc::from(scope.as_str()), filter.metadata_refs.clone()));
+            }
+            
+            // Create type_refs for all qualified names in the filter expression
+            // so hover/go-to-def works on filter terms like `Safety::isMandatory`
+            if !filter.all_refs.is_empty() {
+                let type_refs: Vec<TypeRefKind> = filter.all_refs.iter().map(|(name, range)| {
+                    let start = ctx.line_index.line_col(range.start());
+                    let end = ctx.line_index.line_col(range.end());
+                    TypeRefKind::Simple(TypeRef {
+                        target: Arc::from(name.as_str()),
+                        resolved_target: None,
+                        kind: RefKind::Other, // Filter refs are expression-like
+                        start_line: start.line,
+                        start_col: start.col,
+                        end_line: end.line,
+                        end_col: end.col,
+                    })
+                }).collect();
+                
+                // Create an anonymous symbol to hold the type_refs
+                let span = ctx.range_to_info(filter.range);
+                let filter_qname = ctx.qualified_name(&format!("<filter@L{}>", span.start_line));
+                result.symbols.push(HirSymbol {
+                    name: Arc::from("<filter>"),
+                    short_name: None,
+                    qualified_name: Arc::from(filter_qname.as_str()),
+                    kind: SymbolKind::Other,
+                    file: ctx.file,
+                    start_line: span.start_line,
+                    start_col: span.start_col,
+                    end_line: span.end_line,
+                    end_col: span.end_col,
+                    short_name_start_line: None,
+                    short_name_start_col: None,
+                    short_name_end_line: None,
+                    short_name_end_col: None,
+                    doc: None,
+                    supertypes: Vec::new(),
+                    relationships: Vec::new(),
+                    type_refs,
+                    is_public: false,
+                    metadata_annotations: Vec::new(),
+                });
             }
         }
     }
