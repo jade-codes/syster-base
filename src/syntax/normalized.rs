@@ -419,15 +419,32 @@ impl NormalizedElement {
                 // Convert metadata usage (@Type) to a normalized usage with TypedBy relationship
                 // This allows filter imports to match on metadata annotations
                 let type_name = meta.target().map(|t| t.to_string()).unwrap_or_default();
-                let relationships = if !type_name.is_empty() {
-                    vec![NormalizedRelationship {
+                let mut relationships = Vec::new();
+                
+                // Add TypedBy for the metadata type (e.g., Rationale, Risk)
+                if !type_name.is_empty() {
+                    relationships.push(NormalizedRelationship {
                         kind: NormalizedRelKind::TypedBy,
                         target: RelTarget::Simple(type_name),
                         range: meta.target().map(|t| t.syntax().text_range()),
-                    }]
-                } else {
-                    Vec::new()
-                };
+                    });
+                }
+                
+                // Add About relationships for each target in the about clause
+                // e.g., `@Rationale about vehicle::engine` -> About(vehicle::engine)
+                for qn in meta.about_targets() {
+                    let target_str = qn.to_string();
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::About,
+                        target: make_chain_or_simple(&target_str, &qn),
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+                
+                // Extract children from the metadata body (if any)
+                let children: Vec<NormalizedElement> = meta.body()
+                    .map(|b| b.members().map(|m| NormalizedElement::from_rowan(&m)).collect())
+                    .unwrap_or_default();
                 
                 NormalizedElement::Usage(NormalizedUsage {
                     name: None, // Metadata usages are anonymous
@@ -438,7 +455,7 @@ impl NormalizedElement {
                     name_range: None,
                     short_name_range: None,
                     doc: None,
-                    children: Vec::new(),
+                    children,
                 })
             }
             NamespaceMember::Comment(comment) => {

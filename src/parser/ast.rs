@@ -631,8 +631,29 @@ impl Comment {
 ast_node!(MetadataUsage, METADATA_USAGE);
 
 impl MetadataUsage {
+    /// Get the metadata type target (e.g., `Rationale` in `@Rationale about ...`)
     pub fn target(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
+    }
+    
+    /// Get the about target(s) - references after the 'about' keyword
+    /// e.g., `@Rationale about vehicle::engine` returns [vehicle::engine]
+    pub fn about_targets(&self) -> impl Iterator<Item = QualifiedName> + '_ {
+        // Skip the first QualifiedName (which is the metadata type)
+        // All subsequent QualifiedNames are about targets
+        self.0.children().filter_map(QualifiedName::cast).skip(1)
+    }
+    
+    /// Check if this metadata has an about clause
+    pub fn has_about(&self) -> bool {
+        self.0.children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::ABOUT_KW)
+    }
+    
+    /// Get the body of the metadata (for nested metadata definitions)
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
     }
 }
 

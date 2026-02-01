@@ -1162,13 +1162,32 @@ impl SymbolIndex {
             let vis = self
                 .visibility_map
                 .entry(parent_scope.clone())
-                .or_insert_with(|| ScopeVisibility::new(parent_scope));
+                .or_insert_with(|| ScopeVisibility::new(parent_scope.clone()));
 
             vis.add_direct(symbol.name.clone(), symbol.qualified_name.clone());
 
             // Also register by short_name if available
             if let Some(ref short_name) = symbol.short_name {
                 vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
+            }
+            
+            // If the parent scope is anonymous (contains `<` which indicates generated names),
+            // also add this symbol to the grandparent scope so it's accessible from siblings.
+            // This handles cases like `then action foo { ... }` where `foo` needs to be visible
+            // from the enclosing scope, not just from the anonymous succession scope.
+            if parent_scope.contains('<') {
+                if let Some(grandparent) = Self::parent_scope(&parent_scope) {
+                    eprintln!("[TRACE build_visibility_maps]   Also adding '{}' to grandparent scope '{}' (parent is anonymous)", symbol.name, grandparent);
+                    let grandparent_arc: Arc<str> = Arc::from(grandparent);
+                    let gp_vis = self
+                        .visibility_map
+                        .entry(grandparent_arc.clone())
+                        .or_insert_with(|| ScopeVisibility::new(grandparent_arc));
+                    gp_vis.add_direct(symbol.name.clone(), symbol.qualified_name.clone());
+                    if let Some(ref short_name) = symbol.short_name {
+                        gp_vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
+                    }
+                }
             }
         }
 
