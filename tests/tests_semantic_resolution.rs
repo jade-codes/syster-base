@@ -420,6 +420,66 @@ package Test {
     }
 }
 
+/// Test redefines type refs are extracted for hover
+#[test]
+fn test_redefines_type_ref_extraction() {
+    let content = r#"
+package Test {
+    action def BaseAction {
+        action providePower;
+        action performSelfTest;
+    }
+    
+    part def Vehicle : BaseAction {
+        perform BaseAction::providePower redefines providePower;
+    }
+}
+"#;
+
+    let mut host = AnalysisHost::new();
+    host.set_file_content("test.sysml", content);
+    let analysis = host.analysis();
+    let file_id = analysis.get_file_id("test.sysml").unwrap();
+    let index = analysis.symbol_index();
+
+    eprintln!("\n=== Symbols ===");
+    for sym in index.symbols_in_file(file_id) {
+        eprintln!("{} (kind={:?})", sym.qualified_name, sym.kind);
+        if !sym.type_refs.is_empty() {
+            for tr in &sym.type_refs {
+                match tr {
+                    syster::hir::TypeRefKind::Simple(r) => {
+                        eprintln!("  TypeRef: {} ({:?}) at L{}:{}-{}:{}", 
+                            r.target, r.kind, r.start_line+1, r.start_col, r.end_line+1, r.end_col);
+                    }
+                    syster::hir::TypeRefKind::Chain(c) => {
+                        for p in &c.parts {
+                            eprintln!("  Chain part: {} ({:?}) at L{}:{}-{}:{}", 
+                                p.target, p.kind, p.start_line+1, p.start_col, p.end_line+1, p.end_col);
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Check that the perform symbol has the redefines type_ref
+    let perform_sym = index.symbols_in_file(file_id)
+        .into_iter()
+        .find(|s| s.qualified_name.contains("perform:"));
+    assert!(perform_sym.is_some(), "perform symbol should exist");
+    let perform_sym = perform_sym.unwrap();
+    
+    // Should have redefines type ref
+    let has_redefines_ref = perform_sym.type_refs.iter().any(|tr| {
+        match tr {
+            syster::hir::TypeRefKind::Simple(r) => r.kind == syster::hir::RefKind::Redefines,
+            syster::hir::TypeRefKind::Chain(c) => c.parts.iter().any(|p| p.kind == syster::hir::RefKind::Redefines),
+        }
+    });
+    eprintln!("\nPerform symbol has Redefines ref: {}", has_redefines_ref);
+}
+
 /// Test allocation visibility with imports
 #[test]
 fn test_allocation_visibility_with_imports() {

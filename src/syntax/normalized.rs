@@ -882,6 +882,27 @@ impl NormalizedUsage {
                     });
                 }
             }
+            
+            // Also extract redefines/subsets from the perform action
+            // e.g., `perform X redefines foo` should capture the redefines relationship
+            for spec in perform.specializations().skip(1) {
+                // Skip the first one (performed action), get the rest
+                let rel_kind = match spec.kind() {
+                    Some(SpecializationKind::Redefines) => NormalizedRelKind::Redefines,
+                    Some(SpecializationKind::Subsets) => NormalizedRelKind::Subsets,
+                    Some(SpecializationKind::Specializes) => NormalizedRelKind::Specializes,
+                    Some(SpecializationKind::References) => NormalizedRelKind::References,
+                    _ => continue,
+                };
+                if let Some(qn) = spec.target() {
+                    let target_str = qn.to_string();
+                    relationships.push(NormalizedRelationship {
+                        kind: rel_kind,
+                        target: make_chain_or_simple(&target_str, &qn),
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
+            }
         }
         
         // Extract satisfy/verify (e.g., `satisfy speedRequirement`, `verify SafetyReq by TestCase`)

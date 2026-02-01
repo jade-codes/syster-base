@@ -198,8 +198,11 @@ pub struct SymbolIndex {
     by_file: HashMap<FileId, Vec<SymbolIdx>>,
     /// Definitions only (not usages) -> symbol indices.
     definitions: HashMap<Arc<str>, SymbolIdx>,
-    /// Pre-computed visibility map for each scope (built after all files added).
+    /// Lazily-built visibility map for each scope.
+    /// Built on-demand when a scope is queried, not upfront.
     visibility_map: HashMap<Arc<str>, ScopeVisibility>,
+    /// Index from parent scope -> child symbol indices (for fast visibility building)
+    by_parent_scope: HashMap<Arc<str>, Vec<SymbolIdx>>,
     /// Filters for each scope (e.g., "SafetyGroup" -> ["Safety"])
     /// Elements must have ALL listed metadata to be visible in that scope.
     /// These come from `filter @Metadata;` statements.
@@ -207,8 +210,8 @@ pub struct SymbolIndex {
     /// Filters for specific imports (import qualified name -> metadata names)
     /// These come from bracket syntax: `import X::*[@Filter]`
     import_filters: HashMap<Arc<str>, Vec<Arc<str>>>,
-    /// Flag to track if visibility maps are stale and need rebuilding.
-    visibility_dirty: bool,
+    /// Flag to track if parent scope index needs rebuilding.
+    parent_index_dirty: bool,
 }
 
 impl SymbolIndex {
@@ -249,8 +252,11 @@ impl SymbolIndex {
         // Remove existing symbols from this file first
         self.remove_file(file);
 
-        // Mark visibility maps as dirty
-        self.visibility_dirty = true;
+        // Mark parent index as dirty (need to rebuild by_parent_scope)
+        self.parent_index_dirty = true;
+        
+        // Clear visibility maps for affected scopes (they'll be rebuilt lazily)
+        // We don't clear ALL visibility maps - just mark that parent index needs rebuild
 
         let mut file_indices = Vec::with_capacity(symbols.len());
 
@@ -298,7 +304,7 @@ impl SymbolIndex {
         scope: impl Into<Arc<str>>,
         metadata_name: impl Into<Arc<str>>,
     ) {
-        self.visibility_dirty = true;
+        self.parent_index_dirty = true;
         self.scope_filters
             .entry(scope.into())
             .or_default()
@@ -311,8 +317,8 @@ impl SymbolIndex {
     /// to avoid invalidating other indices. For a full cleanup, rebuild the index.
     pub fn remove_file(&mut self, file: FileId) {
         if let Some(indices) = self.by_file.remove(&file) {
-            // Mark visibility maps as dirty
-            self.visibility_dirty = true;
+            // Mark parent index as dirty
+            self.parent_index_dirty = true;
 
             for &idx in &indices {
                 if let Some(symbol) = self.symbols.get(idx) {
@@ -322,6 +328,9 @@ impl SymbolIndex {
 
                     self.by_qualified_name.remove(&qname);
                     self.definitions.remove(&qname);
+                    
+                    // Clear visibility map for this scope (will be rebuilt lazily)
+                    self.visibility_map.remove(&qname);
 
                     // Remove from simple name index
                     if let Some(list) = self.by_simple_name.get_mut(&sname) {
@@ -513,27 +522,91 @@ impl SymbolIndex {
         // Store the symbol
         self.symbols.push(symbol);
 
-        // Mark visibility maps as dirty
-        self.visibility_dirty = true;
+        // Mark parent index as dirty
+        self.parent_index_dirty = true;
     }
 
     /// Get a reference to the visibility maps.
-    /// Call ensure_visibility_maps() first to ensure they are up-to-date.
     pub fn visibility_maps(&self) -> &HashMap<Arc<str>, ScopeVisibility> {
         &self.visibility_map
+    }
+
+    /// Mark that parent scope index needs rebuilding.
+    /// Mark visibility maps as needing full rebuild.
+    /// Call this after external changes that affect symbol visibility.
+    pub fn mark_visibility_dirty(&mut self) {
+        self.parent_index_dirty = true;
+        // Clear visibility map to force rebuild
+        self.visibility_map.clear();
+    }
+
+    /// Ensure the parent scope index is built (needed for lazy visibility lookups).
+    fn ensure_parent_index(&mut self) {
+        if !self.parent_index_dirty {
+            return;
+        }
+        
+        self.by_parent_scope.clear();
+        
+        for (idx, symbol) in self.symbols.iter().enumerate() {
+            let parent_scope: Arc<str> = Self::parent_scope(&symbol.qualified_name)
+                .map(Arc::from)
+                .unwrap_or_else(|| Arc::from(""));
+            
+            self.by_parent_scope
+                .entry(parent_scope)
+                .or_default()
+                .push(idx);
+        }
+        
+        self.parent_index_dirty = false;
+    }
+
+    /// Update visibility maps incrementally for symbols in specific files.
+    /// Only rebuild visibility for affected scopes, not the entire workspace.
+    pub fn update_visibility_for_files(&mut self, files: &[FileId]) {
+        // Ensure parent index is built
+        self.ensure_parent_index();
+        
+        // Collect scopes that need rebuilding
+        let mut scopes_to_rebuild: HashSet<Arc<str>> = HashSet::new();
+        
+        for file in files {
+            if let Some(indices) = self.by_file.get(file).cloned() {
+                for idx in indices {
+                    if let Some(symbol) = self.symbols.get(idx) {
+                        // This symbol's scope needs rebuilding
+                        scopes_to_rebuild.insert(symbol.qualified_name.clone());
+                        
+                        // Parent scope needs rebuilding
+                        let parent: Arc<str> = Self::parent_scope(&symbol.qualified_name)
+                            .map(Arc::from)
+                            .unwrap_or_else(|| Arc::from(""));
+                        scopes_to_rebuild.insert(parent);
+                    }
+                }
+            }
+        }
+        
+        // Rebuild only the affected scopes
+        for scope in scopes_to_rebuild {
+            self.build_visibility_for_scope(&scope);
+        }
     }
 
     // ========================================================================
     // VISIBILITY MAP CONSTRUCTION
     // ========================================================================
 
-    /// Ensure visibility maps are up-to-date, rebuilding if necessary.
-    ///
-    /// Call this before using visibility-based resolution.
+    /// Ensure visibility maps are up-to-date, rebuilding ALL if needed.
+    /// Use this for initial load / full resolution.
     pub fn ensure_visibility_maps(&mut self) {
-        if self.visibility_dirty {
+        // Build parent index first
+        self.ensure_parent_index();
+        
+        // If visibility maps are empty, do a full build
+        if self.visibility_map.is_empty() {
             self.build_visibility_maps();
-            self.visibility_dirty = false;
         }
     }
 
@@ -636,6 +709,117 @@ impl SymbolIndex {
         }
 
         // Pass 2: Resolve chain subsequent parts (can now use resolved types from pass 1)
+        for (sym_idx, trk_idx, part_idx, target, chain_context, _ref_kind) in pass2_work {
+            let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
+            let resolved = self.resolve_type_ref_cached(
+                &symbol_qname,
+                &target,
+                &chain_context,
+                &mut resolution_cache,
+            );
+
+            if let Some(TypeRefKind::Chain(chain)) =
+                self.symbols[sym_idx].type_refs.get_mut(trk_idx)
+            {
+                if let Some(part) = chain.parts.get_mut(part_idx) {
+                    part.resolved_target = resolved;
+                }
+            }
+        }
+    }
+
+    /// Resolve type references only for symbols in specific files.
+    /// This is used for incremental updates to avoid re-resolving the entire workspace.
+    pub fn resolve_type_refs_for_files(&mut self, files: &[FileId]) {
+        use crate::hir::symbols::TypeRefKind;
+
+        // Ensure visibility maps are built first
+        self.ensure_visibility_maps();
+
+        // Memoization cache for scope walk results
+        let mut resolution_cache: ResolutionCache = HashMap::new();
+
+        // Collect symbol indices for the specified files
+        let symbol_indices: Vec<SymbolIdx> = files
+            .iter()
+            .filter_map(|file| self.by_file.get(file))
+            .flat_map(|indices| indices.iter().copied())
+            .collect();
+
+        use std::rc::Rc;
+
+        // Collect work items for these symbols only
+        type WorkItem = (
+            SymbolIdx,
+            usize,
+            usize,
+            Arc<str>,
+            Option<(Rc<Vec<Arc<str>>>, usize)>,
+            RefKind,
+        );
+        let mut pass1_work: Vec<WorkItem> = Vec::new();
+        let mut pass2_work: Vec<WorkItem> = Vec::new();
+
+        for &sym_idx in &symbol_indices {
+            if let Some(sym) = self.symbols.get(sym_idx) {
+                for (trk_idx, trk) in sym.type_refs.iter().enumerate() {
+                    match trk {
+                        TypeRefKind::Simple(tr) => {
+                            pass1_work.push((sym_idx, trk_idx, 0, tr.target.clone(), None, tr.kind));
+                        }
+                        TypeRefKind::Chain(chain) => {
+                            let chain_parts: Rc<Vec<Arc<str>>> =
+                                Rc::new(chain.parts.iter().map(|p| p.target.clone()).collect());
+                            for (part_idx, part) in chain.parts.iter().enumerate() {
+                                let item = (
+                                    sym_idx,
+                                    trk_idx,
+                                    part_idx,
+                                    part.target.clone(),
+                                    Some((Rc::clone(&chain_parts), part_idx)),
+                                    part.kind,
+                                );
+                                if part_idx == 0 {
+                                    pass1_work.push(item);
+                                } else {
+                                    pass2_work.push(item);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pass 1: Resolve simple refs and chain first-parts
+        for (sym_idx, trk_idx, part_idx, target, chain_context, ref_kind) in pass1_work {
+            let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
+            let mut resolved = self.resolve_type_ref_cached(
+                &symbol_qname,
+                &target,
+                &chain_context,
+                &mut resolution_cache,
+            );
+
+            if resolved.is_none() && ref_kind == RefKind::Redefines {
+                resolved = self.resolve_redefines_in_context(&symbol_qname, &target);
+            }
+
+            if let Some(trk) = self.symbols[sym_idx].type_refs.get_mut(trk_idx) {
+                match trk {
+                    TypeRefKind::Simple(tr) => {
+                        tr.resolved_target = resolved;
+                    }
+                    TypeRefKind::Chain(chain) => {
+                        if let Some(part) = chain.parts.get_mut(part_idx) {
+                            part.resolved_target = resolved;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Pass 2: Resolve chain subsequent parts
         for (sym_idx, trk_idx, part_idx, target, chain_context, _ref_kind) in pass2_work {
             let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
             let resolved = self.resolve_type_ref_cached(
@@ -1113,7 +1297,138 @@ impl SymbolIndex {
         self.visibility_map.get(scope)
     }
 
-    /// Build visibility maps for all scopes.
+    /// Build visibility map for a single scope.
+    fn build_visibility_for_scope(&mut self, scope: &Arc<str>) {
+        let mut vis = ScopeVisibility::new(scope.clone());
+        
+        // Add direct children of this scope
+        if let Some(child_indices) = self.by_parent_scope.get(scope).cloned() {
+            for idx in child_indices {
+                if let Some(symbol) = self.symbols.get(idx) {
+                    // Skip imports - handle them separately
+                    if symbol.kind == SymbolKind::Import {
+                        continue;
+                    }
+                    
+                    vis.add_direct(symbol.name.clone(), symbol.qualified_name.clone());
+                    
+                    if let Some(ref short_name) = symbol.short_name {
+                        vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
+                    }
+                }
+            }
+        }
+        
+        // Process imports in this scope
+        self.process_imports_for_scope_lazy(scope, &mut vis);
+        
+        // Handle anonymous scope children (promote to grandparent)
+        for (parent_scope, indices) in &self.by_parent_scope.clone() {
+            if parent_scope.contains('<') {
+                if let Some(grandparent) = Self::parent_scope(parent_scope) {
+                    if grandparent == scope.as_ref() {
+                        for &idx in indices {
+                            if let Some(symbol) = self.symbols.get(idx) {
+                                if symbol.kind != SymbolKind::Import {
+                                    vis.add_direct(symbol.name.clone(), symbol.qualified_name.clone());
+                                    if let Some(ref short_name) = symbol.short_name {
+                                        vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        self.visibility_map.insert(scope.clone(), vis);
+    }
+
+    /// Process imports for a single scope (used in lazy building).
+    fn process_imports_for_scope_lazy(&self, scope: &Arc<str>, vis: &mut ScopeVisibility) {
+        // Find import symbols in this scope
+        let imports: Vec<_> = self.by_parent_scope
+            .get(scope)
+            .map(|indices| {
+                indices.iter()
+                    .filter_map(|&idx| self.symbols.get(idx))
+                    .filter(|s| s.kind == SymbolKind::Import)
+                    .map(|s| (s.name.clone(), s.qualified_name.clone(), s.is_public))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        for (import_name, _import_qname, _is_public) in imports {
+            let is_wildcard = import_name.ends_with("::*") && !import_name.ends_with("::**");
+            let is_recursive = import_name.ends_with("::**");
+
+            let import_target = if is_recursive {
+                import_name.trim_end_matches("::**")
+            } else {
+                import_name.trim_end_matches("::*")
+            };
+
+            // Resolve the import target
+            let resolved_target = self.resolve_import_target_simple(scope, import_target);
+
+            if is_wildcard || is_recursive {
+                // Wildcard import: add all direct children of target
+                if let Some(target_children) = self.by_parent_scope.get(&Arc::from(resolved_target.as_str())) {
+                    for &idx in target_children {
+                        if let Some(child_sym) = self.symbols.get(idx) {
+                            if child_sym.kind != SymbolKind::Import {
+                                vis.add_import(child_sym.name.clone(), child_sym.qualified_name.clone());
+                                if let Some(ref short) = child_sym.short_name {
+                                    vis.add_import(short.clone(), child_sym.qualified_name.clone());
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // Single import: add just that symbol
+                if let Some(sym) = self.lookup_qualified(&resolved_target) {
+                    let simple_name = sym.name.clone();
+                    vis.add_import(simple_name, sym.qualified_name.clone());
+                }
+            }
+        }
+    }
+
+    /// Simple import target resolution (used in lazy visibility building).
+    fn resolve_import_target_simple(&self, scope: &str, target: &str) -> String {
+        // If already qualified, check as-is
+        if target.contains("::") && self.by_qualified_name.contains_key(target) {
+            return target.to_string();
+        }
+
+        // Try relative to scope and parent scopes
+        let mut current = scope.to_string();
+        loop {
+            let candidate = if current.is_empty() {
+                target.to_string()
+            } else {
+                format!("{}::{}", current, target)
+            };
+
+            if self.by_qualified_name.contains_key(&candidate as &str) {
+                return candidate;
+            }
+
+            if let Some(idx) = current.rfind("::") {
+                current = current[..idx].to_string();
+            } else if !current.is_empty() {
+                current = String::new();
+            } else {
+                break;
+            }
+        }
+
+        target.to_string()
+    }
+
+    /// Build visibility maps for all scopes (full rebuild for initial load).
     ///
     /// This is the main entry point for constructing visibility information.
     /// It performs:
@@ -1121,7 +1436,9 @@ impl SymbolIndex {
     /// 2. Inheritance propagation (supertypes' members become visible)
     /// 3. Import processing with transitive public re-export handling
     fn build_visibility_maps(&mut self) {
-        eprintln!("[TRACE build_visibility_maps] Starting visibility map build");
+        // First ensure parent index is built
+        self.ensure_parent_index();
+        
         // 1. Single pass: collect scopes AND group symbols by parent scope
         // This is O(symbols) instead of O(scopes × symbols)
         self.visibility_map.clear();
@@ -1131,14 +1448,12 @@ impl SymbolIndex {
             .insert(Arc::from(""), ScopeVisibility::new(""));
 
         for symbol in &self.symbols {
-            eprintln!("[TRACE build_visibility_maps] Processing symbol: {} ({:?})", symbol.qualified_name, symbol.kind);
             // Ensure this symbol's scope exists (for namespace-creating symbols)
             // Include usages too - they can have nested members and need inherited members from their type
             if symbol.kind == SymbolKind::Package
                 || symbol.kind.is_definition()
                 || symbol.kind.is_usage()
             {
-                eprintln!("[TRACE build_visibility_maps]   Creating scope for: {}", symbol.qualified_name);
                 self.visibility_map
                     .entry(symbol.qualified_name.clone())
                     .or_insert_with(|| ScopeVisibility::new(symbol.qualified_name.clone()));
@@ -1147,7 +1462,6 @@ impl SymbolIndex {
             // Skip adding import symbols as direct definitions - they're processed separately
             // and shouldn't shadow global packages with the same name
             if symbol.kind == SymbolKind::Import {
-                eprintln!("[TRACE build_visibility_maps]   Skipping import symbol (handled separately): {}", symbol.qualified_name);
                 continue;
             }
 
@@ -1156,7 +1470,6 @@ impl SymbolIndex {
                 .map(Arc::from)
                 .unwrap_or_else(|| Arc::from(""));
 
-            eprintln!("[TRACE build_visibility_maps]   Adding '{}' to parent scope '{}'", symbol.name, parent_scope);
 
             // Ensure parent scope exists
             let vis = self
@@ -1177,7 +1490,6 @@ impl SymbolIndex {
             // from the enclosing scope, not just from the anonymous succession scope.
             if parent_scope.contains('<') {
                 if let Some(grandparent) = Self::parent_scope(&parent_scope) {
-                    eprintln!("[TRACE build_visibility_maps]   Also adding '{}' to grandparent scope '{}' (parent is anonymous)", symbol.name, grandparent);
                     let grandparent_arc: Arc<str> = Arc::from(grandparent);
                     let gp_vis = self
                         .visibility_map
@@ -1191,28 +1503,27 @@ impl SymbolIndex {
             }
         }
 
-        eprintln!("[TRACE build_visibility_maps] Processing imports...");
         // 3. Process all imports FIRST (needed for inheritance to resolve types via imports)
+        let t_imports_start = std::time::Instant::now();
         let mut visited: HashSet<(Arc<str>, Arc<str>)> = HashSet::new();
         let scope_keys: Vec<_> = self.visibility_map.keys().cloned().collect();
 
         for scope in &scope_keys {
-            eprintln!("[TRACE build_visibility_maps] Processing imports for scope: '{}'", scope);
             self.process_imports_recursive(&scope, &mut visited);
         }
+        let t_imports = t_imports_start.elapsed();
 
-        eprintln!("[TRACE build_visibility_maps] Propagating inherited members...");
         // 4. Propagate inherited members from supertypes (can now resolve types via imports)
+        let t_inherit_start = std::time::Instant::now();
         self.propagate_inherited_members();
-        
-        eprintln!("[TRACE build_visibility_maps] Final visibility maps:");
-        for (scope, vis) in &self.visibility_map {
-            eprintln!("[TRACE build_visibility_maps]   Scope '{}': direct={:?}, imports={:?}", 
-                scope, 
-                vis.direct_defs().map(|(n, _)| n.to_string()).collect::<Vec<_>>(),
-                vis.imports().map(|(n, _)| n.to_string()).collect::<Vec<_>>()
-            );
-        }
+        let t_inherit = t_inherit_start.elapsed();
+
+        tracing::info!(
+            "build_visibility_maps: {} scopes, imports={:?}, inheritance={:?}",
+            scope_keys.len(),
+            t_imports,
+            t_inherit
+        );
     }
 
     /// Propagate inherited members from supertypes into scope visibility maps.
@@ -1333,30 +1644,24 @@ impl SymbolIndex {
         scope: &str,
         visited: &mut HashSet<(Arc<str>, Arc<str>)>,
     ) {
-        eprintln!("[TRACE process_imports_recursive] Processing scope: '{}'", scope);
+        let scope_arc: Arc<str> = Arc::from(scope);
         
-        // Find import symbols in this scope - extract needed fields
+        // Find import symbols in this scope using the parent index (much faster than scanning all symbols)
         let imports_to_process: Vec<(Arc<str>, Arc<str>, bool)> = self
-            .symbols
-            .iter()
-            .filter(|s| s.kind == SymbolKind::Import)
-            .filter(|s| {
-                let qname = s.qualified_name.as_ref();
-                if let Some(idx) = qname.find("::import:") {
-                    &qname[..idx] == scope
-                } else if qname.starts_with("import:") {
-                    scope.is_empty()
-                } else {
-                    false
-                }
+            .by_parent_scope
+            .get(&scope_arc)
+            .map(|indices| {
+                indices
+                    .iter()
+                    .filter_map(|&idx| self.symbols.get(idx))
+                    .filter(|s| s.kind == SymbolKind::Import)
+                    .map(|s| (s.name.clone(), s.qualified_name.clone(), s.is_public))
+                    .collect()
             })
-            .map(|s| (s.name.clone(), s.qualified_name.clone(), s.is_public))
-            .collect();
+            .unwrap_or_default();
 
-        eprintln!("[TRACE process_imports_recursive]   Found {} imports to process", imports_to_process.len());
 
         for (import_name, import_qname, is_public) in imports_to_process {
-            eprintln!("[TRACE process_imports_recursive]   Import: '{}' (qname='{}', public={})", import_name, import_qname, is_public);
             let is_wildcard = import_name.ends_with("::*") && !import_name.ends_with("::**");
             let is_recursive = import_name.ends_with("::**");
 
@@ -1367,8 +1672,6 @@ impl SymbolIndex {
                 import_name.trim_end_matches("::*")
             };
             let resolved_target = self.resolve_import_target(scope, import_target);
-            eprintln!("[TRACE process_imports_recursive]     is_wildcard={}, is_recursive={}, import_target='{}', resolved_target='{}'", 
-                is_wildcard, is_recursive, import_target, resolved_target);
 
             if is_wildcard || is_recursive {
                 // Wildcard or recursive import: import symbols from target scope
@@ -1376,7 +1679,6 @@ impl SymbolIndex {
                 // Skip if already visited this (scope, target) pair
                 let key = (Arc::from(scope), Arc::from(resolved_target.as_str()));
                 if visited.contains(&key) {
-                    eprintln!("[TRACE process_imports_recursive]     SKIPPING - already visited");
                     continue;
                 }
                 visited.insert(key);
@@ -1394,8 +1696,6 @@ impl SymbolIndex {
                 // Now copy symbols from target to this scope
                 if let Some(target_vis) = self.visibility_map.get(&resolved_target as &str).cloned()
                 {
-                    eprintln!("[TRACE process_imports_recursive]     target_vis direct_defs={:?}", 
-                        target_vis.direct_defs().map(|(n, _)| n.to_string()).collect::<Vec<_>>());
                     // Collect symbols to import (applying filter)
                     let direct_defs_to_import: Vec<_> = target_vis
                         .direct_defs()
@@ -1541,11 +1841,9 @@ impl SymbolIndex {
     /// 3. Walk up parent scopes
     /// 4. Fall back to target as-is
     fn resolve_import_target(&self, scope: &str, target: &str) -> String {
-        eprintln!("[TRACE resolve_import_target] scope='{}', target='{}'", scope, target);
         
         // If already qualified with ::, check as-is first
         if target.contains("::") && self.visibility_map.contains_key(target) {
-            eprintln!("[TRACE resolve_import_target]   Found as qualified: '{}'", target);
             return target.to_string();
         }
 
@@ -1557,7 +1855,6 @@ impl SymbolIndex {
                 // Check if target is visible (either as direct def or import)
                 if let Some(resolved_qname) = vis.lookup(target) {
                     // Found it - return the qualified name
-                    eprintln!("[TRACE resolve_import_target]   Found via visibility lookup in scope '{}': '{}'", scope, resolved_qname);
                     return resolved_qname.to_string();
                 }
             }
@@ -1572,9 +1869,7 @@ impl SymbolIndex {
                 format!("{}::{}", current, target)
             };
 
-            eprintln!("[TRACE resolve_import_target]   Trying candidate: '{}'", candidate);
             if self.visibility_map.contains_key(&candidate as &str) {
-                eprintln!("[TRACE resolve_import_target]   Found candidate in visibility_map: '{}'", candidate);
                 return candidate;
             }
 
@@ -1589,7 +1884,6 @@ impl SymbolIndex {
         }
 
         // Fall back to target as-is (might be global)
-        eprintln!("[TRACE resolve_import_target]   Falling back to target as-is: '{}'", target);
         target.to_string()
     }
 
@@ -1768,7 +2062,6 @@ impl<'a> Resolver<'a> {
 
     /// Resolve a name using pre-computed visibility maps.
     pub fn resolve(&self, name: &str) -> ResolveResult {
-        eprintln!("[TRACE Resolver::resolve] name='{}', current_scope='{}'", name, self.current_scope);
         
         // 1. Handle qualified paths like "ISQ::TorqueValue"
         if name.contains("::") {
@@ -1784,11 +2077,9 @@ impl<'a> Resolver<'a> {
         let mut scopes_checked = Vec::new();
         loop {
             scopes_checked.push(current.clone());
-            eprintln!("[TRACE Resolver::resolve]   Checking scope: '{}'", current);
             if let Some(vis) = self.index.visibility_for_scope(&current) {
                 // Check direct definitions first (higher priority)
                 if let Some(qname) = vis.lookup_direct(name) {
-                    eprintln!("[TRACE Resolver::resolve]   Found direct: {} -> {}", name, qname);
                     tracing::trace!(
                         "[RESOLVE] Found '{}' as direct def in scope '{}' -> {}",
                         name,
@@ -1802,7 +2093,6 @@ impl<'a> Resolver<'a> {
 
                 // Check imports
                 if let Some(qname) = vis.lookup_import(name) {
-                    eprintln!("[TRACE Resolver::resolve]   Found import: {} -> {}", name, qname);
                     tracing::trace!(
                         "[RESOLVE] Found '{}' as import in scope '{}' -> {}",
                         name,
@@ -1814,7 +2104,6 @@ impl<'a> Resolver<'a> {
                     }
                 }
             } else {
-                eprintln!("[TRACE Resolver::resolve]   No visibility map for scope");
             }
 
             // For usages AND definitions in scope, check inherited members from supertypes
@@ -1825,9 +2114,7 @@ impl<'a> Resolver<'a> {
                     // Check inherited members for both usages and definitions
                     // (both can have supertypes that define members like start/done)
                     if !scope_sym.supertypes.is_empty() {
-                        eprintln!("[TRACE Resolver::resolve]   Scope has supertypes, checking inherited members");
                         if let Some(result) = self.resolve_inherited_member(scope_sym, name) {
-                            eprintln!("[TRACE Resolver::resolve]   Found inherited member");
                             return result;
                         }
                     }

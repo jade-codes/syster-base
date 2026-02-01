@@ -17,7 +17,7 @@
 //! let symbols = analysis.document_symbols(file_id);
 //! ```
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::base::FileId;
@@ -42,8 +42,12 @@ pub struct AnalysisHost {
     file_id_map: HashMap<String, FileId>,
     /// Reverse map from FileId to file path
     file_path_map: HashMap<FileId, String>,
-    /// Whether the index needs rebuilding
-    index_dirty: bool,
+    /// Files that have been modified and need re-extraction
+    dirty_files: HashSet<PathBuf>,
+    /// Files that have been removed (need to be removed from index)
+    removed_files: HashSet<PathBuf>,
+    /// Whether we need a full rebuild (e.g., first build)
+    needs_full_rebuild: bool,
 }
 
 impl Default for AnalysisHost {
@@ -60,7 +64,9 @@ impl AnalysisHost {
             symbol_index: SymbolIndex::new(),
             file_id_map: HashMap::new(),
             file_path_map: HashMap::new(),
-            index_dirty: false,
+            dirty_files: HashSet::new(),
+            removed_files: HashSet::new(),
+            needs_full_rebuild: true, // First analysis needs full build
         }
     }
 
@@ -81,10 +87,11 @@ impl AnalysisHost {
         let result = parse_with_result(content, Path::new(path));
 
         if let Some(syntax_file) = result.content {
-            self.files.insert(path_buf, syntax_file);
+            self.files.insert(path_buf.clone(), syntax_file);
         }
 
-        self.index_dirty = true;
+        // Mark this file as dirty (needs re-extraction)
+        self.dirty_files.insert(path_buf);
         result.errors
     }
 
@@ -92,13 +99,15 @@ impl AnalysisHost {
     pub fn remove_file(&mut self, path: &str) {
         let path_buf = PathBuf::from(path);
         self.files.remove(&path_buf);
-        self.index_dirty = true;
+        self.dirty_files.remove(&path_buf);
+        self.removed_files.insert(path_buf);
     }
 
     /// Remove a file from storage using PathBuf.
     pub fn remove_file_path(&mut self, path: &PathBuf) {
         self.files.remove(path);
-        self.index_dirty = true;
+        self.dirty_files.remove(path);
+        self.removed_files.insert(path.clone());
     }
 
     /// Check if a file exists in storage.
@@ -115,8 +124,8 @@ impl AnalysisHost {
     /// Update or add a file with pre-parsed content.
     /// Used when caller already has parsed SyntaxFile.
     pub fn set_file(&mut self, path: PathBuf, file: SyntaxFile) {
+        self.dirty_files.insert(path.clone());
         self.files.insert(path, file);
-        self.index_dirty = true;
     }
 
     /// Get access to the parsed files.
@@ -129,15 +138,29 @@ impl AnalysisHost {
         self.files.len()
     }
 
-    /// Mark the index as needing rebuild (call after external changes).
+    /// Mark the index as needing full rebuild (call after external changes).
     pub fn mark_dirty(&mut self) {
-        self.index_dirty = true;
+        self.needs_full_rebuild = true;
+    }
+
+    /// Check if the index needs updating.
+    fn needs_update(&self) -> bool {
+        self.needs_full_rebuild || !self.dirty_files.is_empty() || !self.removed_files.is_empty()
     }
 
     /// Rebuild the symbol index from the current files.
     ///
     /// This is called automatically by `analysis()` if the index is dirty.
     pub fn rebuild_index(&mut self) {
+        if self.needs_full_rebuild {
+            self.full_rebuild();
+        } else {
+            self.incremental_rebuild();
+        }
+    }
+
+    /// Full rebuild - used on first load or when structure changes significantly
+    fn full_rebuild(&mut self) {
         // Build file ID map from file paths
         self.file_id_map.clear();
         self.file_path_map.clear();
@@ -168,14 +191,72 @@ impl AnalysisHost {
         new_index.resolve_all_type_refs();
 
         self.symbol_index = new_index;
-        self.index_dirty = false;
+        self.needs_full_rebuild = false;
+        self.dirty_files.clear();
+        self.removed_files.clear();
+    }
+
+    /// Incremental rebuild - only re-extract changed files
+    fn incremental_rebuild(&mut self) {
+        use std::time::Instant;
+        
+        // Collect files that need type ref resolution
+        let mut files_to_resolve: Vec<FileId> = Vec::new();
+
+        // Handle removed files first
+        let t0 = Instant::now();
+        for path in self.removed_files.drain() {
+            let path_str = path.to_string_lossy().to_string();
+            if let Some(&file_id) = self.file_id_map.get(&path_str) {
+                self.symbol_index.remove_file(file_id);
+            }
+        }
+
+        // Re-extract only dirty files and track which need resolution
+        for path in self.dirty_files.drain() {
+            let path_str = path.to_string_lossy().to_string();
+
+            let file_id = if let Some(&id) = self.file_id_map.get(&path_str) {
+                id
+            } else {
+                let new_id = FileId::new(self.file_id_map.len() as u32);
+                self.file_id_map.insert(path_str.clone(), new_id);
+                self.file_path_map.insert(new_id, path_str.clone());
+                new_id
+            };
+
+            if let Some(syntax_file) = self.files.get(&path) {
+                let result = extract_with_filters(file_id, syntax_file);
+                self.symbol_index.add_extraction_result(file_id, result);
+                files_to_resolve.push(file_id);
+            }
+        }
+        let t1 = Instant::now();
+
+        // Rebuild visibility maps (needed for correct resolution)
+        self.symbol_index.mark_visibility_dirty();
+        self.symbol_index.ensure_visibility_maps();
+        let t2 = Instant::now();
+
+        // Only resolve type refs for changed files (not the entire workspace)
+        if !files_to_resolve.is_empty() {
+            self.symbol_index.resolve_type_refs_for_files(&files_to_resolve);
+        }
+        let t3 = Instant::now();
+
+        tracing::info!(
+            "Incremental rebuild: extract={:?}, visibility={:?}, resolve={:?}",
+            t1.duration_since(t0),
+            t2.duration_since(t1),
+            t3.duration_since(t2)
+        );
     }
 
     /// Get a consistent snapshot for querying.
     ///
     /// If the index is dirty, it will be rebuilt first.
     pub fn analysis(&mut self) -> Analysis<'_> {
-        if self.index_dirty {
+        if self.needs_update() {
             self.rebuild_index();
         }
 
