@@ -199,7 +199,7 @@ impl AnalysisHost {
     /// Incremental rebuild - only re-extract changed files
     fn incremental_rebuild(&mut self) {
         use std::time::Instant;
-        
+
         // Collect files that need type ref resolution
         let mut files_to_resolve: Vec<FileId> = Vec::new();
 
@@ -240,7 +240,8 @@ impl AnalysisHost {
 
         // Only resolve type refs for changed files (not the entire workspace)
         if !files_to_resolve.is_empty() {
-            self.symbol_index.resolve_type_refs_for_files(&files_to_resolve);
+            self.symbol_index
+                .resolve_type_refs_for_files(&files_to_resolve);
         }
         let t3 = Instant::now();
 

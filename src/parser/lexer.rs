@@ -37,24 +37,25 @@ impl<'a> Iterator for Lexer<'a> {
         let text = self.inner.slice();
         let offset = TextSize::new(self.offset);
         self.offset += text.len() as u32;
-        
+
         let kind = match logos_token {
             Ok(t) => t.into(),
             Err(()) => SyntaxKind::ERROR,
         };
-        
+
         Some(Token { kind, text, offset })
     }
 }
 
 /// Tokenize an entire string into a Vec
+#[allow(dead_code)]
 pub fn tokenize(input: &str) -> Vec<Token<'_>> {
     Lexer::new(input).collect()
 }
 
 /// Logos token enum - maps to SyntaxKind
 #[derive(Logos, Debug, Clone, Copy, PartialEq)]
-#[logos(skip r"")]  // Don't skip anything, we want all tokens
+#[logos(skip r"")] // Don't skip anything, we want all tokens
 pub enum LogosToken {
     // =========================================================================
     // TRIVIA
@@ -73,9 +74,9 @@ pub enum LogosToken {
     // =========================================================================
     #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
     Ident,
-    
+
     #[regex(r"'[^']*'")]
-    UnrestrictedName,  // Short name like '<name>' - actually uses < > in SysML
+    UnrestrictedName, // Short name like '<name>' - actually uses < > in SysML
 
     #[regex(r"[0-9]+")]
     Integer,
@@ -91,58 +92,58 @@ pub enum LogosToken {
     // =========================================================================
     #[token("::>")]
     ColonColonGt,
-    
+
     #[token(":>>")]
     ColonGtGt,
-    
+
     #[token(":>")]
     ColonGt,
-    
+
     #[token("::")]
     ColonColon,
-    
+
     #[token(":=")]
     ColonEq,
-    
+
     #[token("..")]
     DotDot,
-    
+
     #[token("===")]
     EqEqEq,
-    
+
     #[token("!==")]
     BangEqEq,
-    
+
     #[token("==")]
     EqEq,
-    
+
     #[token("!=")]
     BangEq,
-    
+
     #[token("<=")]
     LtEq,
-    
+
     #[token(">=")]
     GtEq,
-    
+
     #[token("->")]
     Arrow,
-    
+
     #[token("=>")]
     FatArrow,
-    
+
     #[token("@@")]
     AtAt,
-    
+
     #[token("**")]
     StarStar,
-    
+
     #[token("??")]
     QuestionQuestion,
-    
+
     #[token("&&")]
     AmpAmp,
-    
+
     #[token("||")]
     PipePipe,
 
@@ -533,13 +534,13 @@ impl From<LogosToken> for SyntaxKind {
             Whitespace => SyntaxKind::WHITESPACE,
             LineComment => SyntaxKind::LINE_COMMENT,
             BlockComment => SyntaxKind::BLOCK_COMMENT,
-            
+
             // Literals
             Ident | UnrestrictedName => SyntaxKind::IDENT,
             Integer => SyntaxKind::INTEGER,
             Decimal => SyntaxKind::DECIMAL,
             String => SyntaxKind::STRING,
-            
+
             // Multi-char punctuation
             ColonColonGt => SyntaxKind::COLON_COLON_GT,
             ColonGtGt => SyntaxKind::COLON_GT_GT,
@@ -560,7 +561,7 @@ impl From<LogosToken> for SyntaxKind {
             QuestionQuestion => SyntaxKind::QUESTION_QUESTION,
             AmpAmp => SyntaxKind::AMP_AMP,
             PipePipe => SyntaxKind::PIPE_PIPE,
-            
+
             // Single-char punctuation
             LBrace => SyntaxKind::L_BRACE,
             RBrace => SyntaxKind::R_BRACE,
@@ -588,7 +589,7 @@ impl From<LogosToken> for SyntaxKind {
             Bang => SyntaxKind::BANG,
             Pipe => SyntaxKind::PIPE,
             Amp => SyntaxKind::AMP,
-            
+
             // Keywords
             AboutKw => SyntaxKind::ABOUT_KW,
             AbstractKw => SyntaxKind::ABSTRACT_KW,
@@ -793,7 +794,7 @@ mod tests {
         assert_eq!(tokens[1].kind, SyntaxKind::WHITESPACE);
         assert_eq!(tokens[2].kind, SyntaxKind::PACKAGE_KW);
     }
-    
+
     #[test]
     fn test_lex_import_wildcard() {
         let tokens: Vec<_> = Lexer::new("import ISQ::*;").collect();

@@ -165,7 +165,7 @@ pub fn parse_with_result(content: &str, path: &Path) -> ParseResult<SyntaxFile> 
     };
 
     let syntax_file = SyntaxFile::new(content, extension);
-    
+
     // Convert rowan syntax errors to our ParseError type with line/column info
     let line_index = crate::base::LineIndex::new(content);
     let errors: Vec<ParseError> = syntax_file

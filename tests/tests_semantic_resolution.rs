@@ -326,7 +326,7 @@ package Test {
         .expect("File not in index");
     let index = analysis.symbol_index();
 
-    // Look at what symbols we got 
+    // Look at what symbols we got
     eprintln!("\n=== Symbols in file ===");
     for sym in index.symbols_in_file(file_id) {
         eprintln!("Symbol: {} (kind={:?})", sym.qualified_name, sym.kind);
@@ -338,7 +338,11 @@ package Test {
                         eprintln!("    {} -> {:?}", r.target, r.resolved_target);
                     }
                     syster::hir::TypeRefKind::Chain(c) => {
-                        let parts: Vec<_> = c.parts.iter().map(|p| format!("{} -> {:?}", p.target, p.resolved_target)).collect();
+                        let parts: Vec<_> = c
+                            .parts
+                            .iter()
+                            .map(|p| format!("{} -> {:?}", p.target, p.resolved_target))
+                            .collect();
                         eprintln!("    Chain: {:?}", parts);
                     }
                 }
@@ -346,7 +350,7 @@ package Test {
         }
     }
 
-    // Run semantic checks  
+    // Run semantic checks
     let diagnostics = syster::hir::check_file(index, file_id);
 
     eprintln!("\n=== Diagnostics ===");
@@ -384,8 +388,13 @@ package Test {
 
     eprintln!("\n=== Symbols ===");
     for sym in index.symbols_in_file(file_id) {
-        eprintln!("{} (kind={:?}) lines {}-{}", 
-            sym.qualified_name, sym.kind, sym.start_line + 1, sym.end_line + 1);
+        eprintln!(
+            "{} (kind={:?}) lines {}-{}",
+            sym.qualified_name,
+            sym.kind,
+            sym.start_line + 1,
+            sym.end_line + 1
+        );
         for tr in &sym.type_refs {
             match tr {
                 syster::hir::TypeRefKind::Simple(r) => {
@@ -399,17 +408,22 @@ package Test {
             }
         }
     }
-    
+
     // Check evaluatePassFail symbol exists and has correct span
-    let eval_sym = index.symbols_in_file(file_id)
+    let eval_sym = index
+        .symbols_in_file(file_id)
         .into_iter()
         .find(|s| s.name.as_ref() == "evaluatePassFail");
     assert!(eval_sym.is_some(), "evaluatePassFail should exist");
     let eval_sym = eval_sym.unwrap();
-    eprintln!("\nevaluatePassFail: lines {}-{}, cols {}-{}", 
-        eval_sym.start_line + 1, eval_sym.end_line + 1,
-        eval_sym.start_col, eval_sym.end_col);
-        
+    eprintln!(
+        "\nevaluatePassFail: lines {}-{}, cols {}-{}",
+        eval_sym.start_line + 1,
+        eval_sym.end_line + 1,
+        eval_sym.start_col,
+        eval_sym.end_col
+    );
+
     // Check visibility - evaluatePassFail should be visible from TestAction scope
     eprintln!("\n=== Visibility in Test::TestAction ===");
     if let Some(vis) = index.visibility_for_scope("Test::TestAction") {
@@ -449,33 +463,49 @@ package Test {
             for tr in &sym.type_refs {
                 match tr {
                     syster::hir::TypeRefKind::Simple(r) => {
-                        eprintln!("  TypeRef: {} ({:?}) at L{}:{}-{}:{}", 
-                            r.target, r.kind, r.start_line+1, r.start_col, r.end_line+1, r.end_col);
+                        eprintln!(
+                            "  TypeRef: {} ({:?}) at L{}:{}-{}:{}",
+                            r.target,
+                            r.kind,
+                            r.start_line + 1,
+                            r.start_col,
+                            r.end_line + 1,
+                            r.end_col
+                        );
                     }
                     syster::hir::TypeRefKind::Chain(c) => {
                         for p in &c.parts {
-                            eprintln!("  Chain part: {} ({:?}) at L{}:{}-{}:{}", 
-                                p.target, p.kind, p.start_line+1, p.start_col, p.end_line+1, p.end_col);
+                            eprintln!(
+                                "  Chain part: {} ({:?}) at L{}:{}-{}:{}",
+                                p.target,
+                                p.kind,
+                                p.start_line + 1,
+                                p.start_col,
+                                p.end_line + 1,
+                                p.end_col
+                            );
                         }
                     }
                 }
             }
         }
     }
-    
+
     // Check that the perform symbol has the redefines type_ref
-    let perform_sym = index.symbols_in_file(file_id)
+    let perform_sym = index
+        .symbols_in_file(file_id)
         .into_iter()
         .find(|s| s.qualified_name.contains("perform:"));
     assert!(perform_sym.is_some(), "perform symbol should exist");
     let perform_sym = perform_sym.unwrap();
-    
+
     // Should have redefines type ref
-    let has_redefines_ref = perform_sym.type_refs.iter().any(|tr| {
-        match tr {
-            syster::hir::TypeRefKind::Simple(r) => r.kind == syster::hir::RefKind::Redefines,
-            syster::hir::TypeRefKind::Chain(c) => c.parts.iter().any(|p| p.kind == syster::hir::RefKind::Redefines),
-        }
+    let has_redefines_ref = perform_sym.type_refs.iter().any(|tr| match tr {
+        syster::hir::TypeRefKind::Simple(r) => r.kind == syster::hir::RefKind::Redefines,
+        syster::hir::TypeRefKind::Chain(c) => c
+            .parts
+            .iter()
+            .any(|p| p.kind == syster::hir::RefKind::Redefines),
     });
     eprintln!("\nPerform symbol has Redefines ref: {}", has_redefines_ref);
 }
@@ -547,7 +577,10 @@ package VehicleLogicalToPhysicalAllocation {
     // Check what symbols exist
     eprintln!("\n=== Symbols in allocation scope ===");
     for sym in index.symbols_in_file(file_id) {
-        if sym.qualified_name.contains("VehicleLogicalToPhysicalAllocation") {
+        if sym
+            .qualified_name
+            .contains("VehicleLogicalToPhysicalAllocation")
+        {
             eprintln!("{} ({:?})", sym.qualified_name, sym.kind);
             for tr in &sym.type_refs {
                 match tr {

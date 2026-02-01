@@ -15,12 +15,12 @@ package Test {
     }
 }
     "#;
-    
+
     let syntax_file = syster::syntax::SyntaxFile::new(code, FileExtension::SysML);
-    
+
     // Extract symbols
     let symbols = syster::hir::extract_symbols_unified(syster::FileId(0), &syntax_file);
-    
+
     // Print all symbols
     println!("=== All Symbols ===");
     for sym in &symbols {
@@ -28,11 +28,17 @@ package Test {
         for trk in &sym.type_refs {
             match trk {
                 syster::hir::TypeRefKind::Simple(tr) => {
-                    println!("    TypeRef: '{}' ({:?}) -> {:?}", tr.target, tr.kind, tr.resolved_target);
+                    println!(
+                        "    TypeRef: '{}' ({:?}) -> {:?}",
+                        tr.target, tr.kind, tr.resolved_target
+                    );
                 }
                 syster::hir::TypeRefKind::Chain(chain) => {
                     for part in &chain.parts {
-                        println!("    Chain Part: '{}' ({:?}) -> {:?}", part.target, part.kind, part.resolved_target);
+                        println!(
+                            "    Chain Part: '{}' ({:?}) -> {:?}",
+                            part.target, part.kind, part.resolved_target
+                        );
                     }
                 }
             }

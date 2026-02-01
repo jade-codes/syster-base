@@ -14,7 +14,7 @@
 use crate::parser::syntax_kind::SyntaxKind;
 
 /// Trait for expression parsing operations
-/// 
+///
 /// This trait defines the interface between the expression parser and the main parser.
 /// The main parser implements this trait to provide the necessary infrastructure.
 pub trait ExpressionParser {
@@ -23,28 +23,28 @@ pub trait ExpressionParser {
     fn at(&self, kind: SyntaxKind) -> bool;
     fn at_any(&self, kinds: &[SyntaxKind]) -> bool;
     fn at_name_token(&self) -> bool;
-    
+
     // Position tracking
     fn get_pos(&self) -> usize;
-    
+
     /// Peek at the kind of the nth token ahead (skipping trivia)
     fn peek_kind(&self, n: usize) -> SyntaxKind;
-    
+
     // Token consumption
     fn bump(&mut self);
     fn bump_any(&mut self);
     fn expect(&mut self, kind: SyntaxKind);
-    
+
     // Trivia handling
     fn skip_trivia(&mut self);
-    
+
     // Node building
     fn start_node(&mut self, kind: SyntaxKind);
     fn finish_node(&mut self);
-    
+
     // Shared parsing utilities
     fn parse_qualified_name(&mut self);
-    
+
     // Argument parsing (with named argument handling)
     fn parse_argument(&mut self);
 }
@@ -63,9 +63,9 @@ pub fn parse_expression<P: ExpressionParser>(p: &mut P) -> bool {
 ///     if_token ~ null_coalescing_expression ~ question_mark ~ owned_expression_reference ~ else_token ~ owned_expression_reference
 ///     | null_coalescing_expression
 /// }
-/// 
+///
 /// We also support the SysML-style `if cond then expr else expr` with `then` keyword
-
+///
 /// Parse if ? then else - KerML style
 fn parse_ternary_conditional<P: ExpressionParser>(p: &mut P) {
     p.bump(); // ?
@@ -94,14 +94,14 @@ fn parse_keyword_conditional<P: ExpressionParser>(p: &mut P) {
 
 pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
     p.start_node(SyntaxKind::EXPRESSION);
-    
+
     if p.at(SyntaxKind::IF_KW) {
         // KerML if-expression: if cond ? then else | if cond then then else
         p.bump(); // if
         p.skip_trivia();
         parse_null_coalescing_expression(p); // condition
         p.skip_trivia();
-        
+
         // Two forms: if cond ? then else | if cond then then else
         if p.at(SyntaxKind::QUESTION) {
             parse_ternary_conditional(p);
@@ -112,7 +112,7 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
         // Standard ternary: cond ? then : else
         parse_null_coalescing_expression(p);
         p.skip_trivia();
-        
+
         // Check for standard ternary operator (not ??)
         if p.at(SyntaxKind::QUESTION) && !p.at(SyntaxKind::QUESTION_QUESTION) {
             p.bump(); // ?
@@ -124,7 +124,7 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
             parse_expression(p); // else expression
         }
     }
-    
+
     p.finish_node();
 }
 
@@ -132,7 +132,7 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: null_coalescing_expression = { implies_expression ~ (double_question_mark ~ implies_expression_reference)* }
 pub fn parse_null_coalescing_expression<P: ExpressionParser>(p: &mut P) {
     parse_implies_expression(p);
-    
+
     while p.at(SyntaxKind::QUESTION_QUESTION) {
         p.bump();
         p.skip_trivia();
@@ -144,7 +144,7 @@ pub fn parse_null_coalescing_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: implies_expression = { or_expression ~ (implies_token ~ or_expression_reference)* }
 pub fn parse_implies_expression<P: ExpressionParser>(p: &mut P) {
     parse_or_expression(p);
-    
+
     while p.at(SyntaxKind::IMPLIES_KW) {
         p.bump();
         p.skip_trivia();
@@ -157,7 +157,7 @@ pub fn parse_implies_expression<P: ExpressionParser>(p: &mut P) {
 pub fn parse_or_expression<P: ExpressionParser>(p: &mut P) {
     parse_xor_expression(p);
     p.skip_trivia();
-    
+
     while p.at(SyntaxKind::PIPE) || p.at(SyntaxKind::OR_KW) {
         p.bump();
         p.skip_trivia();
@@ -171,7 +171,7 @@ pub fn parse_or_expression<P: ExpressionParser>(p: &mut P) {
 pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
     parse_and_expression(p);
     p.skip_trivia();
-    
+
     while p.at(SyntaxKind::XOR_KW) {
         p.bump();
         p.skip_trivia();
@@ -185,7 +185,7 @@ pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
 pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
     parse_equality_expression(p);
     p.skip_trivia();
-    
+
     while p.at(SyntaxKind::AMP) || p.at(SyntaxKind::AND_KW) {
         p.bump();
         p.skip_trivia();
@@ -200,8 +200,13 @@ pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
 pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
     parse_classification_expression(p);
     p.skip_trivia();
-    
-    while p.at_any(&[SyntaxKind::EQ_EQ, SyntaxKind::BANG_EQ, SyntaxKind::EQ_EQ_EQ, SyntaxKind::BANG_EQ_EQ]) {
+
+    while p.at_any(&[
+        SyntaxKind::EQ_EQ,
+        SyntaxKind::BANG_EQ,
+        SyntaxKind::EQ_EQ_EQ,
+        SyntaxKind::BANG_EQ_EQ,
+    ]) {
         p.bump();
         p.skip_trivia();
         parse_classification_expression(p);
@@ -221,11 +226,18 @@ pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
         p.parse_qualified_name();
         return;
     }
-    
+
     parse_relational_expression(p);
-    
+
     p.skip_trivia();
-    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW, SyntaxKind::AS_KW, SyntaxKind::META_KW, SyntaxKind::AT, SyntaxKind::AT_AT]) {
+    if p.at_any(&[
+        SyntaxKind::HASTYPE_KW,
+        SyntaxKind::ISTYPE_KW,
+        SyntaxKind::AS_KW,
+        SyntaxKind::META_KW,
+        SyntaxKind::AT,
+        SyntaxKind::AT_AT,
+    ]) {
         p.bump();
         p.skip_trivia();
         p.parse_qualified_name();
@@ -238,8 +250,13 @@ pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
 pub fn parse_relational_expression<P: ExpressionParser>(p: &mut P) {
     parse_range_expression(p);
     p.skip_trivia();
-    
-    while p.at_any(&[SyntaxKind::LT, SyntaxKind::GT, SyntaxKind::LT_EQ, SyntaxKind::GT_EQ]) {
+
+    while p.at_any(&[
+        SyntaxKind::LT,
+        SyntaxKind::GT,
+        SyntaxKind::LT_EQ,
+        SyntaxKind::GT_EQ,
+    ]) {
         p.bump();
         p.skip_trivia();
         parse_range_expression(p);
@@ -251,7 +268,7 @@ pub fn parse_relational_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: range_expression = { additive_expression ~ (".." ~ additive_expression)? }
 pub fn parse_range_expression<P: ExpressionParser>(p: &mut P) {
     parse_additive_expression(p);
-    
+
     p.skip_trivia();
     if p.at(SyntaxKind::DOT_DOT) {
         p.bump();
@@ -264,7 +281,7 @@ pub fn parse_range_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: additive_expression = { multiplicative_expression ~ (additive_operator ~ multiplicative_expression)* }
 pub fn parse_additive_expression<P: ExpressionParser>(p: &mut P) {
     parse_multiplicative_expression(p);
-    
+
     while p.at(SyntaxKind::PLUS) || p.at(SyntaxKind::MINUS) {
         p.bump();
         p.skip_trivia();
@@ -276,7 +293,7 @@ pub fn parse_additive_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: multiplicative_expression = { exponentiation_expression ~ (multiplicative_operator ~ exponentiation_expression)* }
 pub fn parse_multiplicative_expression<P: ExpressionParser>(p: &mut P) {
     parse_exponentiation_expression(p);
-    
+
     while p.at_any(&[SyntaxKind::STAR, SyntaxKind::SLASH, SyntaxKind::PERCENT]) {
         p.bump();
         p.skip_trivia();
@@ -289,7 +306,7 @@ pub fn parse_multiplicative_expression<P: ExpressionParser>(p: &mut P) {
 /// Note: Right-associative by recursing on right side
 pub fn parse_exponentiation_expression<P: ExpressionParser>(p: &mut P) {
     parse_unary_expression(p);
-    
+
     p.skip_trivia();
     if p.at(SyntaxKind::STAR_STAR) || p.at(SyntaxKind::CARET) {
         p.bump();
@@ -301,7 +318,12 @@ pub fn parse_exponentiation_expression<P: ExpressionParser>(p: &mut P) {
 /// UnaryExpression = ('+' | '-' | '~' | 'not')? ExtentExpression
 /// Per pest: unary_expression = { unary_operator ~ extent_expression | extent_expression }
 pub fn parse_unary_expression<P: ExpressionParser>(p: &mut P) {
-    if p.at_any(&[SyntaxKind::PLUS, SyntaxKind::MINUS, SyntaxKind::TILDE, SyntaxKind::NOT_KW]) {
+    if p.at_any(&[
+        SyntaxKind::PLUS,
+        SyntaxKind::MINUS,
+        SyntaxKind::TILDE,
+        SyntaxKind::NOT_KW,
+    ]) {
         p.bump();
         p.skip_trivia();
     }
@@ -324,7 +346,7 @@ pub fn parse_extent_expression<P: ExpressionParser>(p: &mut P) {
 fn handle_feature_chain<P: ExpressionParser>(p: &mut P) {
     p.bump(); // .
     p.skip_trivia();
-    
+
     // Handle identifier or 'this' keyword in feature chain
     if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::THIS_KW) {
         p.bump();
@@ -358,19 +380,22 @@ fn handle_shorthand_collect<P: ExpressionParser>(p: &mut P) {
 fn handle_arrow_invocation<P: ExpressionParser>(p: &mut P) {
     p.bump(); // ->
     p.skip_trivia();
-    
+
     // Method name
     if p.at(SyntaxKind::IDENT) {
         p.bump();
     }
     p.skip_trivia();
-    
+
     // Arguments: { body } | ( args ) | bare expression
     if p.at(SyntaxKind::L_BRACE) {
         parse_arrow_body(p);
     } else if p.at(SyntaxKind::L_PAREN) {
         parse_argument_list(p);
-    } else if !p.at(SyntaxKind::SEMICOLON) && !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::R_PAREN) {
+    } else if !p.at(SyntaxKind::SEMICOLON)
+        && !p.at(SyntaxKind::R_BRACE)
+        && !p.at(SyntaxKind::R_PAREN)
+    {
         // Bare expression: ->reduce '+'
         if p.at(SyntaxKind::STRING) || p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::INTEGER) {
             parse_expression(p);
@@ -409,10 +434,10 @@ fn handle_array_index<P: ExpressionParser>(p: &mut P) {
 
 pub fn parse_primary_expression<P: ExpressionParser>(p: &mut P) {
     parse_base_expression(p);
-    
+
     loop {
         p.skip_trivia();
-        
+
         match p.current_kind() {
             SyntaxKind::DOT => {
                 // Check for shorthand operations
@@ -436,39 +461,51 @@ pub fn parse_primary_expression<P: ExpressionParser>(p: &mut P) {
 /// Used for arrow invocation bodies like: ->collect { in x; x + 1 }
 /// Per Pest body_expression_body: only 'in' parameters are allowed (not out/inout)
 /// Per pest: Arrow operation bodies are grammar-specific implementations
-
+///
 /// Check if current position looks like a typed parameter (name : Type;)
 fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
     let mut lookahead = 1;
     // Skip trivia
-    while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
         lookahead += 1;
     }
-    
+
     if p.peek_kind(lookahead) != SyntaxKind::COLON {
         return false;
     }
-    
+
     // Skip past colon
     lookahead += 1;
-    while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
         lookahead += 1;
     }
-    
+
     // Check for type name
     if !matches!(p.peek_kind(lookahead), SyntaxKind::IDENT) {
         return false;
     }
-    
+
     lookahead += 1;
     // Skip qualified name parts (::Part)
     loop {
-        while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+        while matches!(
+            p.peek_kind(lookahead),
+            SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+        ) {
             lookahead += 1;
         }
         if p.peek_kind(lookahead) == SyntaxKind::COLON_COLON {
             lookahead += 1;
-            while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+            while matches!(
+                p.peek_kind(lookahead),
+                SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+            ) {
                 lookahead += 1;
             }
             if matches!(p.peek_kind(lookahead), SyntaxKind::IDENT) {
@@ -478,9 +515,12 @@ fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
             break;
         }
     }
-    
+
     // Check for semicolon
-    while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
         lookahead += 1;
     }
     p.peek_kind(lookahead) == SyntaxKind::SEMICOLON
@@ -488,7 +528,11 @@ fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
 
 /// Handle visibility keyword in arrow body
 fn handle_visibility_prefix<P: ExpressionParser>(p: &mut P) {
-    if p.at_any(&[SyntaxKind::PRIVATE_KW, SyntaxKind::PUBLIC_KW, SyntaxKind::PROTECTED_KW]) {
+    if p.at_any(&[
+        SyntaxKind::PRIVATE_KW,
+        SyntaxKind::PUBLIC_KW,
+        SyntaxKind::PROTECTED_KW,
+    ]) {
         p.bump();
         p.skip_trivia();
     }
@@ -501,10 +545,11 @@ fn parse_nested_body_members<P: ExpressionParser>(p: &mut P) {
             p.bump();
             p.skip_trivia();
             // Skip content
-            while !p.at(SyntaxKind::R_BRACE) 
+            while !p.at(SyntaxKind::R_BRACE)
                 && p.current_kind() != SyntaxKind::__LAST
                 && !p.at(SyntaxKind::DOC_KW)
-                && !p.at(SyntaxKind::COMMENT_KW) {
+                && !p.at(SyntaxKind::COMMENT_KW)
+            {
                 p.bump_any();
                 p.skip_trivia();
             }
@@ -527,13 +572,13 @@ fn parse_parameter_body<P: ExpressionParser>(p: &mut P) {
 fn handle_usage_keyword<P: ExpressionParser>(p: &mut P) {
     p.bump(); // usage keyword
     p.skip_trivia();
-    
+
     // Name
     if p.at_name_token() {
         p.bump();
         p.skip_trivia();
     }
-    
+
     // Optional typing
     if p.at(SyntaxKind::COLON) {
         p.bump();
@@ -541,7 +586,7 @@ fn handle_usage_keyword<P: ExpressionParser>(p: &mut P) {
         p.parse_qualified_name();
         p.skip_trivia();
     }
-    
+
     // Optional value assignment
     if p.at(SyntaxKind::EQ) {
         p.bump();
@@ -549,14 +594,19 @@ fn handle_usage_keyword<P: ExpressionParser>(p: &mut P) {
         parse_expression(p);
         p.skip_trivia();
     }
-    
+
     // Body or semicolon
     if p.at(SyntaxKind::L_BRACE) {
         // Nested body - simplified parsing
         p.bump();
         p.skip_trivia();
         while !p.at(SyntaxKind::R_BRACE) && p.current_kind() != SyntaxKind::__LAST {
-            if p.at_any(&[SyntaxKind::DOC_KW, SyntaxKind::COMMENT_KW, SyntaxKind::COLON_GT_GT, SyntaxKind::COLON_GT]) {
+            if p.at_any(&[
+                SyntaxKind::DOC_KW,
+                SyntaxKind::COMMENT_KW,
+                SyntaxKind::COLON_GT_GT,
+                SyntaxKind::COLON_GT,
+            ]) {
                 p.bump();
                 p.skip_trivia();
                 if p.at_name_token() {
@@ -585,16 +635,19 @@ fn handle_feature_declaration<P: ExpressionParser>(p: &mut P) -> bool {
     if !p.at_name_token() {
         return false;
     }
-    
+
     let mut lookahead = 1;
-    while matches!(p.peek_kind(lookahead), SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT) {
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
         lookahead += 1;
     }
-    
+
     if p.peek_kind(lookahead) != SyntaxKind::COLON {
         return false;
     }
-    
+
     // Parse: name : Type = value;
     p.bump(); // name
     p.skip_trivia();
@@ -602,14 +655,14 @@ fn handle_feature_declaration<P: ExpressionParser>(p: &mut P) -> bool {
     p.skip_trivia();
     p.parse_qualified_name();
     p.skip_trivia();
-    
+
     if p.at(SyntaxKind::EQ) {
         p.bump();
         p.skip_trivia();
         parse_expression(p);
         p.skip_trivia();
     }
-    
+
     if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
         p.skip_trivia();
@@ -621,18 +674,18 @@ fn handle_feature_declaration<P: ExpressionParser>(p: &mut P) -> bool {
 fn parse_in_parameter<P: ExpressionParser>(p: &mut P) {
     p.bump(); // in
     p.skip_trivia();
-    
+
     // Optional 'ref' prefix
     if p.at(SyntaxKind::REF_KW) {
         p.bump();
         p.skip_trivia();
     }
-    
+
     if p.at_name_token() {
         p.bump();
     }
     p.skip_trivia();
-    
+
     // Optional type
     if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::COLON_GT) {
         p.bump();
@@ -640,7 +693,7 @@ fn parse_in_parameter<P: ExpressionParser>(p: &mut P) {
         p.parse_qualified_name();
     }
     p.skip_trivia();
-    
+
     // Optional body
     if p.at(SyntaxKind::L_BRACE) {
         parse_parameter_body(p);
@@ -655,7 +708,7 @@ fn parse_implicit_parameter<P: ExpressionParser>(p: &mut P) -> bool {
     if !looks_like_typed_parameter(p) {
         return false;
     }
-    
+
     p.bump(); // name
     p.skip_trivia();
     p.bump(); // :
@@ -670,68 +723,75 @@ fn parse_implicit_parameter<P: ExpressionParser>(p: &mut P) -> bool {
 pub fn parse_arrow_body<P: ExpressionParser>(p: &mut P) {
     p.expect(SyntaxKind::L_BRACE);
     p.skip_trivia();
-    
+
     let token_count = 10000;
     let mut iterations = 0;
-    
+
     while !p.at(SyntaxKind::R_BRACE) && iterations < token_count {
         iterations += 1;
-        let start_pos = p.get_pos();
-        
+        let _start_pos = p.get_pos();
+
         // Handle doc/comment annotations
         if p.at(SyntaxKind::DOC_KW) || p.at(SyntaxKind::COMMENT_KW) {
             p.bump();
             p.skip_trivia();
             continue;
         }
-        
+
         // Handle visibility prefix
         handle_visibility_prefix(p);
-        
+
         // Handle usage keywords (attribute, part, item)
-        if p.at_any(&[SyntaxKind::ATTRIBUTE_KW, SyntaxKind::ITEM_KW, SyntaxKind::PART_KW]) {
+        if p.at_any(&[
+            SyntaxKind::ATTRIBUTE_KW,
+            SyntaxKind::ITEM_KW,
+            SyntaxKind::PART_KW,
+        ]) {
             handle_usage_keyword(p);
             continue;
         }
-        
+
         // Handle shorthand feature declaration
         if handle_feature_declaration(p) {
             continue;
         }
-        
+
         // Handle 'in' parameters
         if p.at(SyntaxKind::IN_KW) {
             parse_in_parameter(p);
             continue;
         }
-        
+
         // Handle implicit parameters (name : Type;)
         if p.at_name_token() && parse_implicit_parameter(p) {
             continue;
         }
-        
+
         // Body expression
         parse_expression(p);
         p.skip_trivia();
-        break;
-        
+
         // Safety: if no progress, skip to avoid infinite loop
-        if p.get_pos() == start_pos && !p.at(SyntaxKind::R_BRACE) {
+        if p.get_pos() == _start_pos && !p.at(SyntaxKind::R_BRACE) {
             p.bump_any();
         }
     }
-    
+
     p.expect(SyntaxKind::R_BRACE);
 }
 
 /// BaseExpression = LiteralExpression | FeatureReferenceExpression | InvocationExpression | '(' SequenceExpression ')' | NewExpression | IfExpression
 /// Per pest: primary_expression defined in each grammar - this is the base/atomic expression parsing
-
+///
 /// Handle literal values (integers, strings, booleans, null)
 fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
     if p.at_any(&[
-        SyntaxKind::INTEGER, SyntaxKind::DECIMAL, SyntaxKind::STRING,
-        SyntaxKind::TRUE_KW, SyntaxKind::FALSE_KW, SyntaxKind::NULL_KW
+        SyntaxKind::INTEGER,
+        SyntaxKind::DECIMAL,
+        SyntaxKind::STRING,
+        SyntaxKind::TRUE_KW,
+        SyntaxKind::FALSE_KW,
+        SyntaxKind::NULL_KW,
     ]) {
         p.bump();
         true
@@ -766,10 +826,10 @@ fn parse_block_expression<P: ExpressionParser>(p: &mut P) {
 fn parse_parenthesized_expression<P: ExpressionParser>(p: &mut P) {
     p.bump(); // (
     p.skip_trivia();
-    
+
     if !p.at(SyntaxKind::R_PAREN) {
         parse_expression(p);
-        
+
         // Check for sequence (comma-separated)
         while p.at(SyntaxKind::COMMA) {
             p.bump();
@@ -778,7 +838,7 @@ fn parse_parenthesized_expression<P: ExpressionParser>(p: &mut P) {
             p.skip_trivia();
         }
     }
-    
+
     p.skip_trivia();
     p.expect(SyntaxKind::R_PAREN);
 }
@@ -787,23 +847,62 @@ fn parse_parenthesized_expression<P: ExpressionParser>(p: &mut P) {
 /// In SysML/KerML, most keywords can also be used as identifiers in expression context
 fn is_feature_reference_token(kind: SyntaxKind) -> bool {
     // Exclude tokens that definitely cannot be names
-    !matches!(kind,
-        SyntaxKind::ERROR | SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT |
-        SyntaxKind::BLOCK_COMMENT | SyntaxKind::L_BRACE | SyntaxKind::R_BRACE |
-        SyntaxKind::L_BRACKET | SyntaxKind::R_BRACKET | SyntaxKind::L_PAREN |
-        SyntaxKind::R_PAREN | SyntaxKind::SEMICOLON | SyntaxKind::COLON |
-        SyntaxKind::COLON_COLON | SyntaxKind::COLON_GT | SyntaxKind::COLON_GT_GT |
-        SyntaxKind::COLON_COLON_GT | SyntaxKind::DOT | SyntaxKind::DOT_DOT |
-        SyntaxKind::COMMA | SyntaxKind::EQ | SyntaxKind::EQ_EQ | SyntaxKind::EQ_EQ_EQ |
-        SyntaxKind::BANG_EQ | SyntaxKind::BANG_EQ_EQ | SyntaxKind::LT | SyntaxKind::GT |
-        SyntaxKind::LT_EQ | SyntaxKind::GT_EQ | SyntaxKind::AT | SyntaxKind::AT_AT |
-        SyntaxKind::HASH | SyntaxKind::STAR | SyntaxKind::STAR_STAR | SyntaxKind::PLUS |
-        SyntaxKind::MINUS | SyntaxKind::SLASH | SyntaxKind::PERCENT | SyntaxKind::CARET |
-        SyntaxKind::AMP | SyntaxKind::AMP_AMP | SyntaxKind::PIPE | SyntaxKind::PIPE_PIPE |
-        SyntaxKind::BANG | SyntaxKind::TILDE | SyntaxKind::QUESTION |
-        SyntaxKind::QUESTION_QUESTION | SyntaxKind::ARROW | SyntaxKind::FAT_ARROW |
-        SyntaxKind::INTEGER | SyntaxKind::DECIMAL | SyntaxKind::STRING |
-        SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NULL_KW
+    !matches!(
+        kind,
+        SyntaxKind::ERROR
+            | SyntaxKind::WHITESPACE
+            | SyntaxKind::LINE_COMMENT
+            | SyntaxKind::BLOCK_COMMENT
+            | SyntaxKind::L_BRACE
+            | SyntaxKind::R_BRACE
+            | SyntaxKind::L_BRACKET
+            | SyntaxKind::R_BRACKET
+            | SyntaxKind::L_PAREN
+            | SyntaxKind::R_PAREN
+            | SyntaxKind::SEMICOLON
+            | SyntaxKind::COLON
+            | SyntaxKind::COLON_COLON
+            | SyntaxKind::COLON_GT
+            | SyntaxKind::COLON_GT_GT
+            | SyntaxKind::COLON_COLON_GT
+            | SyntaxKind::DOT
+            | SyntaxKind::DOT_DOT
+            | SyntaxKind::COMMA
+            | SyntaxKind::EQ
+            | SyntaxKind::EQ_EQ
+            | SyntaxKind::EQ_EQ_EQ
+            | SyntaxKind::BANG_EQ
+            | SyntaxKind::BANG_EQ_EQ
+            | SyntaxKind::LT
+            | SyntaxKind::GT
+            | SyntaxKind::LT_EQ
+            | SyntaxKind::GT_EQ
+            | SyntaxKind::AT
+            | SyntaxKind::AT_AT
+            | SyntaxKind::HASH
+            | SyntaxKind::STAR
+            | SyntaxKind::STAR_STAR
+            | SyntaxKind::PLUS
+            | SyntaxKind::MINUS
+            | SyntaxKind::SLASH
+            | SyntaxKind::PERCENT
+            | SyntaxKind::CARET
+            | SyntaxKind::AMP
+            | SyntaxKind::AMP_AMP
+            | SyntaxKind::PIPE
+            | SyntaxKind::PIPE_PIPE
+            | SyntaxKind::BANG
+            | SyntaxKind::TILDE
+            | SyntaxKind::QUESTION
+            | SyntaxKind::QUESTION_QUESTION
+            | SyntaxKind::ARROW
+            | SyntaxKind::FAT_ARROW
+            | SyntaxKind::INTEGER
+            | SyntaxKind::DECIMAL
+            | SyntaxKind::STRING
+            | SyntaxKind::TRUE_KW
+            | SyntaxKind::FALSE_KW
+            | SyntaxKind::NULL_KW
     )
 }
 
@@ -811,7 +910,7 @@ fn is_feature_reference_token(kind: SyntaxKind) -> bool {
 fn parse_feature_reference<P: ExpressionParser>(p: &mut P) {
     p.parse_qualified_name();
     p.skip_trivia();
-    
+
     // Check for invocation
     if p.at(SyntaxKind::L_PAREN) {
         parse_argument_list(p);
@@ -827,9 +926,9 @@ fn parse_metadata_access<P: ExpressionParser>(p: &mut P) {
 
 pub fn parse_base_expression<P: ExpressionParser>(p: &mut P) {
     p.skip_trivia();
-    
+
     match p.current_kind() {
-        kind if parse_literal(p) => {},
+        kind if parse_literal(p) => {}
         SyntaxKind::NEW_KW => parse_instantiation(p),
         SyntaxKind::L_BRACE => parse_block_expression(p),
         SyntaxKind::L_PAREN => parse_parenthesized_expression(p),
@@ -844,14 +943,14 @@ pub fn parse_base_expression<P: ExpressionParser>(p: &mut P) {
 /// Per pest: argument = { (name ~ "=")? ~ expression } for named arguments
 pub fn parse_argument_list<P: ExpressionParser>(p: &mut P) {
     p.start_node(SyntaxKind::ARGUMENT_LIST);
-    
+
     p.expect(SyntaxKind::L_PAREN);
     p.skip_trivia();
-    
+
     if !p.at(SyntaxKind::R_PAREN) {
         parse_argument_via_trait(p);
         p.skip_trivia();
-        
+
         while p.at(SyntaxKind::COMMA) {
             p.bump();
             p.skip_trivia();
@@ -859,9 +958,9 @@ pub fn parse_argument_list<P: ExpressionParser>(p: &mut P) {
             p.skip_trivia();
         }
     }
-    
+
     p.expect(SyntaxKind::R_PAREN);
-    
+
     p.finish_node();
 }
 
@@ -875,7 +974,7 @@ fn parse_argument_via_trait<P: ExpressionParser>(p: &mut P) {
 /// Argument = (Name '=')? Expression
 pub fn parse_argument<P: ExpressionParser>(p: &mut P) {
     p.start_node(SyntaxKind::ARGUMENT_LIST);
-    
+
     // Check for named argument: name = value
     if p.at(SyntaxKind::IDENT) {
         let next = p.peek_kind(1);
@@ -886,9 +985,9 @@ pub fn parse_argument<P: ExpressionParser>(p: &mut P) {
             p.skip_trivia();
         }
     }
-    
+
     // Parse the expression value
     parse_expression(p);
-    
+
     p.finish_node();
 }

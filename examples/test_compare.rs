@@ -2,7 +2,6 @@ use std::path::Path;
 use syster::base::FileId;
 use syster::hir::extract_symbols_unified;
 #[allow(unused_imports)]
-use syster::syntax::SyntaxFile;
 use syster::syntax::parser::parse_with_result;
 
 fn main() {

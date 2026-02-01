@@ -1,7 +1,7 @@
-use syster::syntax::parser::parse_content;
-use syster::hir::extract_symbols_unified;
-use syster::base::FileId;
 use std::path::Path;
+use syster::base::FileId;
+use syster::hir::extract_symbols_unified;
+use syster::syntax::parser::parse_content;
 
 fn main() {
     let source = r#"package Test {
@@ -12,10 +12,10 @@ fn main() {
         }
     }
 }"#;
-    
+
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
     let symbols = extract_symbols_unified(FileId::new(0), &parse);
-    
+
     println!("=== All symbols ===");
     for sym in &symbols {
         println!("  {} ({:?})", sym.qualified_name, sym.kind);

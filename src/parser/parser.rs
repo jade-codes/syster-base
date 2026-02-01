@@ -3,11 +3,11 @@
 //! Builds a rowan GreenNode tree from tokens.
 //! Supports error recovery and produces a lossless CST.
 
+use super::grammar::kerml::KerMLParser;
+use super::grammar::kerml_expressions::{self, ExpressionParser};
+use super::grammar::sysml::SysMLParser;
 use super::lexer::{Lexer, Token};
 use super::syntax_kind::SyntaxKind;
-use super::grammar::kerml_expressions::{self, ExpressionParser};
-use super::grammar::kerml::KerMLParser;
-use super::grammar::sysml::SysMLParser;
 use rowan::{GreenNode, GreenNodeBuilder, TextRange, TextSize};
 
 /// Parse result containing the green tree and any errors
@@ -22,7 +22,7 @@ impl Parse {
     pub fn syntax(&self) -> super::SyntaxNode {
         super::SyntaxNode::new_root(self.green.clone())
     }
-    
+
     /// Check if parsing succeeded without errors
     pub fn ok(&self) -> bool {
         self.errors.is_empty()
@@ -68,14 +68,14 @@ pub fn kind_to_name(kind: SyntaxKind) -> &'static str {
         SyntaxKind::WHITESPACE => "whitespace",
         SyntaxKind::LINE_COMMENT => "comment",
         SyntaxKind::BLOCK_COMMENT => "comment",
-        
+
         // Literals
         SyntaxKind::IDENT => "identifier",
         SyntaxKind::INTEGER => "integer",
         SyntaxKind::DECIMAL => "number",
         SyntaxKind::STRING => "string",
         SyntaxKind::ERROR => "error",
-        
+
         // Punctuation
         SyntaxKind::SEMICOLON => "';'",
         SyntaxKind::COLON => "':'",
@@ -123,7 +123,7 @@ pub fn kind_to_name(kind: SyntaxKind) -> &'static str {
         SyntaxKind::ARROW => "'->'",
         SyntaxKind::FAT_ARROW => "'=>'",
         SyntaxKind::DOLLAR => "'$'",
-        
+
         // Common keywords - extract text from the enum variant name
         _ => {
             // For keywords, try to extract a user-friendly name
@@ -138,11 +138,13 @@ pub fn kind_to_name(kind: SyntaxKind) -> &'static str {
 }
 
 /// Check if parser debug logging is enabled
+#[allow(dead_code)]
 fn debug_enabled() -> bool {
     std::env::var("SYSTER_PARSER_DEBUG").is_ok()
 }
 
 /// The parser state
+#[allow(dead_code)]
 struct Parser<'a> {
     tokens: &'a [Token<'a>],
     pos: usize,
@@ -163,13 +165,18 @@ impl<'a> Parser<'a> {
             depth: 0,
         }
     }
-    
+
     /// Log a debug message with indentation based on parse depth
+    #[allow(dead_code)]
     fn log(&self, msg: &str) {
         if debug_enabled() {
             let indent = "  ".repeat(self.depth);
             let token_info = if let Some(t) = self.current() {
-                format!("{:?} '{}'", t.kind, t.text.chars().take(20).collect::<String>())
+                format!(
+                    "{:?} '{}'",
+                    t.kind,
+                    t.text.chars().take(20).collect::<String>()
+                )
             } else {
                 "EOF".to_string()
             };
@@ -196,6 +203,7 @@ impl<'a> Parser<'a> {
         self.current().map(|t| t.kind).unwrap_or(SyntaxKind::ERROR)
     }
 
+    #[allow(dead_code)]
     fn current_text(&self) -> &str {
         self.current().map(|t| t.text).unwrap_or("")
     }
@@ -257,7 +265,8 @@ impl<'a> Parser<'a> {
             true
         } else {
             let expected = kind_to_name(kind);
-            let found = self.current()
+            let found = self
+                .current()
                 .map(|t| kind_to_name(t.kind))
                 .unwrap_or("end of file");
             self.error(format!("expected {}, found {}", expected, found));
@@ -272,6 +281,7 @@ impl<'a> Parser<'a> {
     }
 
     /// Skip only whitespace (preserves comments)
+    #[allow(dead_code)]
     fn skip_whitespace_only(&mut self) {
         while self.at(SyntaxKind::WHITESPACE) {
             self.bump();
@@ -283,7 +293,8 @@ impl<'a> Parser<'a> {
     // =========================================================================
 
     fn error(&mut self, message: impl Into<String>) {
-        let range = self.current()
+        let range = self
+            .current()
             .map(|t| TextRange::at(t.offset, TextSize::of(t.text)))
             .unwrap_or_else(|| TextRange::empty(TextSize::new(0)));
         self.errors.push(SyntaxError::new(message, range));
@@ -341,11 +352,9 @@ impl<'a> ExpressionParser for Parser<'a> {
         // In SysML/KerML, certain keywords can be used as identifiers in context
         // (contextual keywords). This includes names like "start", "end", "done" etc.
         // which are common member names in action definitions.
-        matches!(self.current_kind(), 
-            SyntaxKind::IDENT |
-            SyntaxKind::START_KW |
-            SyntaxKind::END_KW |
-            SyntaxKind::DONE_KW
+        matches!(
+            self.current_kind(),
+            SyntaxKind::IDENT | SyntaxKind::START_KW | SyntaxKind::END_KW | SyntaxKind::DONE_KW
         )
     }
 
@@ -405,7 +414,11 @@ impl<'a> KerMLParser for Parser<'a> {
     }
 
     fn skip_trivia_except_block_comments(&mut self) {
-        while self.current().map(|t| t.kind == SyntaxKind::WHITESPACE || t.kind == SyntaxKind::LINE_COMMENT).unwrap_or(false) {
+        while self
+            .current()
+            .map(|t| t.kind == SyntaxKind::WHITESPACE || t.kind == SyntaxKind::LINE_COMMENT)
+            .unwrap_or(false)
+        {
             self.bump();
         }
     }
@@ -477,7 +490,7 @@ impl<'a> SysMLParser for Parser<'a> {
     // -----------------------------------------------------------------
     // Core parsing methods
     // -----------------------------------------------------------------
-    
+
     fn current_token_text(&self) -> Option<&str> {
         self.current().map(|t| t.text)
     }
@@ -491,7 +504,11 @@ impl<'a> SysMLParser for Parser<'a> {
     }
 
     fn skip_trivia_except_block_comments(&mut self) {
-        while self.current().map(|t| t.kind == SyntaxKind::WHITESPACE || t.kind == SyntaxKind::LINE_COMMENT).unwrap_or(false) {
+        while self
+            .current()
+            .map(|t| t.kind == SyntaxKind::WHITESPACE || t.kind == SyntaxKind::LINE_COMMENT)
+            .unwrap_or(false)
+        {
             self.bump();
         }
     }
@@ -516,9 +533,10 @@ impl<'a> SysMLParser for Parser<'a> {
     // -----------------------------------------------------------------
     // SysML-specific methods
     // -----------------------------------------------------------------
-    
+
     fn can_start_expression(&self) -> bool {
-        matches!(self.current_kind(),
+        matches!(
+            self.current_kind(),
             // Literals
             SyntaxKind::INTEGER | SyntaxKind::DECIMAL | SyntaxKind::STRING |
             SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NULL_KW |
@@ -598,7 +616,7 @@ mod tests {
     fn test_parse_simple_package() {
         let result = parse_sysml("package Test;");
         assert!(result.ok(), "errors: {:?}", result.errors);
-        
+
         let root = result.syntax();
         assert_eq!(root.kind(), SyntaxKind::SOURCE_FILE);
     }
@@ -646,37 +664,37 @@ mod tests {
         let result = parse_sysml(source);
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_attribute_with_default() {
         let result = parse_sysml("attribute x : Integer = 42;");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_attribute_with_expression() {
         let result = parse_sysml("attribute y : Real = 3.14 + 2.0;");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_multiplicity() {
         let result = parse_sysml("part engines[2..*] : Engine;");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_function_invocation() {
         let result = parse_sysml("calc result = compute(x, y);");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_conditional_expression() {
         let result = parse_sysml("attribute flag : Boolean = x > 0 ? true : false;");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_comment_about() {
         let source = r#"
@@ -697,7 +715,7 @@ mod tests {
         let result = parse_sysml("attribute x = if a ? 1 else 0;");
         assert!(result.ok(), "errors: {:?}", result.errors);
     }
-    
+
     #[test]
     fn test_parse_nested_if_expression() {
         let result = parse_sysml("attribute x = if a ? 1 else if b ? 2 else 0;");

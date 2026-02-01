@@ -21,60 +21,60 @@ pub enum SyntaxKind {
     // =========================================================================
     // LITERALS
     // =========================================================================
-    IDENT,              // identifier
-    INTEGER,            // 42
-    DECIMAL,            // 3.14
-    STRING,             // "hello" or 'hello'
-    
+    IDENT,   // identifier
+    INTEGER, // 42
+    DECIMAL, // 3.14
+    STRING,  // "hello" or 'hello'
+
     // =========================================================================
     // PUNCTUATION
     // =========================================================================
-    L_BRACE,            // {
-    R_BRACE,            // }
-    L_BRACKET,          // [
-    R_BRACKET,          // ]
-    L_PAREN,            // (
-    R_PAREN,            // )
-    SEMICOLON,          // ;
-    COLON,              // :
-    COLON_COLON,        // ::
-    COLON_GT,           // :>  (specializes/subsets)
-    COLON_GT_GT,        // :>> (redefines)
-    COLON_COLON_GT,     // ::> (references)
-    DOT,                // .
-    DOT_DOT,            // ..
-    COMMA,              // ,
-    EQ,                 // =
-    EQ_EQ,              // ==
-    EQ_EQ_EQ,           // ===
-    BANG_EQ,            // !=
-    BANG_EQ_EQ,         // !==
-    LT,                 // <
-    GT,                 // >
-    LT_EQ,              // <=
-    GT_EQ,              // >=
-    ARROW,              // ->
-    FAT_ARROW,          // =>
-    AT,                 // @
-    AT_AT,              // @@
-    HASH,               // #
-    STAR,               // *
-    STAR_STAR,          // **
-    PLUS,               // +
-    MINUS,              // -
-    SLASH,              // /
-    PERCENT,            // %
-    CARET,              // ^
-    TILDE,              // ~
-    QUESTION,           // ?
-    QUESTION_QUESTION,  // ??
-    BANG,               // !
-    PIPE,               // |
-    AMP,                // &
-    AMP_AMP,            // &&
-    PIPE_PIPE,          // ||
-    COLON_EQ,           // :=
-    DOLLAR,             // $
+    L_BRACE,           // {
+    R_BRACE,           // }
+    L_BRACKET,         // [
+    R_BRACKET,         // ]
+    L_PAREN,           // (
+    R_PAREN,           // )
+    SEMICOLON,         // ;
+    COLON,             // :
+    COLON_COLON,       // ::
+    COLON_GT,          // :>  (specializes/subsets)
+    COLON_GT_GT,       // :>> (redefines)
+    COLON_COLON_GT,    // ::> (references)
+    DOT,               // .
+    DOT_DOT,           // ..
+    COMMA,             // ,
+    EQ,                // =
+    EQ_EQ,             // ==
+    EQ_EQ_EQ,          // ===
+    BANG_EQ,           // !=
+    BANG_EQ_EQ,        // !==
+    LT,                // <
+    GT,                // >
+    LT_EQ,             // <=
+    GT_EQ,             // >=
+    ARROW,             // ->
+    FAT_ARROW,         // =>
+    AT,                // @
+    AT_AT,             // @@
+    HASH,              // #
+    STAR,              // *
+    STAR_STAR,         // **
+    PLUS,              // +
+    MINUS,             // -
+    SLASH,             // /
+    PERCENT,           // %
+    CARET,             // ^
+    TILDE,             // ~
+    QUESTION,          // ?
+    QUESTION_QUESTION, // ??
+    BANG,              // !
+    PIPE,              // |
+    AMP,               // &
+    AMP_AMP,           // &&
+    PIPE_PIPE,         // ||
+    COLON_EQ,          // :=
+    DOLLAR,            // $
 
     // =========================================================================
     // KEYWORDS - SysML v2
@@ -83,7 +83,7 @@ pub enum SyntaxKind {
     PACKAGE_KW,
     LIBRARY_KW,
     STANDARD_KW,
-    
+
     // Import/visibility
     IMPORT_KW,
     ALIAS_KW,
@@ -92,7 +92,7 @@ pub enum SyntaxKind {
     PRIVATE_KW,
     PROTECTED_KW,
     PUBLIC_KW,
-    
+
     // Definition keywords
     DEF_KW,
     ABSTRACT_KW,
@@ -100,7 +100,7 @@ pub enum SyntaxKind {
     PORTION_KW,
     VARIATION_KW,
     VARIANT_KW,
-    
+
     // Structure definitions
     PART_KW,
     ATTRIBUTE_KW,
@@ -109,7 +109,7 @@ pub enum SyntaxKind {
     ITEM_KW,
     OCCURRENCE_KW,
     INDIVIDUAL_KW,
-    
+
     // Port/connection keywords
     PORT_KW,
     CONNECTION_KW,
@@ -118,7 +118,7 @@ pub enum SyntaxKind {
     FLOW_KW,
     ALLOCATION_KW,
     ALLOCATE_KW,
-    
+
     // Behavior keywords
     ACTION_KW,
     STATE_KW,
@@ -130,14 +130,14 @@ pub enum SyntaxKind {
     SEND_KW,
     PERFORM_KW,
     EXHIBIT_KW,
-    
+
     // Message/event keywords
     MESSAGE_KW,
     SNAPSHOT_KW,
     TIMESLICE_KW,
     FRAME_KW,
     EVENT_KW,
-    
+
     // Control flow
     IF_KW,
     ELSE_KW,
@@ -157,7 +157,7 @@ pub enum SyntaxKind {
     PARALLEL_KW,
     ASSIGN_KW,
     CONNECT_KW,
-    
+
     // Action-specific
     BIND_KW,
     NEW_KW,
@@ -166,14 +166,14 @@ pub enum SyntaxKind {
     WHEN_KW,
     VIA_KW,
     THIS_KW,
-    
+
     // Calculation/constraint
     CALC_KW,
     CONSTRAINT_KW,
     ASSERT_KW,
     ASSUME_KW,
     REQUIRE_KW,
-    
+
     // Requirement keywords
     REQUIREMENT_KW,
     SUBJECT_KW,
@@ -183,33 +183,33 @@ pub enum SyntaxKind {
     CONCERN_KW,
     SATISFY_KW,
     VERIFY_KW,
-    
+
     // Case keywords
     CASE_KW,
     ANALYSIS_KW,
     VERIFICATION_KW,
     USE_KW,
     INCLUDE_KW,
-    
+
     // View keywords
     VIEW_KW,
     VIEWPOINT_KW,
     RENDERING_KW,
     RENDER_KW,
     EXPOSE_KW,
-    
+
     // Metadata
     METACLASS_KW,
     METADATA_KW,
     ABOUT_KW,
-    
+
     // Documentation
     DOC_KW,
     COMMENT_KW,
     LANGUAGE_KW,
     LOCALE_KW,
     REP_KW,
-    
+
     // Relationship keywords
     SPECIALIZES_KW,
     SUBSETS_KW,
@@ -233,7 +233,7 @@ pub enum SyntaxKind {
     FEATURING_KW,
     INVERTING_KW,
     OF_KW,
-    
+
     // Standalone relationship keywords
     SPECIALIZATION_KW,
     SUBCLASSIFIER_KW,
@@ -244,7 +244,7 @@ pub enum SyntaxKind {
     CONJUGATION_KW,
     MULTIPLICITY_KW,
     NAMESPACE_KW,
-    
+
     // Feature modifiers
     REF_KW,
     READONLY_KW,
@@ -257,39 +257,39 @@ pub enum SyntaxKind {
     CONST_KW,
     MEMBER_KW,
     RETURN_KW,
-    
+
     // Direction
     IN_KW,
     OUT_KW,
     INOUT_KW,
-    
+
     // Dependency
     DEPENDENCY_KW,
     FROM_KW,
     TO_KW,
-    
+
     // Succession
     SUCCESSION_KW,
-    FIRST_KW_2,  // duplicate handling
-    
+    FIRST_KW_2, // duplicate handling
+
     // Boolean/null
     TRUE_KW,
     FALSE_KW,
     NULL_KW,
-    
+
     // Logical operators
     AND_KW,
     OR_KW,
     NOT_KW,
     XOR_KW,
     IMPLIES_KW,
-    
+
     // Classification
     HASTYPE_KW,
     ISTYPE_KW,
     AS_KW,
     META_KW,
-    
+
     // =========================================================================
     // KEYWORDS - KerML (underlying language)
     // =========================================================================
@@ -314,47 +314,47 @@ pub enum SyntaxKind {
     // =========================================================================
     // Root
     SOURCE_FILE,
-    
+
     // Namespace elements
     PACKAGE,
     LIBRARY_PACKAGE,
     NAMESPACE_BODY,
-    
-    // Member elements  
+
+    // Member elements
     PACKAGE_MEMBER,
     ELEMENT_FILTER_MEMBER,
     RELATIONSHIP_MEMBER,
-    
+
     // Annotations
     COMMENT_ELEMENT,
     DOCUMENTATION,
     TEXTUAL_REP,
     METADATA_USAGE,
     PREFIX_METADATA,
-    
+
     // Import
     IMPORT,
     MEMBERSHIP_IMPORT,
     NAMESPACE_IMPORT,
     FILTER_PACKAGE,
-    
+
     // Alias
     ALIAS_MEMBER,
-    
+
     // Dependencies
     DEPENDENCY,
-    
+
     // Names and references
     NAME,
     SHORT_NAME,
     QUALIFIED_NAME,
     FEATURE_CHAIN,
-    
+
     // Definitions
     DEFINITION,
     DEFINITION_BODY,
     DEFINITION_PREFIX,
-    
+
     // Definition kinds
     PART_DEFINITION,
     ATTRIBUTE_DEFINITION,
@@ -379,12 +379,12 @@ pub enum SyntaxKind {
     VIEWPOINT_DEFINITION,
     RENDERING_DEFINITION,
     METADATA_DEFINITION,
-    
-    // Usages  
+
+    // Usages
     USAGE,
     USAGE_BODY,
     USAGE_PREFIX,
-    
+
     // Usage kinds
     PART_USAGE,
     ATTRIBUTE_USAGE,
@@ -408,7 +408,7 @@ pub enum SyntaxKind {
     VIEW_USAGE,
     VIEWPOINT_USAGE,
     RENDERING_USAGE,
-    
+
     // Relationships
     SPECIALIZATION,
     SUBSETTING,
@@ -416,11 +416,11 @@ pub enum SyntaxKind {
     TYPING,
     FEATURING,
     CONJUGATION,
-    
+
     // Multiplicity
     MULTIPLICITY,
     MULTIPLICITY_RANGE,
-    
+
     // Expressions
     EXPRESSION,
     LITERAL_EXPR,
@@ -432,11 +432,11 @@ pub enum SyntaxKind {
     UNARY_EXPR,
     BRACKET_EXPR,
     ARGUMENT_LIST,
-    
+
     // Body items
     BODY_ITEM,
     MEMBER,
-    
+
     // Additional node types for grammar modules
     ACCEPT_ACTION_USAGE,
     ACTOR_USAGE,
@@ -466,16 +466,16 @@ pub enum SyntaxKind {
     TRANSITION_USAGE,
     WHILE_LOOP_ACTION_USAGE,
     CONSTANT_KW,
-    
+
     // Message/flow from-to clause
     FROM_TO_CLAUSE,
     FROM_TO_SOURCE,
     FROM_TO_TARGET,
-    
+
     // Special
     ERROR,
-    TOMBSTONE,  // For incremental reparsing
-    
+    TOMBSTONE, // For incremental reparsing
+
     #[doc(hidden)]
     __LAST,
 }
@@ -483,22 +483,28 @@ pub enum SyntaxKind {
 impl SyntaxKind {
     /// Check if this is a trivia token (whitespace or comment)
     pub fn is_trivia(self) -> bool {
-        matches!(self, Self::WHITESPACE | Self::LINE_COMMENT | Self::BLOCK_COMMENT)
+        matches!(
+            self,
+            Self::WHITESPACE | Self::LINE_COMMENT | Self::BLOCK_COMMENT
+        )
     }
-    
+
     /// Check if this is a keyword
     pub fn is_keyword(self) -> bool {
         (self as u16) >= (Self::PACKAGE_KW as u16) && (self as u16) <= (Self::INV_KW as u16)
     }
-    
+
     /// Check if this is a punctuation token
     pub fn is_punct(self) -> bool {
         (self as u16) >= (Self::L_BRACE as u16) && (self as u16) <= (Self::PIPE_PIPE as u16)
     }
-    
+
     /// Check if this is a literal
     pub fn is_literal(self) -> bool {
-        matches!(self, Self::IDENT | Self::INTEGER | Self::DECIMAL | Self::STRING)
+        matches!(
+            self,
+            Self::IDENT | Self::INTEGER | Self::DECIMAL | Self::STRING
+        )
     }
 }
 
@@ -536,4 +542,5 @@ impl rowan::Language for SysMLLanguage {
 pub type SyntaxNode = rowan::SyntaxNode<SysMLLanguage>;
 pub type SyntaxToken = rowan::SyntaxToken<SysMLLanguage>;
 pub type SyntaxElement = rowan::SyntaxElement<SysMLLanguage>;
+#[allow(dead_code)]
 pub type SyntaxNodeChildren = rowan::SyntaxNodeChildren<SysMLLanguage>;

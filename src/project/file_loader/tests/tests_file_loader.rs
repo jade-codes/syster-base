@@ -14,8 +14,12 @@ fn test_parse_content_sysml() {
 
     let file = result.unwrap();
     assert!(file.source_file().is_some(), "Should have parsed root");
-    assert!(file.source_file().map(|sf| sf.members().count() > 0).unwrap_or(false), 
-        "Should have parsed elements");
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() > 0)
+            .unwrap_or(false),
+        "Should have parsed elements"
+    );
 }
 
 #[test]
@@ -27,8 +31,7 @@ fn test_parse_content_invalid_syntax() {
     let result = parse_content(content, &path);
     // The rowan parser does error recovery, so it may return Ok with errors
     // Check that it either fails or has errors
-    if result.is_ok() {
-        let file = result.unwrap();
+    if let Ok(file) = result {
         assert!(file.has_errors(), "Should have errors for invalid syntax");
     }
 }
@@ -89,8 +92,12 @@ fn test_load_and_parse_uses_parse_content() {
     assert!(result.is_ok(), "Should load and parse file from disk");
 
     let file = result.unwrap();
-    assert!(file.source_file().map(|sf| sf.members().count() > 0).unwrap_or(false), 
-        "Should have parsed elements");
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() > 0)
+            .unwrap_or(false),
+        "Should have parsed elements"
+    );
 }
 
 #[test]
@@ -133,7 +140,11 @@ fn test_parse_with_result_success() {
     assert_eq!(result.errors.len(), 0);
     assert!(result.content.is_some());
     let file = result.content.unwrap();
-    assert!(file.source_file().map(|sf| sf.members().count() > 0).unwrap_or(false));
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() > 0)
+            .unwrap_or(false)
+    );
 }
 
 #[test]
@@ -145,7 +156,10 @@ fn test_parse_with_result_syntax_error() {
     let result = parse_with_result(content, &path);
 
     // Rowan does error recovery, so we may get a result with errors
-    assert!(result.has_errors(), "Should have errors for incomplete syntax");
+    assert!(
+        result.has_errors(),
+        "Should have errors for incomplete syntax"
+    );
 }
 
 #[test]
@@ -196,5 +210,9 @@ fn test_empty_file_success() {
 
     assert!(result.content.is_some());
     let file = result.content.unwrap();
-    assert!(file.source_file().map(|sf| sf.members().count() == 0).unwrap_or(true));
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() == 0)
+            .unwrap_or(true)
+    );
 }

@@ -1,6 +1,5 @@
-use syster::syntax::parser::parse_content;
-use syster::parser::AstNode;
 use std::path::Path;
+use syster::syntax::parser::parse_content;
 
 fn main() {
     let source = r#"package Test {
@@ -8,9 +7,9 @@ fn main() {
         subject vehicleAlternatives [2] :> vehicle_b;
     }
 }"#;
-    
+
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
-    
+
     // Print the syntax tree
     println!("=== Syntax Tree ===");
     fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {

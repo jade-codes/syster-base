@@ -1,7 +1,7 @@
+use std::path::Path;
 use syster::base::FileId;
 use syster::hir::extract_symbols_unified;
 use syster::syntax::parser::parse_content;
-use std::path::Path;
 
 fn main() {
     let source = r#"use case def MyUseCase {
@@ -12,7 +12,7 @@ fn main() {
 }"#;
     let syntax = parse_content(source, Path::new("test.sysml")).unwrap();
     let symbols = extract_symbols_unified(FileId(1), &syntax);
-    
+
     println!("=== Symbols ===");
     for sym in &symbols {
         println!("  {} ({:?})", sym.qualified_name, sym.kind);
@@ -24,7 +24,13 @@ fn main() {
                         println!("      Simple: {} ({:?})", r.target, r.kind);
                     }
                     syster::hir::TypeRefKind::Chain(c) => {
-                        println!("      Chain: {:?}", c.parts.iter().map(|p| p.target.as_ref()).collect::<Vec<_>>());
+                        println!(
+                            "      Chain: {:?}",
+                            c.parts
+                                .iter()
+                                .map(|p| p.target.as_ref())
+                                .collect::<Vec<_>>()
+                        );
                     }
                 }
             }

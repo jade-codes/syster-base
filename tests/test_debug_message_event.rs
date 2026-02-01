@@ -91,19 +91,17 @@ package TestPkg {
         println!("{}: {}", i, line);
     }
 
-    // Line 6 (0-indexed: 5): event sendSpeed.sourceEvent;
-    // Let's check what cols the typeref covers
-    println!("\n=== Type ref positions for speedSensorPort ===");
+    // Check all anonymous symbols for type_refs that might contain the chain
+    println!("\n=== All type_refs with chains ===");
     for sym in index.all_symbols() {
-        if sym.name.as_ref() == "speedSensorPort" {
-            for trk in &sym.type_refs {
-                if let TypeRefKind::Chain(chain) = trk {
-                    for part in &chain.parts {
-                        println!(
-                            "  Part '{}': line {} cols {}-{}",
-                            part.target, part.start_line, part.start_col, part.end_col
-                        );
-                    }
+        for trk in &sym.type_refs {
+            if let TypeRefKind::Chain(chain) = trk {
+                println!("Symbol: {}", sym.qualified_name);
+                for part in &chain.parts {
+                    println!(
+                        "  Part '{}': line {} cols {}-{} (kind={:?})",
+                        part.target, part.start_line, part.start_col, part.end_col, part.kind
+                    );
                 }
             }
         }

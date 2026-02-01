@@ -1,6 +1,5 @@
-use syster::syntax::parser::parse_content;
-use syster::parser::AstNode;
 use std::path::Path;
+use syster::syntax::parser::parse_content;
 
 fn main() {
     let source = r#"package Test {
@@ -8,9 +7,9 @@ fn main() {
         subject vehicleAlternatives [2] :> vehicle_b;
     }
 }"#;
-    
+
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
-    
+
     // Print the syntax tree with all tokens
     println!("=== Syntax Tree with tokens ===");
     fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {
@@ -20,7 +19,13 @@ fn main() {
             match elem {
                 rowan::NodeOrToken::Node(child) => print_tree(&child, indent + 1),
                 rowan::NodeOrToken::Token(tok) => {
-                    println!("{}  TOKEN {:?} {:?} {:?}", prefix, tok.kind(), tok.text_range(), tok.text());
+                    println!(
+                        "{}  TOKEN {:?} {:?} {:?}",
+                        prefix,
+                        tok.kind(),
+                        tok.text_range(),
+                        tok.text()
+                    );
                 }
             }
         }

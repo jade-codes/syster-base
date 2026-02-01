@@ -1,6 +1,5 @@
-use syster::syntax::parser::parse_content;
-use syster::parser::AstNode;
 use std::path::Path;
+use syster::syntax::parser::parse_content;
 
 fn main() {
     // Simpler case - just subject without specialization
@@ -9,9 +8,9 @@ fn main() {
         subject vehicleAlternatives;
     }
 }"#;
-    
+
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
-    
+
     // Print the syntax tree with all tokens
     println!("=== Simple subject ===");
     fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {

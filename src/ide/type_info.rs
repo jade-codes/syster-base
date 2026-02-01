@@ -86,7 +86,8 @@ pub fn resolve_type_ref_with_chain(
     }
 
     // Fallback: try to resolve at query time from containing scope
-    let scope = ctx.containing_symbol
+    let scope = ctx
+        .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
     let resolver = index.resolver_for_scope(scope);
@@ -102,30 +103,28 @@ pub fn resolve_type_ref_with_chain(
 }
 
 /// Resolve a chain member like `mass` in `fuelTank.mass` by following the chain.
-fn resolve_chain_member(
-    index: &SymbolIndex,
-    ctx: &TypeRefContext<'_>,
-) -> Option<HirSymbol> {
+fn resolve_chain_member(index: &SymbolIndex, ctx: &TypeRefContext<'_>) -> Option<HirSymbol> {
     // Start from the containing symbol's scope
-    let base_scope = ctx.containing_symbol
+    let base_scope = ctx
+        .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
-    
+
     // Resolve the first part of the chain
     let first_part = ctx.chain_prefix.first()?;
     let resolver = index.resolver_for_scope(base_scope);
-    
+
     let mut current_symbol = match resolver.resolve(&first_part.target) {
         ResolveResult::Found(sym) => sym,
         ResolveResult::Ambiguous(syms) => syms.into_iter().next()?,
         ResolveResult::NotFound => return None,
     };
-    
+
     // Follow the chain through types
     for part in ctx.chain_prefix.iter().skip(1) {
         current_symbol = resolve_member_in_type(index, &current_symbol, &part.target)?;
     }
-    
+
     // Finally, resolve the target in the type of the last prefix part
     resolve_member_in_type(index, &current_symbol, &ctx.target_name)
 }
@@ -139,22 +138,26 @@ fn resolve_member_in_type(
 ) -> Option<HirSymbol> {
     // Get the type of the symbol from its supertypes (the first one is usually the type)
     // or from type_refs with TypedBy kind
-    let type_name = symbol.supertypes.first()
-        .or_else(|| {
-            symbol.type_refs.iter()
-                .filter_map(|tr| tr.as_refs().into_iter().next())
-                .find(|tr| matches!(tr.kind, crate::hir::RefKind::TypedBy))
-                .and_then(|tr| tr.resolved_target.as_ref().or(Some(&tr.target)))
-        })?;
-    
+    let type_name = symbol.supertypes.first().or_else(|| {
+        symbol
+            .type_refs
+            .iter()
+            .filter_map(|tr| tr.as_refs().into_iter().next())
+            .find(|tr| matches!(tr.kind, crate::hir::RefKind::TypedBy))
+            .and_then(|tr| tr.resolved_target.as_ref().or(Some(&tr.target)))
+    })?;
+
     // Look up the member in the type's scope
-    let type_symbol = index.lookup_qualified(type_name)
+    let type_symbol = index
+        .lookup_qualified(type_name)
         .or_else(|| index.lookup_definition(type_name))?;
-    
+
     // The member should be qualified as TypeName::memberName
     let member_qualified = format!("{}::{}", type_symbol.qualified_name, member_name);
-    
-    index.lookup_qualified(&member_qualified).cloned()
+
+    index
+        .lookup_qualified(&member_qualified)
+        .cloned()
         .or_else(|| {
             // Try looking in the type's scope with resolver
             let resolver = index.resolver_for_scope(&type_symbol.qualified_name);
@@ -213,11 +216,9 @@ pub fn find_type_ref_at_position(
                     // Collect chain prefix (all parts before the current one)
                     let chain_prefix = match type_ref_kind {
                         TypeRefKind::Simple(_) => Vec::new(),
-                        TypeRefKind::Chain(chain) => {
-                            chain.parts.iter().take(part_idx).collect()
-                        }
+                        TypeRefKind::Chain(chain) => chain.parts.iter().take(part_idx).collect(),
                     };
-                    
+
                     return Some(TypeRefContext {
                         target_name: tr.target.clone(),
                         type_ref: tr,

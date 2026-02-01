@@ -686,12 +686,20 @@ impl ExtractionContext {
     }
 
     /// Convert a TextRange to optional line/col values (for short_name fields)
-    fn range_to_optional(&self, range: Option<rowan::TextRange>) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
+    fn range_to_optional(
+        &self,
+        range: Option<rowan::TextRange>,
+    ) -> (Option<u32>, Option<u32>, Option<u32>, Option<u32>) {
         match range {
             Some(r) => {
                 let start = self.line_index.line_col(r.start());
                 let end = self.line_index.line_col(r.end());
-                (Some(start.line), Some(start.col), Some(end.line), Some(end.col))
+                (
+                    Some(start.line),
+                    Some(start.col),
+                    Some(end.line),
+                    Some(end.col),
+                )
             }
             None => (None, None, None, None),
         }
@@ -791,24 +799,28 @@ fn extract_from_normalized(
                     .scope_filters
                     .push((Arc::from(scope.as_str()), filter.metadata_refs.clone()));
             }
-            
+
             // Create type_refs for all qualified names in the filter expression
             // so hover/go-to-def works on filter terms like `Safety::isMandatory`
             if !filter.all_refs.is_empty() {
-                let type_refs: Vec<TypeRefKind> = filter.all_refs.iter().map(|(name, range)| {
-                    let start = ctx.line_index.line_col(range.start());
-                    let end = ctx.line_index.line_col(range.end());
-                    TypeRefKind::Simple(TypeRef {
-                        target: Arc::from(name.as_str()),
-                        resolved_target: None,
-                        kind: RefKind::Other, // Filter refs are expression-like
-                        start_line: start.line,
-                        start_col: start.col,
-                        end_line: end.line,
-                        end_col: end.col,
+                let type_refs: Vec<TypeRefKind> = filter
+                    .all_refs
+                    .iter()
+                    .map(|(name, range)| {
+                        let start = ctx.line_index.line_col(range.start());
+                        let end = ctx.line_index.line_col(range.end());
+                        TypeRefKind::Simple(TypeRef {
+                            target: Arc::from(name.as_str()),
+                            resolved_target: None,
+                            kind: RefKind::Other, // Filter refs are expression-like
+                            start_line: start.line,
+                            start_col: start.col,
+                            end_line: end.line,
+                            end_col: end.col,
+                        })
                     })
-                }).collect();
-                
+                    .collect();
+
                 // Create an anonymous symbol to hold the type_refs
                 let span = ctx.range_to_info(filter.range);
                 let filter_qname = ctx.qualified_name(&format!("<filter@L{}>", span.start_line));
@@ -1116,7 +1128,8 @@ fn extract_from_normalized_usage(
     let type_refs = extract_type_refs_from_normalized(&usage.relationships, &ctx.line_index);
 
     // Extract all relationships for hover display
-    let relationships = extract_relationships_from_normalized(&usage.relationships, &ctx.line_index);
+    let relationships =
+        extract_relationships_from_normalized(&usage.relationships, &ctx.line_index);
 
     // Extract metadata annotations for filter imports
     let metadata_annotations = extract_metadata_annotations(&usage.relationships, &usage.children);
@@ -1137,7 +1150,9 @@ fn extract_from_normalized_usage(
                     // Only extend TypedBy refs - feature refs would cause false "undefined reference" errors
                     let typing_refs: Vec<_> = type_refs
                         .iter()
-                        .filter(|tr| matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy))
+                        .filter(
+                            |tr| matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy),
+                        )
                         .cloned()
                         .collect();
                     parent.type_refs.extend(typing_refs);
@@ -1146,7 +1161,10 @@ fn extract_from_normalized_usage(
 
             // Generate unique anonymous scope name for children
             // Try to use relationship target for meaningful names, otherwise use generic anon
-            let line = usage.range.map(|r| ctx.line_index.line_col(r.start()).line).unwrap_or(0);
+            let line = usage
+                .range
+                .map(|r| ctx.line_index.line_col(r.start()).line)
+                .unwrap_or(0);
 
             let anon_scope = usage
                 .relationships
@@ -1284,7 +1302,6 @@ fn extract_from_normalized_usage(
             // Push scope for children of anonymous usages
             ctx.push_scope(&anon_scope);
 
-
             // Recurse into children for anonymous usages
             for child in &usage.children {
                 extract_from_normalized_into_symbols(symbols, ctx, child);
@@ -1321,19 +1338,30 @@ fn extract_from_normalized_usage(
     // Here `transport::trigger` implicitly redefines `TransportScenario::trigger`
     if supertypes.is_empty() && !ctx.prefix.is_empty() {
         // Find the parent symbol
-        if let Some(parent) = symbols.iter().rev().find(|s| s.qualified_name.as_ref() == ctx.prefix) {
+        if let Some(parent) = symbols
+            .iter()
+            .rev()
+            .find(|s| s.qualified_name.as_ref() == ctx.prefix)
+        {
             // Check if parent has a type
             if let Some(parent_type) = parent.supertypes.first() {
                 // The parent_type might be unqualified (e.g., "TransportScenario")
                 // We need to find the fully qualified version
-                let parent_type_qualified = symbols.iter()
-                    .find(|s| s.name.as_ref() == parent_type.as_ref() || s.qualified_name.as_ref() == parent_type.as_ref())
+                let parent_type_qualified = symbols
+                    .iter()
+                    .find(|s| {
+                        s.name.as_ref() == parent_type.as_ref()
+                            || s.qualified_name.as_ref() == parent_type.as_ref()
+                    })
                     .map(|s| s.qualified_name.clone());
-                
+
                 if let Some(type_qname) = parent_type_qualified {
                     // Look for a member in the parent's type with the same name
                     let potential_redef = format!("{}::{}", type_qname, name);
-                    if symbols.iter().any(|s| s.qualified_name.as_ref() == potential_redef) {
+                    if symbols
+                        .iter()
+                        .any(|s| s.qualified_name.as_ref() == potential_redef)
+                    {
                         supertypes.push(Arc::from(potential_redef));
                     }
                 }
@@ -1401,7 +1429,7 @@ fn extract_from_normalized_import(
         .strip_suffix("::**")
         .or_else(|| path.strip_suffix("::*"))
         .unwrap_or(path);
-    
+
     let type_refs = if let Some(r) = import.path_range {
         let start = ctx.line_index.line_col(r.start());
         let end = ctx.line_index.line_col(r.end());
@@ -1513,10 +1541,7 @@ fn extract_from_normalized_comment(
             // Use a synthetic name based on the range
             let anon_name = if let Some(r) = comment.range {
                 let pos = ctx.line_index.line_col(r.start());
-                format!(
-                    "<anonymous_comment_{}_{}>",
-                    pos.line, pos.col
-                )
+                format!("<anonymous_comment_{}_{}>", pos.line, pos.col)
             } else {
                 "<anonymous_comment>".to_string()
             };
@@ -1660,7 +1685,10 @@ fn extract_from_normalized_dependency(
 ) {
     // Collect type refs from both sources and targets
     let mut type_refs = extract_type_refs_from_normalized(&dep.sources, &ctx.line_index);
-    type_refs.extend(extract_type_refs_from_normalized(&dep.targets, &ctx.line_index));
+    type_refs.extend(extract_type_refs_from_normalized(
+        &dep.targets,
+        &ctx.line_index,
+    ));
 
     // If dependency has a name, create a symbol for it
     if let Some(name) = &dep.name {

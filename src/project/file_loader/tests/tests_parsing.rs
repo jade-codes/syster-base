@@ -14,7 +14,10 @@ fn test_parse_content_whitespace_only() {
     assert!(result.is_ok());
     let file = result.unwrap();
     // Empty content should have no members
-    assert!(file.source_file().map(|sf| sf.members().count() == 0).unwrap_or(true),
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() == 0)
+            .unwrap_or(true),
         "Whitespace-only file should be empty"
     );
 }
@@ -28,7 +31,10 @@ fn test_parse_content_comment_only() {
     assert!(result.is_ok());
     let file = result.unwrap();
     // Comment-only content should have no namespace members
-    assert!(file.source_file().map(|sf| sf.members().count() == 0).unwrap_or(true),
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() == 0)
+            .unwrap_or(true),
         "Comment-only file should be empty"
     );
 }
@@ -105,8 +111,10 @@ fn test_parse_with_result_multiple_errors() {
 
     // Parser does error recovery, so may succeed partially
     // but should have errors reported
-    assert!(result.has_errors() || !result.errors.is_empty(),
-        "Should report at least one error");
+    assert!(
+        result.has_errors() || !result.errors.is_empty(),
+        "Should report at least one error"
+    );
 }
 
 #[test]
@@ -150,7 +158,11 @@ fn test_load_and_parse_empty_file() {
 
     assert!(result.is_ok());
     let file = result.unwrap();
-    assert!(file.source_file().map(|sf| sf.members().count() == 0).unwrap_or(true));
+    assert!(
+        file.source_file()
+            .map(|sf| sf.members().count() == 0)
+            .unwrap_or(true)
+    );
 }
 
 #[test]
@@ -208,11 +220,16 @@ fn test_parse_content_case_sensitive_keywords() {
 
     // The rowan parser does error recovery, so it may succeed with errors
     // Let's check if it has errors or if it failed to parse properly
-    if result.is_ok() {
-        let file = result.unwrap();
+    if let Ok(file) = result {
         // If it parsed, check that it has errors or failed to recognize the keyword
-        assert!(file.has_errors() || file.source_file().map(|sf| sf.members().count() == 0).unwrap_or(true),
-            "Keywords should be case-sensitive");
+        assert!(
+            file.has_errors()
+                || file
+                    .source_file()
+                    .map(|sf| sf.members().count() == 0)
+                    .unwrap_or(true),
+            "Keywords should be case-sensitive"
+        );
     }
 }
 

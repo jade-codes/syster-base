@@ -1,7 +1,7 @@
-use syster::syntax::parser::parse_content;
-use syster::hir::extract_symbols_unified;
-use syster::base::FileId;
 use std::path::Path;
+use syster::base::FileId;
+use syster::hir::extract_symbols_unified;
+use syster::syntax::parser::parse_content;
 
 fn main() {
     let source = r#"package Test {
@@ -13,10 +13,10 @@ fn main() {
         part cylinder1 subsets cylinders[1];
     }
 }"#;
-    
+
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
     let symbols = extract_symbols_unified(FileId::new(0), &parse);
-    
+
     for sym in &symbols {
         if sym.name.contains("cylinder") {
             println!("\n=== Symbol: {} ===", sym.name);
@@ -26,7 +26,7 @@ fn main() {
             }
         }
     }
-    
+
     // Print the source with line/col markers
     println!("\n=== Source with positions ===");
     for (line_num, line) in source.lines().enumerate() {

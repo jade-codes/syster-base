@@ -12,6 +12,6 @@ pub mod kerml;
 pub mod kerml_expressions;
 pub mod sysml;
 
-pub use kerml_expressions::ExpressionParser;
 pub use kerml::{KerMLParser, parse_kerml_file, parse_namespace_element};
+pub use kerml_expressions::ExpressionParser;
 pub use sysml::SysMLParser;

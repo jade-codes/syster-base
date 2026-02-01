@@ -30,17 +30,19 @@
 //! 2. Reparse only that subtree
 //! 3. Reuse unchanged green nodes (they're immutable and cheap to share)
 
-mod syntax_kind;
-mod lexer;
+#[allow(clippy::module_inception)]
 mod parser;
+
 pub mod ast;
 pub mod grammar;
 pub mod keywords;
+mod lexer;
+mod syntax_kind;
 
-pub use syntax_kind::{SyntaxKind, SysMLLanguage, SyntaxNode, SyntaxToken, SyntaxElement};
-pub use lexer::{Lexer, Token};
-pub use parser::{parse_sysml, parse_kerml, Parse, SyntaxError};
 pub use ast::*;
+pub use lexer::{Lexer, Token};
+pub use parser::{Parse, SyntaxError, parse_kerml, parse_sysml};
+pub use syntax_kind::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, SysMLLanguage};
 
 /// Re-export rowan types for convenience
 pub use rowan::{GreenNode, TextRange, TextSize};

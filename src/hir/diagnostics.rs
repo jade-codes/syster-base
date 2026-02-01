@@ -869,8 +869,8 @@ mod tests {
 
     #[test]
     fn test_semantic_checker_undefined_reference() {
-        use crate::hir::symbols::{TypeRef, TypeRefKind, RefKind};
-        
+        use crate::hir::symbols::{RefKind, TypeRef, TypeRefKind};
+
         let mut index = SymbolIndex::new();
 
         // Add a symbol that references a non-existent type via type_refs
@@ -878,7 +878,10 @@ mod tests {
         symbol.type_refs = vec![TypeRefKind::Simple(TypeRef::new(
             "NonExistent",
             RefKind::TypedBy,
-            0, 0, 0, 11,
+            0,
+            0,
+            0,
+            11,
         ))];
 
         index.add_file(FileId::new(0), vec![symbol]);

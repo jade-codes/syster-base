@@ -11,14 +11,14 @@ fn main() {
         }
     }
 }";
-    
+
     let mut host = AnalysisHost::new();
     let _errors = host.set_file_content("test.sysml", source);
-    
+
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
     let index = analysis.symbol_index();
-    
+
     println!("=== SYMBOLS ===");
     for sym in index.symbols_in_file(file_id) {
         println!("{} ({:?})", sym.qualified_name, sym.kind);

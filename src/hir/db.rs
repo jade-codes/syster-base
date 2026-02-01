@@ -137,7 +137,7 @@ pub fn parse_file(db: &dyn salsa::Database, file_text: FileText) -> ParseResult 
 
     // Parse using the rowan parser via SyntaxFile
     let syntax_file = SyntaxFile::new(text, FileExtension::SysML);
-    
+
     if syntax_file.has_errors() {
         let errors: Vec<String> = syntax_file
             .errors()
@@ -225,10 +225,7 @@ mod tests {
         let symbols = file_symbols(file, &syntax_file);
 
         // Should have symbols extracted
-        assert!(
-            !symbols.is_empty(),
-            "Expected symbols, got empty"
-        );
+        assert!(!symbols.is_empty(), "Expected symbols, got empty");
 
         // Find the Vehicle package
         let vehicle = symbols.iter().find(|s| s.name.as_ref() == "Vehicle");

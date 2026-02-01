@@ -22,7 +22,10 @@ fn print_symbols(host: &mut AnalysisHost) {
     let index = analysis.symbol_index();
     println!("\n--- SYMBOLS ---");
     for sym in index.symbols_in_file(file_id) {
-        println!("  {} ({:?}) line {}-{}", sym.qualified_name, sym.kind, sym.start_line, sym.end_line);
+        println!(
+            "  {} ({:?}) line {}-{}",
+            sym.qualified_name, sym.kind, sym.start_line, sym.end_line
+        );
         for (i, tr) in sym.type_refs.iter().enumerate() {
             println!("    type_ref[{}]: {:?}", i, tr);
         }
@@ -53,17 +56,23 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 12: bind shaftPort_d = differential.shaftPort_d;
     // Test hover on first shaftPort_d (bind target)
     let hover = has_hover_at(&mut host, 12, 17);
     println!("\nHover on first 'shaftPort_d': {:?}", hover);
-    assert!(hover.is_some(), "Expected hover on bind target 'shaftPort_d'");
-    assert!(hover.as_ref().unwrap().contains("shaftPort_d"), 
-        "Hover should mention shaftPort_d, got: {}", hover.unwrap());
+    assert!(
+        hover.is_some(),
+        "Expected hover on bind target 'shaftPort_d'"
+    );
+    assert!(
+        hover.as_ref().unwrap().contains("shaftPort_d"),
+        "Hover should mention shaftPort_d, got: {}",
+        hover.unwrap()
+    );
 }
 
 // =============================================================================
@@ -88,22 +97,28 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 10: in item fuelCmd : FuelCmd redefines pwrCmd;
     // Test hover on 'pwrCmd' after redefines
     let hover = has_hover_at(&mut host, 10, 48);
     println!("\nHover on 'pwrCmd': {:?}", hover);
-    assert!(hover.is_some(), "Expected hover on redefines target 'pwrCmd'");
+    assert!(
+        hover.is_some(),
+        "Expected hover on redefines target 'pwrCmd'"
+    );
     // Should resolve to PwrCmdPort::pwrCmd, not FuelCmd
-    assert!(hover.as_ref().unwrap().contains("pwrCmd"), 
-        "Hover should mention pwrCmd, got: {}", hover.unwrap());
+    assert!(
+        hover.as_ref().unwrap().contains("pwrCmd"),
+        "Hover should mention pwrCmd, got: {}",
+        hover.unwrap()
+    );
 }
 
 // =============================================================================
-// PATTERN 3: "specializes (:>>)" - shorthand redefines (113 occurrences)  
+// PATTERN 3: "specializes (:>>)" - shorthand redefines (113 occurrences)
 // Line 479: attribute spatialCF: CartesianSpatial3dCoordinateFrame[1] { :>> mRefs = (m, m, m); }
 // Target: 'mRefs' at col 80-85
 // =============================================================================
@@ -121,17 +136,20 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 7: attribute spatialCF : CoordinateFrame { :>> mRefs = 1; }
     // Test hover on 'mRefs' after :>>
     let hover = has_hover_at(&mut host, 7, 52);
     println!("\nHover on 'mRefs': {:?}", hover);
     assert!(hover.is_some(), "Expected hover on :>> target 'mRefs'");
-    assert!(hover.as_ref().unwrap().contains("mRefs"), 
-        "Hover should mention mRefs, got: {}", hover.unwrap());
+    assert!(
+        hover.as_ref().unwrap().contains("mRefs"),
+        "Hover should mention mRefs, got: {}",
+        hover.unwrap()
+    );
 }
 
 // =============================================================================
@@ -153,24 +171,36 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 7: transition initial then off;
     // Test hover on 'initial'
     let hover1 = has_hover_at(&mut host, 7, 21);
     println!("\nHover on 'initial': {:?}", hover1);
-    assert!(hover1.is_some(), "Expected hover on transition source 'initial'");
-    assert!(hover1.as_ref().unwrap().contains("initial"), 
-        "Hover should mention initial, got: {}", hover1.unwrap());
-    
+    assert!(
+        hover1.is_some(),
+        "Expected hover on transition source 'initial'"
+    );
+    assert!(
+        hover1.as_ref().unwrap().contains("initial"),
+        "Hover should mention initial, got: {}",
+        hover1.unwrap()
+    );
+
     // Test hover on 'off'
     let hover2 = has_hover_at(&mut host, 7, 33);
     println!("\nHover on 'off': {:?}", hover2);
-    assert!(hover2.is_some(), "Expected hover on transition target 'off'");
-    assert!(hover2.as_ref().unwrap().contains("off"), 
-        "Hover should mention off, got: {}", hover2.unwrap());
+    assert!(
+        hover2.is_some(),
+        "Expected hover on transition target 'off'"
+    );
+    assert!(
+        hover2.as_ref().unwrap().contains("off"),
+        "Hover should mention off, got: {}",
+        hover2.unwrap()
+    );
 }
 
 // =============================================================================
@@ -201,20 +231,26 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 12: if ignitionCmd.ignitionOnOff == 1
     // Test hover on 'ignitionCmd'
     let hover1 = has_hover_at(&mut host, 12, 18);
     println!("\nHover on 'ignitionCmd': {:?}", hover1);
-    assert!(hover1.is_some(), "Expected hover on expression 'ignitionCmd'");
-    
+    assert!(
+        hover1.is_some(),
+        "Expected hover on expression 'ignitionCmd'"
+    );
+
     // Test hover on 'ignitionOnOff' (chain member)
     let hover2 = has_hover_at(&mut host, 12, 32);
     println!("\nHover on 'ignitionOnOff': {:?}", hover2);
-    assert!(hover2.is_some(), "Expected hover on chain member 'ignitionOnOff'");
+    assert!(
+        hover2.is_some(),
+        "Expected hover on chain member 'ignitionOnOff'"
+    );
 }
 
 // =============================================================================
@@ -241,10 +277,10 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 11: connect lugNutPort ::> lugNutCompositePort.lugNutPort to shankPort;
     // Test hover on 'lugNutPort' after ::>
     let hover = has_hover_at(&mut host, 11, 36);
@@ -271,17 +307,23 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 7: action driverGetInVehicle subsets getInVehicle_a;
     // Test hover on 'getInVehicle_a'
     let hover = has_hover_at(&mut host, 7, 46);
     println!("\nHover on 'getInVehicle_a': {:?}", hover);
-    assert!(hover.is_some(), "Expected hover on subsets target 'getInVehicle_a'");
-    assert!(hover.as_ref().unwrap().contains("getInVehicle_a"), 
-        "Hover should mention getInVehicle_a, got: {}", hover.unwrap());
+    assert!(
+        hover.is_some(),
+        "Expected hover on subsets target 'getInVehicle_a'"
+    );
+    assert!(
+        hover.as_ref().unwrap().contains("getInVehicle_a"),
+        "Hover should mention getInVehicle_a, got: {}",
+        hover.unwrap()
+    );
 }
 
 // =============================================================================
@@ -304,16 +346,16 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 7: first start then middle;
     // Test hover on 'start'
     let hover1 = has_hover_at(&mut host, 7, 17);
     println!("\nHover on 'start': {:?}", hover1);
     assert!(hover1.is_some(), "Expected hover on first source 'start'");
-    
+
     // Test hover on 'middle'
     let hover2 = has_hover_at(&mut host, 7, 28);
     println!("\nHover on 'middle': {:?}", hover2);
@@ -337,15 +379,18 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 5: assume constraint { assumedCargoMass <= 500; }
     // Test hover on 'assumedCargoMass'
     let hover = has_hover_at(&mut host, 5, 32);
     println!("\nHover on 'assumedCargoMass': {:?}", hover);
-    assert!(hover.is_some(), "Expected hover on constraint expression 'assumedCargoMass'");
+    assert!(
+        hover.is_some(),
+        "Expected hover on constraint expression 'assumedCargoMass'"
+    );
 }
 
 // =============================================================================
@@ -376,15 +421,15 @@ package TestPkg {
     }
 }
 "#;
-    
+
     let mut host = create_analysis(source);
     print_symbols(&mut host);
-    
+
     // Line 15: accept when senseTemperature.temp > Tmax
     // Test hover on 'senseTemperature'
     let hover1 = has_hover_at(&mut host, 15, 27);
     println!("\nHover on 'senseTemperature': {:?}", hover1);
-    
+
     // Test hover on 'temp' (chain member)
     let hover2 = has_hover_at(&mut host, 15, 44);
     println!("\nHover on 'temp': {:?}", hover2);

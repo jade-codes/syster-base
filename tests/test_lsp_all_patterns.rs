@@ -35,7 +35,7 @@ fn test_bind_lhs_port() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // bind shaftPort_d at line 5, col ~13
     let hover = has_hover_at(&mut host, 5, 14);
     println!("bind LHS shaftPort_d hover: {:?}", hover);
@@ -74,7 +74,7 @@ fn test_redefines_unqualified_item() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // redefines fuel at line 4, col ~26
     let hover = has_hover_at(&mut host, 4, 27);
     println!("redefines fuel hover: {:?}", hover);
@@ -94,7 +94,7 @@ fn test_redefines_nested_attribute() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
@@ -109,8 +109,8 @@ fn test_redefines_nested_attribute() {
         }
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // redefines fuelMass at line 6 - find correct column from debug
     let hover = has_hover_at(&mut host, 6, 33);
     println!("nested redefines fuelMass hover: {:?}", hover);
@@ -131,7 +131,7 @@ fn test_specializes_nested_attribute() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // :>> mRefs at line 3, col ~52
     let hover = has_hover_at(&mut host, 3, 53);
     println!(":>> mRefs hover: {:?}", hover);
@@ -148,7 +148,7 @@ fn test_specializes_requirement() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // :>> torqueReq at line 4
     let hover = has_hover_at(&mut host, 4, 40);
     println!(":>> torqueReq hover: {:?}", hover);
@@ -173,7 +173,7 @@ fn test_expression_feature_chain() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // ignitionCmd at line 6
     let hover = has_hover_at(&mut host, 6, 40);
     println!("if ignitionCmd hover: {:?}", hover);
@@ -215,7 +215,7 @@ fn test_transition_then_target() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
@@ -228,8 +228,8 @@ fn test_transition_then_target() {
         }
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // then off at line 3, col 24-27 (based on type_ref debug)
     let hover = has_hover_at(&mut host, 3, 25);
     println!("then off hover: {:?}", hover);
@@ -248,7 +248,7 @@ fn test_transition_first_then() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug: print type_refs to find correct columns
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
@@ -263,8 +263,8 @@ fn test_transition_first_then() {
         }
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // Check hover for 'off' and 'starting' based on type_ref columns
     let hover_off = has_hover_at(&mut host, 5, 32);
     println!("first off hover: {:?}", hover_off);
@@ -292,7 +292,7 @@ fn test_featured_by_connect() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // ::> comp at line 6, col ~25
     let hover = has_hover_at(&mut host, 6, 26);
     println!("::> comp hover: {:?}", hover);
@@ -309,7 +309,7 @@ fn test_featured_by_simple() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // ::> p1 at line 4, col ~28
     let hover = has_hover_at(&mut host, 4, 29);
     println!("::> p1 hover: {:?}", hover);
@@ -335,7 +335,7 @@ fn test_subsets_action() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
@@ -350,7 +350,12 @@ fn test_subsets_action() {
     }
     // Debug visibility for key scopes
     println!("\n--- VISIBILITY MAP ---");
-    for scope in &["P::transport", "P::transport::trigger", "P::transport::trigger::a", "P::TransportScenario::trigger"] {
+    for scope in &[
+        "P::transport",
+        "P::transport::trigger",
+        "P::transport::trigger::a",
+        "P::TransportScenario::trigger",
+    ] {
         if let Some(vis) = index.visibility_for_scope(scope) {
             println!("{} visible: {:?}", scope, vis.lookup("getInVehicle_a"));
         } else {
@@ -358,8 +363,8 @@ fn test_subsets_action() {
         }
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // subsets getInVehicle_a at line 7
     let hover = has_hover_at(&mut host, 7, 53);
     println!("subsets getInVehicle_a hover: {:?}", hover);
@@ -375,14 +380,17 @@ fn test_subsets_inherited() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug: print symbol structure
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
     let index = analysis.symbol_index();
     println!("\n--- DEBUG SYMBOLS (file_id={:?}) ---", file_id);
     for sym in index.symbols_in_file(file_id) {
-        println!("{} ({:?}) file={:?}", sym.qualified_name, sym.kind, sym.file);
+        println!(
+            "{} ({:?}) file={:?}",
+            sym.qualified_name, sym.kind, sym.file
+        );
         println!("  supertypes: {:?}", sym.supertypes);
         for (i, tr) in sym.type_refs.iter().enumerate() {
             println!("  type_ref[{}]: {:?}", i, tr);
@@ -393,8 +401,8 @@ fn test_subsets_inherited() {
         println!("  {} file={:?}", sym.qualified_name, sym.file);
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // subsets step1 at line 3
     let hover = has_hover_at(&mut host, 3, 32);
     println!("subsets step1 hover: {:?}", hover);
@@ -416,7 +424,7 @@ fn test_constraint_assert() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // fuelConstraint at line 4
     let hover = has_hover_at(&mut host, 4, 30);
     println!("constraint fuelConstraint hover: {:?}", hover);
@@ -434,11 +442,14 @@ fn test_constraint_assume() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // assumedCargoMass in constraint at line 4
     let hover = has_hover_at(&mut host, 4, 35);
     println!("assumedCargoMass hover: {:?}", hover);
-    assert!(hover.is_some(), "assumedCargoMass in constraint should resolve");
+    assert!(
+        hover.is_some(),
+        "assumedCargoMass in constraint should resolve"
+    );
 }
 
 // ==============================================================================
@@ -458,7 +469,7 @@ fn test_first_join_then_action() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // join1 at line 5, col ~14
     let hover_join = has_hover_at(&mut host, 5, 15);
     println!("first join1 hover: {:?}", hover_join);
@@ -484,7 +495,7 @@ fn test_first_fork_join() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // f1 at line 6, col ~14
     let hover_f1 = has_hover_at(&mut host, 6, 15);
     println!("first f1 hover: {:?}", hover_f1);
@@ -513,7 +524,7 @@ fn test_accept_when_chain() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // senseTemp at line 7
     let hover_sense = has_hover_at(&mut host, 7, 50);
     println!("accept senseTemp hover: {:?}", hover_sense);
@@ -537,7 +548,7 @@ fn test_accept_port() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // Debug
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
@@ -552,8 +563,8 @@ fn test_accept_port() {
         }
     }
     println!("--- END DEBUG ---\n");
-    drop(analysis);
-    
+    // analysis goes out of scope here
+
     // accept sig at line 6 - find correct column from debug
     let hover = has_hover_at(&mut host, 6, 38);
     println!("accept sig hover: {:?}", hover);
@@ -573,7 +584,7 @@ fn test_inheritance_feature_resolution() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // redefines mass at line 3
     let hover = has_hover_at(&mut host, 3, 30);
     println!("redefines mass hover: {:?}", hover);
@@ -589,7 +600,7 @@ fn test_deep_inheritance() {
     part c : C;
 }";
     let mut host = create_analysis(source);
-    
+
     // Check C inherits x, y, z - verify c has ref to C
     let hover = has_hover_at(&mut host, 4, 14);
     println!("c : C hover: {:?}", hover);
@@ -612,11 +623,14 @@ fn test_nested_scope_resolution() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // outerAttr at line 5
     let hover = has_hover_at(&mut host, 5, 42);
     println!("outerAttr from deepest hover: {:?}", hover);
-    assert!(hover.is_some(), "outerAttr should resolve from nested scope");
+    assert!(
+        hover.is_some(),
+        "outerAttr should resolve from nested scope"
+    );
 }
 
 #[test]
@@ -629,7 +643,7 @@ fn test_sibling_resolution() {
     }
 }";
     let mut host = create_analysis(source);
-    
+
     // sibling1 at line 4
     let hover1 = has_hover_at(&mut host, 4, 14);
     println!("bind sibling1 hover: {:?}", hover1);

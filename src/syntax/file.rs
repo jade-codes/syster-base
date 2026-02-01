@@ -4,7 +4,7 @@
 //! from the rowan-based parser.
 
 use crate::base::LineIndex;
-use crate::parser::{parse_sysml, parse_kerml, AstNode, NamespaceMember, Parse, SourceFile};
+use crate::parser::{AstNode, NamespaceMember, Parse, SourceFile, parse_kerml, parse_sysml};
 
 /// A parsed syntax file that wraps a rowan Parse result.
 ///
@@ -42,10 +42,7 @@ impl SyntaxFile {
             FileExtension::SysML => parse_sysml(source),
             FileExtension::KerML => parse_kerml(source),
         };
-        Self {
-            parse,
-            extension,
-        }
+        Self { parse, extension }
     }
 
     /// Create a SysML syntax file

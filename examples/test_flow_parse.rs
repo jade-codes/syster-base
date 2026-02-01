@@ -1,4 +1,4 @@
-use syster::parser::{parse_sysml, NamespaceMember, AstNode};
+use syster::parser::{AstNode, NamespaceMember, parse_sysml};
 
 fn main() {
     let source = r#"package PictureTaking {
@@ -16,7 +16,7 @@ fn main() {
 
     let tree = parse_sysml(source);
     println!("Parse errors: {:?}", tree.errors);
-    
+
     // Find the flow statement
     for root_node in tree.syntax().children() {
         if let Some(member) = NamespaceMember::cast(root_node) {
@@ -40,28 +40,44 @@ fn main() {
                                     if let NamespaceMember::Usage(inner_usage) = &inner {
                                         let uname = inner_usage.name().and_then(|n| n.text());
                                         println!("        Inner usage name: {:?}", uname);
-                                        
+
                                         // Debug: print the raw syntax tree
                                         if uname.is_none() {
-                                            println!("        RAW SYNTAX: {:?}", inner_usage.syntax());
-                                            for child in inner_usage.syntax().children_with_tokens() {
+                                            println!(
+                                                "        RAW SYNTAX: {:?}",
+                                                inner_usage.syntax()
+                                            );
+                                            for child in inner_usage.syntax().children_with_tokens()
+                                            {
                                                 println!("          child: {:?}", child);
                                             }
                                         }
-                                        
+
                                         // Check for from_to_clause on the anonymous flow
                                         if let Some(ftc) = inner_usage.from_to_clause() {
                                             println!("        FROM TO: {:?}", ftc.syntax());
                                             if let Some(src) = ftc.source() {
-                                                println!("          Source: {:?}", src.target().map(|t| t.to_string()));
+                                                println!(
+                                                    "          Source: {:?}",
+                                                    src.target().map(|t| t.to_string())
+                                                );
                                                 if let Some(qn) = src.target() {
-                                                    println!("          Source segments_with_ranges: {:?}", qn.segments_with_ranges());
+                                                    println!(
+                                                        "          Source segments_with_ranges: {:?}",
+                                                        qn.segments_with_ranges()
+                                                    );
                                                 }
                                             }
                                             if let Some(tgt) = ftc.target() {
-                                                println!("          Target: {:?}", tgt.target().map(|t| t.to_string()));
+                                                println!(
+                                                    "          Target: {:?}",
+                                                    tgt.target().map(|t| t.to_string())
+                                                );
                                                 if let Some(qn) = tgt.target() {
-                                                    println!("          Target segments_with_ranges: {:?}", qn.segments_with_ranges());
+                                                    println!(
+                                                        "          Target segments_with_ranges: {:?}",
+                                                        qn.segments_with_ranges()
+                                                    );
                                                 }
                                             }
                                         } else {

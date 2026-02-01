@@ -18,13 +18,13 @@ fn main() {
         then done;
     }
 }"#;
-    
+
     use syster::syntax::file::FileExtension;
     let syntax_file = syster::syntax::SyntaxFile::new(source, FileExtension::SysML);
-    
+
     // Extract symbols
     let symbols = syster::hir::extract_symbols_unified(syster::FileId(0), &syntax_file);
-    
+
     println!("=== EXTRACTED SYMBOLS ===");
     for sym in &symbols {
         println!("  {} ({:?})", sym.qualified_name, sym.kind);
