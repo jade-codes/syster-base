@@ -247,12 +247,14 @@ fn keyword_completions() -> Vec<CompletionItem> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(0),
             start_line: 0,
@@ -268,6 +270,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         }
     }

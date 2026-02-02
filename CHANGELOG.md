@@ -5,6 +5,53 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3-alpha] - 2026-01-29
+
+### Fixed
+
+- **Interchange Module**: Added missing `metadata_annotations` field to `HirSymbol` construction in `integrate.rs`, fixing compilation when using the `interchange` feature
+
+## [0.2.2-alpha] - 2026-01-29
+
+### Added
+
+- **SysML v2 Views Support** (Section 7.26):
+  - `ViewDefinition` — Represents `view def` with expose relationships, filter conditions, and rendering specs
+  - `ViewUsage` — Represents `view` usages with inherited and local filters
+  - `ViewpointDefinition` / `ViewpointUsage` — Stakeholder concern definitions
+  - `RenderingDefinition` / `RenderingUsage` — View artifact rendering specifications
+  - `ExposeRelationship` — Models `expose` relationships with wildcard support (`::*`, `::**`)
+  - `FilterCondition` — Metadata-based filtering (`@SysML::PartUsage`)
+  - `WildcardKind` — Direct (`::*`) vs Recursive (`::**`) expose patterns
+
+- **View Application Engine**:
+  - `ViewDefinition::apply()` — Apply view to symbols, returning filtered results
+  - `ExposeRelationship::resolve()` — Resolve expose patterns to matching qualified names
+  - `FilterCondition::matches()` — Evaluate metadata filters against symbol annotations
+  - `ViewDefinition::passes_filters()` — Check if metadata passes all filter conditions (AND logic)
+
+- **Filter Import Evaluation** (SysML v2 §7.5.4):
+  - `metadata_annotations` field on `HirSymbol` — Tracks applied metadata types
+  - `ExtractionResult` — Returns symbols + scope filters + import filters
+  - `extract_with_filters()` — Unified extraction that captures filter metadata
+  - `add_extraction_result()` on `SymbolIndex` — Adds symbols and registers filters
+  - Bracket syntax support: `import X::*[@Safety]` filters by metadata
+  - Package-level `filter @Type;` statements restrict wildcard imports
+
+- **Normalized Layer Extensions**:
+  - `NormalizedFilter<'a>` — Represents filter statements with metadata references
+  - `NormalizedExpose<'a>` — Represents expose relationships in views
+  - `NormalizedElement::Filter` and `NormalizedElement::Expose` variants
+
+- **View-specific HIR Data**:
+  - `HirSymbol.view_data: Option<ViewData>` — Stores view-related data for view symbols
+  - `ViewData` enum — Discriminated union for all view-related types
+
+### Changed
+
+- **Symbol Extraction**: Now preserves Filter and Expose elements from normalized layer
+- **Analysis Host**: Uses `add_extraction_result()` to properly register scope and import filters
+
 ## [0.2.1-alpha] - 2026-01-24
 
 ### Added

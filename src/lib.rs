@@ -38,6 +38,10 @@ pub mod ide;
 /// Project management: workspace loading, stdlib
 pub mod project;
 
+/// Model interchange formats: XMI, KPAR, JSON-LD
+#[cfg(feature = "interchange")]
+pub mod interchange;
+
 // ============================================================================
 // BACKWARDS COMPATIBILITY - `core` re-exports for syster-lsp migration
 // ============================================================================

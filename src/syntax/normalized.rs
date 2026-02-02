@@ -94,6 +94,7 @@ pub enum NormalizedElement {
     Comment(NormalizedComment),
     Dependency(NormalizedDependency),
     Filter(NormalizedFilter),
+    Expose(NormalizedExpose),
 }
 
 /// A normalized package with its children.
@@ -196,6 +197,16 @@ pub struct NormalizedFilter {
     pub range: Option<TextRange>,
 }
 
+/// A normalized expose statement for views (e.g., `expose Vehicle::*;`).
+#[derive(Debug, Clone)]
+pub struct NormalizedExpose {
+    /// The import path
+    pub import_path: String,
+    /// Whether this is a recursive expose (e.g., `Vehicle::**`)
+    pub is_recursive: bool,
+    pub range: Option<TextRange>,
+}
+
 // ============================================================================
 // Normalized Kind Enums
 // ============================================================================
@@ -261,6 +272,10 @@ pub enum NormalizedUsageKind {
     Join,
     Merge,
     Decide,
+    // View-related
+    View,
+    Viewpoint,
+    Rendering,
     // KerML: features are treated as usages
     Feature,
     // Fallback

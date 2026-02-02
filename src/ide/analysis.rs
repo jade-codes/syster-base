@@ -19,6 +19,7 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::base::FileId;
 use crate::hir::{SymbolIndex, extract_with_filters};
@@ -33,6 +34,7 @@ use super::{
 ///
 /// Apply changes via `set_file_content()` and `remove_file()`,
 /// then get a consistent snapshot via `analysis()`.
+#[derive(Clone)]
 pub struct AnalysisHost {
     /// Parsed files stored directly (no Workspace dependency)
     files: HashMap<PathBuf, SyntaxFile>,
@@ -48,6 +50,9 @@ pub struct AnalysisHost {
     removed_files: HashSet<PathBuf>,
     /// Whether we need a full rebuild (e.g., first build)
     needs_full_rebuild: bool,
+    /// Persistent cache: qualified_name → element_id
+    /// Preserves IDs even when symbols are temporarily removed
+    element_id_cache: HashMap<Arc<str>, Arc<str>>,
 }
 
 impl Default for AnalysisHost {
@@ -67,6 +72,7 @@ impl AnalysisHost {
             dirty_files: HashSet::new(),
             removed_files: HashSet::new(),
             needs_full_rebuild: true, // First analysis needs full build
+            element_id_cache: HashMap::new(),
         }
     }
 
@@ -161,6 +167,16 @@ impl AnalysisHost {
 
     /// Full rebuild - used on first load or when structure changes significantly
     fn full_rebuild(&mut self) {
+        // First, update cache with all current symbols' IDs
+        for symbol in self.symbol_index.all_symbols() {
+            if !symbol.element_id.as_ref().is_empty()
+                && !symbol.element_id.starts_with("00000000-0000-0000-0000")
+            {
+                self.element_id_cache
+                    .insert(symbol.qualified_name.clone(), symbol.element_id.clone());
+            }
+        }
+
         // Build file ID map from file paths
         self.file_id_map.clear();
         self.file_path_map.clear();
@@ -179,7 +195,15 @@ impl AnalysisHost {
             let path_str = path.to_string_lossy().to_string();
             if let Some(&file_id) = self.file_id_map.get(&path_str) {
                 // Extract symbols and filters using unified extraction (handles both SysML and KerML)
-                let result = extract_with_filters(file_id, syntax_file);
+                let mut result = extract_with_filters(file_id, syntax_file);
+
+                // Preserve element IDs from cache (survives removal/re-add)
+                for symbol in &mut result.symbols {
+                    if let Some(cached_id) = self.element_id_cache.get(&symbol.qualified_name) {
+                        symbol.element_id = cached_id.clone();
+                    }
+                }
+
                 new_index.add_extraction_result(file_id, result);
             }
         }
@@ -203,11 +227,20 @@ impl AnalysisHost {
         // Collect files that need type ref resolution
         let mut files_to_resolve: Vec<FileId> = Vec::new();
 
-        // Handle removed files first
+        // Handle removed files first - cache their element IDs before removal
         let t0 = Instant::now();
         for path in self.removed_files.drain() {
             let path_str = path.to_string_lossy().to_string();
             if let Some(&file_id) = self.file_id_map.get(&path_str) {
+                // Cache element IDs before removing
+                for symbol in self.symbol_index.symbols_in_file(file_id) {
+                    if !symbol.element_id.as_ref().is_empty()
+                        && !symbol.element_id.starts_with("00000000-0000-0000-0000")
+                    {
+                        self.element_id_cache
+                            .insert(symbol.qualified_name.clone(), symbol.element_id.clone());
+                    }
+                }
                 self.symbol_index.remove_file(file_id);
             }
         }
@@ -217,6 +250,15 @@ impl AnalysisHost {
             let path_str = path.to_string_lossy().to_string();
 
             let file_id = if let Some(&id) = self.file_id_map.get(&path_str) {
+                // Cache element IDs before re-extraction (so modified symbols keep their IDs)
+                for symbol in self.symbol_index.symbols_in_file(id) {
+                    if !symbol.element_id.as_ref().is_empty()
+                        && !symbol.element_id.starts_with("00000000-0000-0000-0000")
+                    {
+                        self.element_id_cache
+                            .insert(symbol.qualified_name.clone(), symbol.element_id.clone());
+                    }
+                }
                 id
             } else {
                 let new_id = FileId::new(self.file_id_map.len() as u32);
@@ -226,7 +268,15 @@ impl AnalysisHost {
             };
 
             if let Some(syntax_file) = self.files.get(&path) {
-                let result = extract_with_filters(file_id, syntax_file);
+                let mut result = extract_with_filters(file_id, syntax_file);
+
+                // Preserve element IDs from cache (survives removal/re-add)
+                for symbol in &mut result.symbols {
+                    if let Some(cached_id) = self.element_id_cache.get(&symbol.qualified_name) {
+                        symbol.element_id = cached_id.clone();
+                    }
+                }
+
                 self.symbol_index.add_extraction_result(file_id, result);
                 files_to_resolve.push(file_id);
             }

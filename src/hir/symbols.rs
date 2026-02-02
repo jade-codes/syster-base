@@ -9,12 +9,19 @@
 
 use std::sync::Arc;
 
+use uuid::Uuid;
+
 use crate::base::FileId;
 use crate::syntax::normalized::{
     NormalizedAlias, NormalizedComment, NormalizedDefKind, NormalizedDefinition,
     NormalizedDependency, NormalizedElement, NormalizedImport, NormalizedPackage,
     NormalizedRelKind, NormalizedRelationship, NormalizedUsage, NormalizedUsageKind,
 };
+
+/// Generate a new unique element ID for XMI interchange.
+pub fn new_element_id() -> Arc<str> {
+    Uuid::new_v4().to_string().into()
+}
 
 /// The kind of reference - determines resolution strategy.
 ///
@@ -359,6 +366,9 @@ pub struct HirSymbol {
     pub short_name: Option<Arc<str>>,
     /// The fully qualified name
     pub qualified_name: Arc<str>,
+    /// Unique element ID for XMI interchange.
+    /// Generated at parse time for all symbols, preserved on import/export.
+    pub element_id: Arc<str>,
     /// What kind of symbol this is
     pub kind: SymbolKind,
     /// The file containing this symbol
@@ -386,6 +396,8 @@ pub struct HirSymbol {
     pub type_refs: Vec<TypeRefKind>,
     /// Whether this symbol is public (for imports: re-exported to child scopes)
     pub is_public: bool,
+    /// View-specific data (for ViewDefinition, ViewUsage, etc.)
+    pub view_data: Option<crate::hir::views::ViewData>,
     /// Metadata types applied to this symbol (e.g., ["Safety", "Approved"])
     /// Used for filter import evaluation (SysML v2 §7.5.4)
     pub metadata_annotations: Vec<Arc<str>>,
@@ -414,6 +426,9 @@ pub enum SymbolKind {
     ViewDef,
     ViewpointDef,
     RenderingDef,
+    ViewUsage,
+    ViewpointUsage,
+    RenderingUsage,
     EnumerationDef,
     MetaclassDef,
     InteractionDef,
@@ -433,6 +448,8 @@ pub enum SymbolKind {
     ReferenceUsage,
     OccurrenceUsage,
     FlowUsage,
+    // Relationships
+    ExposeRelationship,
     // Other
     Import,
     Alias,
@@ -495,6 +512,9 @@ impl SymbolKind {
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
             NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
             NormalizedUsageKind::Feature => Self::PartUsage, // KerML features map to part usage
+            NormalizedUsageKind::View => Self::ViewUsage,
+            NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
+            NormalizedUsageKind::Rendering => Self::RenderingUsage,
             NormalizedUsageKind::Other => Self::Other,
         }
     }
@@ -521,6 +541,9 @@ impl SymbolKind {
             Self::ViewDef => "View def",
             Self::ViewpointDef => "Viewpoint def",
             Self::RenderingDef => "Rendering def",
+            Self::ViewUsage => "View",
+            Self::ViewpointUsage => "Viewpoint",
+            Self::RenderingUsage => "Rendering",
             Self::EnumerationDef => "Enum def",
             Self::MetaclassDef => "Metaclass def",
             Self::InteractionDef => "Interaction def",
@@ -539,6 +562,7 @@ impl SymbolKind {
             Self::ReferenceUsage => "Ref",
             Self::OccurrenceUsage => "Occurrence",
             Self::FlowUsage => "Flow",
+            Self::ExposeRelationship => "Expose",
             Self::Import => "Import",
             Self::Alias => "Alias",
             Self::Comment => "Comment",
@@ -606,6 +630,9 @@ impl SymbolKind {
             NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
             NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
+            NormalizedUsageKind::View => Self::ViewUsage,
+            NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
+            NormalizedUsageKind::Rendering => Self::RenderingUsage,
             // KerML features are treated as attribute usages
             NormalizedUsageKind::Feature => Self::AttributeUsage,
             NormalizedUsageKind::Other => Self::Other,
@@ -797,9 +824,10 @@ fn extract_from_normalized(
             // Store filter for current scope (for import filtering)
             let scope = ctx.current_scope_name();
             if !filter.metadata_refs.is_empty() {
-                result
-                    .scope_filters
-                    .push((Arc::from(scope.as_str()), filter.metadata_refs.clone()));
+                result.scope_filters.push((
+                    Arc::from(scope.as_str()),
+                    filter.metadata_refs.iter().map(|s| s.to_string()).collect(),
+                ));
             }
 
             // Create type_refs for all qualified names in the filter expression
@@ -830,6 +858,7 @@ fn extract_from_normalized(
                     name: Arc::from("<filter>"),
                     short_name: None,
                     qualified_name: Arc::from(filter_qname.as_str()),
+                    element_id: new_element_id(),
                     kind: SymbolKind::Other,
                     file: ctx.file,
                     start_line: span.start_line,
@@ -845,9 +874,13 @@ fn extract_from_normalized(
                     relationships: Vec::new(),
                     type_refs,
                     is_public: false,
+                    view_data: None,
                     metadata_annotations: Vec::new(),
                 });
             }
+        }
+        NormalizedElement::Expose(_expose) => {
+            // Expose relationships are handled during view extraction, not symbol extraction
         }
     }
 }
@@ -874,8 +907,13 @@ fn extract_from_normalized_into_symbols(
             extract_from_normalized_comment(symbols, ctx, comment)
         }
         NormalizedElement::Dependency(dep) => extract_from_normalized_dependency(symbols, ctx, dep),
-        NormalizedElement::Filter(_) => {
-            // Filters inside definitions/usages are ignored
+        NormalizedElement::Filter(_filter) => {
+            // Filters don't produce symbols, they're metadata for views
+            // They will be extracted when processing the parent view definition
+        }
+        NormalizedElement::Expose(_expose) => {
+            // Expose relationships don't produce symbols, they define view visibility
+            // They will be extracted when processing the parent view definition/usage
         }
     }
 }
@@ -901,6 +939,7 @@ fn extract_from_normalized_package(
         name: Arc::from(name.as_str()),
         short_name: pkg.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Package,
         file: ctx.file,
         start_line: span.start_line,
@@ -916,6 +955,7 @@ fn extract_from_normalized_package(
         relationships: Vec::new(),
         type_refs: Vec::new(),
         is_public: false,
+view_data: None,
         metadata_annotations: Vec::new(),
     });
 
@@ -1091,10 +1131,14 @@ fn extract_from_normalized_definition(
     // Extract doc comment
     let doc = def.doc.as_ref().map(|s| Arc::from(s.trim()));
 
+    // Extract view-specific data if this is a view/viewpoint/rendering
+    let view_data = extract_view_data_from_definition(def, def.kind);
+
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
         short_name: def.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind,
         file: ctx.file,
         start_line: span.start_line,
@@ -1110,6 +1154,7 @@ fn extract_from_normalized_definition(
         relationships,
         type_refs,
         is_public: false,
+        view_data,
         metadata_annotations,
     });
 
@@ -1287,6 +1332,7 @@ fn extract_from_normalized_usage(
                 name: Arc::from(anon_scope.as_str()),
                 short_name: None,
                 qualified_name: Arc::from(qualified_name.as_str()),
+                element_id: new_element_id(),
                 kind,
                 start_line: span.start_line,
                 start_col: span.start_col,
@@ -1301,6 +1347,7 @@ fn extract_from_normalized_usage(
                 type_refs,
                 doc: None,
                 is_public: false,
+                view_data: None,
                 metadata_annotations: metadata_annotations.clone(),
             };
             symbols.push(anon_symbol);
@@ -1400,10 +1447,15 @@ fn extract_from_normalized_usage(
     let (extended_end_line, extended_end_col) =
         max_end_position_from_type_refs(&type_refs, span.end_line, span.end_col);
 
+    // Extract view-specific data if this is a view/viewpoint/rendering
+    let typed_by = supertypes.first();
+    let view_data = extract_view_data_from_usage(usage, usage.kind, typed_by);
+
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
         short_name: usage.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind,
         file: ctx.file,
         start_line: span.start_line,
@@ -1419,6 +1471,7 @@ fn extract_from_normalized_usage(
         relationships,
         type_refs,
         is_public: false,
+        view_data,
         metadata_annotations,
     });
 
@@ -1466,6 +1519,7 @@ fn extract_from_normalized_import(
         name: Arc::from(path.as_str()),
         short_name: None, // Imports don't have short names
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Import,
         file: ctx.file,
         start_line: span.start_line,
@@ -1481,6 +1535,7 @@ fn extract_from_normalized_import(
         relationships: Vec::new(),
         type_refs,
         is_public: import.is_public,
+        view_data: None,
         metadata_annotations: Vec::new(), // Imports don't have metadata
     });
 }
@@ -1519,6 +1574,7 @@ fn extract_from_normalized_alias(
         name: Arc::from(name.as_str()),
         short_name: alias.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Alias,
         file: ctx.file,
         start_line: span.start_line,
@@ -1534,6 +1590,7 @@ fn extract_from_normalized_alias(
         relationships: Vec::new(),
         type_refs,
         is_public: false,
+        view_data: None,
         metadata_annotations: Vec::new(), // Aliases don't have metadata
     });
 }
@@ -1572,6 +1629,7 @@ fn extract_from_normalized_comment(
         name: Arc::from(name.as_str()),
         short_name: comment.short_name.as_ref().map(|s| Arc::from(s.as_str())),
         qualified_name: Arc::from(qualified_name.as_str()),
+        element_id: new_element_id(),
         kind: SymbolKind::Comment,
         file: ctx.file,
         start_line: span.start_line,
@@ -1591,6 +1649,7 @@ fn extract_from_normalized_comment(
         relationships: Vec::new(),
         type_refs,
         is_public: false,
+        view_data: None,
         metadata_annotations: Vec::new(), // Comments don't have metadata
     });
 }
@@ -1764,6 +1823,7 @@ fn extract_from_normalized_dependency(
             name: Arc::from(name.as_str()),
             short_name: dep.short_name.as_ref().map(|s| Arc::from(s.as_str())),
             qualified_name: Arc::from(qualified_name.as_str()),
+            element_id: new_element_id(),
             kind: SymbolKind::Dependency,
             file: ctx.file,
             start_line: span.start_line,
@@ -1779,6 +1839,7 @@ fn extract_from_normalized_dependency(
             relationships: Vec::new(),
             type_refs,
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         });
     } else if !type_refs.is_empty() {
@@ -1790,6 +1851,7 @@ fn extract_from_normalized_dependency(
             name: Arc::from("<anonymous-dependency>"),
             short_name: None,
             qualified_name: Arc::from(format!("{}::<anonymous-dependency>", ctx.prefix)),
+            element_id: new_element_id(),
             kind: SymbolKind::Dependency,
             file: ctx.file,
             start_line: span.start_line,
@@ -1805,6 +1867,7 @@ fn extract_from_normalized_dependency(
             relationships: Vec::new(),
             type_refs,
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         });
     }
@@ -1946,5 +2009,108 @@ mod test_package_span {
         assert_eq!(nested.start_col, 9, "nested start_col should be 9");
         // "IndividualDefinitions" is 21 chars, so 9 + 21 = 30
         assert_eq!(nested.end_col, 30, "nested end_col should be 30");
+    }
+}
+
+/// Extract view-specific data from a normalized definition if it's a view/viewpoint/rendering.
+fn extract_view_data_from_definition(
+    def: &NormalizedDefinition,
+    kind: NormalizedDefKind,
+) -> Option<crate::hir::views::ViewData> {
+    use crate::hir::views::{
+        ExposeRelationship, FilterCondition, ViewData, ViewDefinition, WildcardKind,
+    };
+
+    // Check if this is a view-related definition
+    match kind {
+        NormalizedDefKind::View => {
+            let mut view_def = ViewDefinition::new();
+
+            // Extract expose relationships and filters from children
+            for child in &def.children {
+                match child {
+                    NormalizedElement::Expose(expose) => {
+                        let wildcard = if expose.is_recursive {
+                            WildcardKind::Recursive
+                        } else if expose.import_path.ends_with("::*") {
+                            WildcardKind::Direct
+                        } else {
+                            WildcardKind::None
+                        };
+
+                        let expose_rel =
+                            ExposeRelationship::new(Arc::from(expose.import_path.as_str()), wildcard);
+                        view_def.add_expose(expose_rel);
+                    }
+                    NormalizedElement::Filter(filter) => {
+                        // Extract metadata filters
+                        for meta_ref in &filter.metadata_refs {
+                            let filter_cond = FilterCondition::metadata(Arc::from(meta_ref.as_str()));
+                            view_def.add_filter(filter_cond);
+                        }
+                    }
+                    _ => {} // Other children are normal nested elements
+                }
+            }
+
+            Some(ViewData::ViewDefinition(view_def))
+        }
+        NormalizedDefKind::Viewpoint => {
+            // TODO: Extract stakeholders and concerns from children
+            // Viewpoints contain requirement usages that specify stakeholders
+            Some(ViewData::ViewpointDefinition(
+                crate::hir::views::ViewpointDefinition {
+                    stakeholders: Vec::new(),
+                    concerns: Vec::new(),
+                    span: None, // TODO: Convert TextRange to Span
+                },
+            ))
+        }
+        NormalizedDefKind::Rendering => {
+            // TODO: Extract layout algorithm from metadata or properties
+            Some(ViewData::RenderingDefinition(
+                crate::hir::views::RenderingDefinition {
+                    layout: None,
+                    span: None, // TODO: Convert TextRange to Span
+                },
+            ))
+        }
+        _ => None,
+    }
+}
+
+/// Extract view-specific data from a normalized usage if it's a view/viewpoint/rendering.
+fn extract_view_data_from_usage(
+    _usage: &NormalizedUsage,
+    _kind: NormalizedUsageKind,
+    _typed_by: Option<&Arc<str>>,
+) -> Option<crate::hir::views::ViewData> {
+    use crate::hir::views::{ViewData, ViewUsage};
+
+    // Check if this is a view-related usage
+    match _kind {
+        NormalizedUsageKind::View => {
+            // TODO Phase 2: Extract expose/filter/render from usage body
+            // View usages can have:
+            // 1. Expose relationships to specify which elements to show
+            // 2. Filter conditions to refine what's shown
+            // 3. Rendering specifications to override the view definition
+            //
+            // Currently creates empty ViewUsage as placeholder
+            Some(ViewData::ViewUsage(ViewUsage::new(_typed_by.cloned())))
+        }
+        NormalizedUsageKind::Viewpoint => Some(ViewData::ViewpointUsage(
+            crate::hir::views::ViewpointUsage {
+                viewpoint_def: _typed_by.cloned(),
+                span: None, // TODO: Convert TextRange to Span
+            },
+        )),
+        NormalizedUsageKind::Rendering => Some(ViewData::RenderingUsage(
+            crate::hir::views::RenderingUsage {
+                rendering_def: _typed_by.cloned(),
+                span: None, // TODO: Convert TextRange to Span
+            },
+        )),
+        _ => None,
     }
 }

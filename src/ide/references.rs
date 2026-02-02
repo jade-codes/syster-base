@@ -280,7 +280,7 @@ fn symbol_size(symbol: &HirSymbol) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::hir::RefKind;
+    use crate::hir::{RefKind, new_element_id};
 
     fn make_symbol(
         name: &str,
@@ -293,6 +293,7 @@ mod tests {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(file),
             start_line: line,
@@ -308,6 +309,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         }
     }

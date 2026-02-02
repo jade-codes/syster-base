@@ -224,7 +224,10 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::CalculationUsage
         | SymbolKind::ReferenceUsage
         | SymbolKind::OccurrenceUsage
-        | SymbolKind::FlowUsage => {
+        | SymbolKind::FlowUsage
+        | SymbolKind::ViewUsage
+        | SymbolKind::ViewpointUsage
+        | SymbolKind::RenderingUsage => {
             let mut sig = format!("{} {}", kind_str, name_with_alias);
             if !symbol.supertypes.is_empty() {
                 sig.push_str(" : ");
@@ -249,7 +252,10 @@ fn build_signature(symbol: &HirSymbol) -> String {
         }
 
         // Other
-        SymbolKind::Comment | SymbolKind::Other | SymbolKind::Dependency => name_with_alias,
+        SymbolKind::Comment
+        | SymbolKind::Other
+        | SymbolKind::Dependency
+        | SymbolKind::ExposeRelationship => name_with_alias,
     }
 }
 
@@ -314,12 +320,14 @@ fn symbol_size(symbol: &HirSymbol) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hir::new_element_id;
 
     fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, line: u32) -> HirSymbol {
         HirSymbol {
             name: Arc::from(name),
             short_name: None,
             qualified_name: Arc::from(qualified),
+            element_id: new_element_id(),
             kind,
             file: FileId::new(0),
             start_line: line,
@@ -335,6 +343,7 @@ mod tests {
             relationships: Vec::new(),
             type_refs: Vec::new(),
             is_public: false,
+            view_data: None,
             metadata_annotations: Vec::new(),
         }
     }
