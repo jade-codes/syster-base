@@ -83,7 +83,10 @@ package Test {
 
     // Line 16: `interface producer_2.publicationPort to server_2.publicationPort;`
     let hover = analysis.hover(file_id, 16, 48);
-    assert!(hover.is_some(), "Should hover on 'server_2' in interface endpoint");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'server_2' in interface endpoint"
+    );
 }
 
 #[test]
@@ -115,5 +118,8 @@ package Test {
 
     // Line 16: `interface producer_2.publicationPort to server_2.publicationPort;`
     let hover = analysis.hover(file_id, 16, 58);
-    assert!(hover.is_some(), "Should hover on 'publicationPort' chain member");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'publicationPort' chain member"
+    );
 }

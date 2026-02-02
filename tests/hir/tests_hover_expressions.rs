@@ -39,7 +39,10 @@ package Test {
 
     // Line 5: `part e[n];`
     let hover = analysis.hover(file_id, 5, 15);
-    assert!(hover.is_some(), "Should hover on 'n' in multiplicity bounds");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'n' in multiplicity bounds"
+    );
 }
 
 #[test]
@@ -102,7 +105,10 @@ package Test {
 
     // Line 5: `attribute x : ScalarValues::Integer[i];`
     let hover = analysis.hover(file_id, 5, 44);
-    assert!(hover.is_some(), "Should hover on 'i' in attribute multiplicity");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'i' in attribute multiplicity"
+    );
 }
 
 #[test]
@@ -153,7 +159,10 @@ package Test {
 
     // Line 7: `return selectedEngine :> engine;`
     let hover = analysis.hover(file_id, 7, 15);
-    assert!(hover.is_some(), "Should hover on 'selectedEngine' in return");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'selectedEngine' in return"
+    );
 
     let hover = analysis.hover(file_id, 7, 33);
     assert!(hover.is_some(), "Should hover on 'engine' ref in return");

@@ -682,7 +682,7 @@ impl SymbolIndex {
         // Pass 1: Resolve simple refs and chain first-parts
         for (sym_idx, trk_idx, part_idx, target, chain_context, ref_kind) in pass1_work {
             let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
-            
+
             // For Redefines refs, try context resolution FIRST before normal scope walk.
             // This handles cases like `requirement X :>> X` where X redefines a member
             // from the parent/satisfy context, not itself in the current scope.
@@ -691,7 +691,7 @@ impl SymbolIndex {
             } else {
                 None
             };
-            
+
             // If context resolution didn't find anything (or wasn't a Redefines), try normal resolution
             if resolved.is_none() {
                 resolved = self.resolve_type_ref_cached(
@@ -702,7 +702,7 @@ impl SymbolIndex {
                 );
             }
 
-            // For unresolved Redefines refs (when context resolution was skipped or failed), 
+            // For unresolved Redefines refs (when context resolution was skipped or failed),
             // try one more time with context resolution as fallback
             if resolved.is_none() && ref_kind == RefKind::Redefines {
                 resolved = self.resolve_redefines_in_context(&symbol_qname, &target);
@@ -1453,16 +1453,17 @@ impl SymbolIndex {
                 if let Some(sym) = self.lookup_qualified(&resolved_target) {
                     // Add the symbol's name to visibility
                     vis.add_import(sym.name.clone(), sym.qualified_name.clone());
-                    
+
                     // Also add the short name if importing by short name
                     // e.g., `import Pkg::mop` should make `mop` visible
                     if let Some(ref short_name) = sym.short_name {
                         vis.add_import(short_name.clone(), sym.qualified_name.clone());
                     }
-                    
+
                     // If the import target's last segment differs from the symbol's name,
                     // it was imported by short name - add that name too
-                    let import_last_seg = import_target.rsplit("::").next().unwrap_or(import_target);
+                    let import_last_seg =
+                        import_target.rsplit("::").next().unwrap_or(import_target);
                     if import_last_seg != sym.name.as_ref() {
                         vis.add_import(Arc::from(import_last_seg), sym.qualified_name.clone());
                     }
@@ -1485,9 +1486,12 @@ impl SymbolIndex {
             if let Some((parent, last_segment)) = target.rsplit_once("::") {
                 // Resolve the parent scope
                 let parent_qualified = self.resolve_import_target_simple(scope, parent);
-                
+
                 // Check if last_segment is a short name in that scope
-                if let Some(children) = self.by_parent_scope.get(&Arc::from(parent_qualified.as_str())) {
+                if let Some(children) = self
+                    .by_parent_scope
+                    .get(&Arc::from(parent_qualified.as_str()))
+                {
                     for &idx in children {
                         if let Some(sym) = self.symbols.get(idx) {
                             if sym.short_name.as_ref().map(|s| s.as_ref()) == Some(last_segment) {
@@ -1642,21 +1646,21 @@ impl SymbolIndex {
 
     /// Propagate inherited members from supertypes into scope visibility maps.
     /// When `Shape :> Path`, members of `Path` become visible in `Shape`.
-    /// 
+    ///
     /// Uses topological ordering by scope depth: shallower scopes are processed first.
     /// This ensures that when processing `Shape::tfe` (which inherits from `edges`),
     /// `Shape` has already inherited `edges` from `Path`.
     fn propagate_inherited_members(&mut self) {
         // Collect all symbols with supertypes, sorted by scope depth (shallowest first)
         let mut symbols_with_inheritance: Vec<(Arc<str>, Arc<str>, Arc<str>)> = Vec::new();
-        
+
         for symbol in &self.symbols {
             if !symbol.supertypes.is_empty() {
                 let scope = symbol.qualified_name.clone();
                 let parent_scope: Arc<str> = Self::parent_scope(&scope)
                     .map(Arc::from)
                     .unwrap_or_else(|| Arc::from(""));
-                
+
                 for supertype in &symbol.supertypes {
                     symbols_with_inheritance.push((
                         scope.clone(),
@@ -1673,7 +1677,9 @@ impl SymbolIndex {
         // Process in order
         for (scope, parent_scope, supertype) in symbols_with_inheritance {
             // Resolve the supertype name from the parent scope's context
-            if let Some(resolved) = self.resolve_supertype_for_inheritance(&supertype, &parent_scope) {
+            if let Some(resolved) =
+                self.resolve_supertype_for_inheritance(&supertype, &parent_scope)
+            {
                 // Get members from the resolved supertype's visibility
                 let parent_members: Vec<(Arc<str>, Arc<str>)> = self
                     .visibility_map
@@ -1886,19 +1892,19 @@ impl SymbolIndex {
                     .unwrap_or(&resolved_target);
 
                 // Get the import's last segment (may differ if importing via short name)
-                let import_last_seg = import_target
-                    .rsplit("::")
-                    .next()
-                    .unwrap_or(import_target);
+                let import_last_seg = import_target.rsplit("::").next().unwrap_or(import_target);
 
                 // Add to this scope's imports
                 if let Some(vis) = self.visibility_map.get_mut(scope) {
                     // Always add the resolved symbol's name
                     vis.add_import(Arc::from(simple_name), Arc::from(resolved_target.as_str()));
-                    
+
                     // If imported via a different name (e.g., short name), add that too
                     if import_last_seg != simple_name {
-                        vis.add_import(Arc::from(import_last_seg), Arc::from(resolved_target.as_str()));
+                        vis.add_import(
+                            Arc::from(import_last_seg),
+                            Arc::from(resolved_target.as_str()),
+                        );
                     }
                 }
             }
@@ -1990,7 +1996,7 @@ impl SymbolIndex {
             if let Some(last_sep_idx) = target.rfind("::") {
                 let parent_part = &target[..last_sep_idx];
                 let last_segment = &target[last_sep_idx + 2..];
-                
+
                 // First check if parent resolves directly
                 let parent_qualified = if self.visibility_map.contains_key(parent_part) {
                     parent_part.to_string()
@@ -1998,15 +2004,18 @@ impl SymbolIndex {
                     // Try resolving parent from current scope
                     self.resolve_import_target(scope, parent_part)
                 };
-                
+
                 // Check if last_segment is a direct child (by name)
                 let direct_child = format!("{}::{}", parent_qualified, last_segment);
                 if self.visibility_map.contains_key(&direct_child as &str) {
                     return direct_child;
                 }
-                
+
                 // Check if last_segment matches a child's short_name
-                if let Some(children) = self.by_parent_scope.get(&Arc::from(parent_qualified.as_str())) {
+                if let Some(children) = self
+                    .by_parent_scope
+                    .get(&Arc::from(parent_qualified.as_str()))
+                {
                     for &idx in children {
                         if let Some(sym) = self.symbols.get(idx) {
                             if sym.short_name.as_ref().map(|s| s.as_ref()) == Some(last_segment) {

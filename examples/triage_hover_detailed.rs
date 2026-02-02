@@ -125,11 +125,7 @@ fn main() {
     patterns.sort_by_key(|(_, failures)| std::cmp::Reverse(failures.len()));
 
     for (pattern, failures) in &patterns {
-        println!(
-            "\n### {} ({} failures) ###\n",
-            pattern,
-            failures.len()
-        );
+        println!("\n### {} ({} failures) ###\n", pattern, failures.len());
 
         // Show first 5 examples
         for (i, failure) in failures.iter().take(5).enumerate() {
@@ -198,7 +194,9 @@ fn categorize_failure(candidate: &FailureCandidate, source_line: &str) -> String
     }
 
     // Check for specific patterns in source
-    if line_lower.contains("calc ") || line_lower.contains("= ") && candidate.kind == RefKind::Expression {
+    if line_lower.contains("calc ")
+        || line_lower.contains("= ") && candidate.kind == RefKind::Expression
+    {
         return "CALC_EXPRESSION".to_string();
     }
 

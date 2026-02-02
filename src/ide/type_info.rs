@@ -91,16 +91,19 @@ pub fn resolve_type_ref_with_chain(
         .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
-    let scope = containing_qn.rsplit_once("::").map(|(s, _)| s).unwrap_or(containing_qn);
-    
+    let scope = containing_qn
+        .rsplit_once("::")
+        .map(|(s, _)| s)
+        .unwrap_or(containing_qn);
+
     // Try direct qualified name first (child of scope)
     let direct_qn = format!("{}::{}", scope, ctx.target_name);
     if let Some(sym) = index.lookup_qualified(&direct_qn).cloned() {
         return Some(sym);
     }
-    
+
     let resolver = index.resolver_for_scope(scope);
-    
+
     match resolver.resolve(&ctx.target_name) {
         ResolveResult::Found(sym) => Some(sym),
         ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
@@ -119,9 +122,12 @@ fn resolve_chain_member(index: &SymbolIndex, ctx: &TypeRefContext<'_>) -> Option
         .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
-    
+
     // Strip the last component to get parent scope
-    let base_scope = containing_qn.rsplit_once("::").map(|(s, _)| s).unwrap_or(containing_qn);
+    let base_scope = containing_qn
+        .rsplit_once("::")
+        .map(|(s, _)| s)
+        .unwrap_or(containing_qn);
 
     // Resolve the first part of the chain
     let first_part = ctx.chain_prefix.first()?;
@@ -171,7 +177,6 @@ fn resolve_member_in_type(
     symbol: &HirSymbol,
     member_name: &str,
 ) -> Option<HirSymbol> {
-    
     // Get the type of the symbol from its supertypes (the first one is usually the type)
     // or from type_refs with TypedBy kind
     let type_name = symbol.supertypes.first().or_else(|| {
@@ -191,7 +196,11 @@ fn resolve_member_in_type(
         .cloned()
         .or_else(|| {
             // Try resolving from the containing symbol's scope
-            let scope = symbol.qualified_name.rsplit_once("::").map(|(s, _)| s).unwrap_or("");
+            let scope = symbol
+                .qualified_name
+                .rsplit_once("::")
+                .map(|(s, _)| s)
+                .unwrap_or("");
             let resolver = index.resolver_for_scope(scope);
             match resolver.resolve(type_name) {
                 ResolveResult::Found(sym) => Some(sym),

@@ -489,7 +489,7 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowUsage,
             NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage, // Connection endpoints are like ports
+            NormalizedUsageKind::End => Self::PortUsage,    // Connection endpoints are like ports
             NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
             NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
@@ -601,7 +601,7 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowUsage,
             NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage, // Connection endpoints are like ports
+            NormalizedUsageKind::End => Self::PortUsage,    // Connection endpoints are like ports
             NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
             NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
@@ -1336,7 +1336,9 @@ fn extract_from_normalized_usage(
         .filter(|r| {
             matches!(
                 r.kind,
-                NormalizedRelKind::TypedBy | NormalizedRelKind::Subsets | NormalizedRelKind::Specializes
+                NormalizedRelKind::TypedBy
+                    | NormalizedRelKind::Subsets
+                    | NormalizedRelKind::Specializes
             )
         })
         .map(|r| Arc::from(r.target.as_str().as_ref()))
@@ -1397,7 +1399,7 @@ fn extract_from_normalized_usage(
     // Extend end position to include all type_refs (for multi-line constructs like message from/to)
     let (extended_end_line, extended_end_col) =
         max_end_position_from_type_refs(&type_refs, span.end_line, span.end_col);
-    
+
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
         short_name: usage.short_name.as_ref().map(|s| Arc::from(s.as_str())),
@@ -1607,7 +1609,7 @@ fn max_end_position_from_type_refs(
 ) -> (u32, u32) {
     let mut max_line = base_end_line;
     let mut max_col = base_end_col;
-    
+
     for tr in type_refs {
         match tr {
             TypeRefKind::Simple(r) => {
@@ -1618,7 +1620,9 @@ fn max_end_position_from_type_refs(
             }
             TypeRefKind::Chain(chain) => {
                 for part in &chain.parts {
-                    if part.end_line > max_line || (part.end_line == max_line && part.end_col > max_col) {
+                    if part.end_line > max_line
+                        || (part.end_line == max_line && part.end_col > max_col)
+                    {
                         max_line = part.end_line;
                         max_col = part.end_col;
                     }

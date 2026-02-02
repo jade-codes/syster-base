@@ -280,12 +280,8 @@ impl AstNode for NamespaceMember {
             SyntaxKind::ACCEPT_ACTION_USAGE => Some(Self::AcceptAction(AcceptActionUsage(node))),
             SyntaxKind::STATE_SUBACTION => Some(Self::StateSubaction(StateSubaction(node))),
             SyntaxKind::CONTROL_NODE => Some(Self::ControlNode(ControlNode(node))),
-            SyntaxKind::FOR_LOOP_ACTION_USAGE => {
-                Some(Self::ForLoop(ForLoopActionUsage(node)))
-            }
-            SyntaxKind::IF_ACTION_USAGE => {
-                Some(Self::IfAction(IfActionUsage(node)))
-            }
+            SyntaxKind::FOR_LOOP_ACTION_USAGE => Some(Self::ForLoop(ForLoopActionUsage(node))),
+            SyntaxKind::IF_ACTION_USAGE => Some(Self::IfAction(IfActionUsage(node))),
             SyntaxKind::WHILE_LOOP_ACTION_USAGE => {
                 Some(Self::WhileLoop(WhileLoopActionUsage(node)))
             }
@@ -947,13 +943,13 @@ impl Usage {
 
     /// Get prefix metadata references.
     /// e.g., `#mop attribute mass : Real;` -> returns [PrefixMetadata for "mop"]
-    /// 
+    ///
     /// PREFIX_METADATA nodes can be in two locations depending on the usage type:
     /// 1. For most usages (part, attribute, etc.): preceding siblings in the namespace body
     /// 2. For end features: children of the USAGE node (after END_KW)
     pub fn prefix_metadata(&self) -> Vec<PrefixMetadata> {
         let mut result = Vec::new();
-        
+
         // First check preceding siblings (most common case)
         let mut current = self.0.prev_sibling();
         while let Some(sibling) = current {
@@ -969,7 +965,7 @@ impl Usage {
         }
         // Reverse to get them in source order
         result.reverse();
-        
+
         // Also check children (for end features where PREFIX_METADATA is inside USAGE)
         for child in self.0.children() {
             if child.kind() == SyntaxKind::PREFIX_METADATA {
@@ -978,7 +974,7 @@ impl Usage {
                 }
             }
         }
-        
+
         result
     }
 
@@ -2088,7 +2084,7 @@ impl Expression {
     ) {
         // Look for pattern: NEW_KW followed by QUALIFIED_NAME then ARGUMENT_LIST
         let children: Vec<_> = node.children_with_tokens().collect();
-        
+
         let mut i = 0;
         while i < children.len() {
             // Check for NEW_KW token
@@ -2104,7 +2100,7 @@ impl Expression {
                             }
                         }
                     }
-                    
+
                     // Find ARGUMENT_LIST and extract named arguments
                     if let Some(type_name) = type_name {
                         for child in children.iter().skip(i + 1) {
@@ -2141,7 +2137,7 @@ impl Expression {
             if child.kind() == SyntaxKind::ARGUMENT_LIST {
                 // Check for pattern: IDENT EQ ...
                 let tokens: Vec<_> = child.children_with_tokens().collect();
-                
+
                 // Look for IDENT followed by EQ (named argument pattern)
                 for (idx, elem) in tokens.iter().enumerate() {
                     if let Some(token) = elem.as_token() {
@@ -2166,7 +2162,7 @@ impl Expression {
                         }
                     }
                 }
-                
+
                 // Recurse into nested argument lists
                 self.extract_named_args_from_list(&child, type_name, results);
             }

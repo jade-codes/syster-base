@@ -1,5 +1,5 @@
 //! Quick hover triage for SimpleVehicleModel.sysml
-//! 
+//!
 //! Run with: cargo test --test test_quick_hover_triage -- --nocapture
 
 use std::collections::HashMap;
@@ -36,9 +36,10 @@ fn test_run_hover_triage() {
 }
 
 fn run_hover_triage() {
-    let file_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml");
-    
+    let file_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml",
+    );
+
     if !file_path.exists() {
         eprintln!("File not found: {:?}", file_path);
         return;
@@ -61,7 +62,7 @@ fn run_hover_triage() {
     // Parse to get all identifiers that should be hoverable
     let parsed = parse_sysml(&content);
     let root = parsed.syntax();
-    
+
     // Walk through all tokens looking for IDENTs
     fn collect_idents(node: &SyntaxNode, idents: &mut Vec<(u32, u32, String)>, content: &str) {
         for child in node.children_with_tokens() {
@@ -84,15 +85,15 @@ fn run_hover_triage() {
 
     let mut idents = Vec::new();
     collect_idents(&root, &mut idents, &content);
-    
+
     println!("=== Hover Triage for SimpleVehicleModel.sysml ===\n");
     println!("Total identifiers found: {}", idents.len());
-    
+
     // Test hover on each identifier
     for (line, col, text) in &idents {
         total_refs += 1;
         let hover = analysis.hover(file_id, *line, *col);
-        
+
         if hover.is_some() {
             hover_success += 1;
         } else {
@@ -103,35 +104,48 @@ fn run_hover_triage() {
             } else {
                 "".to_string()
             };
-            
+
             // Categorize the failure
             let category = categorize_failure(&context, text);
-            hover_failures.entry(category).or_default().push((*line, *col, text.clone()));
+            hover_failures
+                .entry(category)
+                .or_default()
+                .push((*line, *col, text.clone()));
         }
     }
-    
-    println!("\nHover success: {}/{} ({:.1}%)", 
-        hover_success, total_refs, 
-        (hover_success as f64 / total_refs as f64) * 100.0);
-    println!("Hover failures: {} ({:.1}%)", 
+
+    println!(
+        "\nHover success: {}/{} ({:.1}%)",
+        hover_success,
+        total_refs,
+        (hover_success as f64 / total_refs as f64) * 100.0
+    );
+    println!(
+        "Hover failures: {} ({:.1}%)",
         total_refs - hover_success,
-        ((total_refs - hover_success) as f64 / total_refs as f64) * 100.0);
-    
+        ((total_refs - hover_success) as f64 / total_refs as f64) * 100.0
+    );
+
     println!("\n=== Failure Categories ===");
     let mut categories: Vec<_> = hover_failures.iter().collect();
     categories.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
-    
+
     for (category, failures) in categories {
         println!("\n{} ({} failures):", category, failures.len());
         // Show first 3 examples
-        for (line, col, text) in failures.iter().take(3) {
+        for (line, _col, text) in failures.iter().take(3) {
             let lines: Vec<&str> = content.lines().collect();
             let context = if (*line as usize) < lines.len() {
                 lines[*line as usize].trim()
             } else {
                 ""
             };
-            println!("  Line {}: '{}' in: {}", line + 1, text, truncate(context, 70));
+            println!(
+                "  Line {}: '{}' in: {}",
+                line + 1,
+                text,
+                truncate(context, 70)
+            );
         }
         if failures.len() > 3 {
             println!("  ... and {} more", failures.len() - 3);
@@ -142,7 +156,7 @@ fn run_hover_triage() {
 fn offset_to_line_col(content: &str, offset: usize) -> (u32, u32) {
     let mut line = 0u32;
     let mut line_start = 0usize;
-    
+
     for (i, ch) in content.char_indices() {
         if i >= offset {
             break;
@@ -152,7 +166,7 @@ fn offset_to_line_col(content: &str, offset: usize) -> (u32, u32) {
             line_start = i + 1; // Next byte after newline
         }
     }
-    
+
     // Column is byte offset from line start
     let col = (offset - line_start) as u32;
     (line, col)
@@ -196,11 +210,14 @@ fn categorize_failure(context: &str, ident: &str) -> String {
     if context.contains("bind") || context.contains("connect") {
         return "BINDING".to_string();
     }
-    if context.starts_with("part ") || context.starts_with("port ") || 
-       context.starts_with("attribute ") || context.starts_with("action ") {
+    if context.starts_with("part ")
+        || context.starts_with("port ")
+        || context.starts_with("attribute ")
+        || context.starts_with("action ")
+    {
         return "DEFINITION".to_string();
     }
-    
+
     "OTHER".to_string()
 }
 

@@ -445,5 +445,9 @@ package TestPkg {
         "Expected hover on transition target 'off'"
     );
     let h2 = hover2.unwrap();
-    assert!(h2.contains("off"), "Hover should mention 'off', got: {}", h2);
+    assert!(
+        h2.contains("off"),
+        "Hover should mention 'off', got: {}",
+        h2
+    );
 }

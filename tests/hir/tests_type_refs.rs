@@ -533,7 +533,10 @@ fn test_typed_by_and_specializes_in_supertypes() {
     // instance should have DerivedType in supertypes (via `:`)
     let instance = get_symbol(analysis.symbol_index(), "instance");
     assert!(
-        instance.supertypes.iter().any(|s| s.as_ref() == "DerivedType"),
+        instance
+            .supertypes
+            .iter()
+            .any(|s| s.as_ref() == "DerivedType"),
         "instance should have DerivedType in supertypes"
     );
 }

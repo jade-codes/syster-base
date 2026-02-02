@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use syster::base::FileId;
-use syster::hir::{extract_symbols_unified, TypeRefKind};
+use syster::hir::{TypeRefKind, extract_symbols_unified};
 use syster::syntax::parser::parse_content;
 
 fn extract_type_ref_targets(source: &str) -> Vec<(String, Vec<String>)> {

@@ -113,5 +113,8 @@ package Test {
 
     // Line 2: `metadata def MyMeta;`
     let hover = analysis.hover(file_id, 2, 18);
-    assert!(hover.is_some(), "Should hover on 'MyMeta' metadata def name");
+    assert!(
+        hover.is_some(),
+        "Should hover on 'MyMeta' metadata def name"
+    );
 }

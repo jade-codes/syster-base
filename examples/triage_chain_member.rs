@@ -65,11 +65,12 @@ fn main() {
 
                         if hover.is_none() && part.kind == RefKind::Expression {
                             let prev_part = &chain.parts[i - 1];
-                            
+
                             // Get the first part's symbol info
                             let first_part = &chain.parts[0];
-                            let first_resolved = first_part.resolved_target.as_ref().map(|s| s.to_string());
-                            
+                            let first_resolved =
+                                first_part.resolved_target.as_ref().map(|s| s.to_string());
+
                             // Try to find the first part's type
                             let first_type = if let Some(ref resolved) = first_resolved {
                                 if let Some(first_sym) = index.lookup_qualified(resolved) {
@@ -78,10 +79,14 @@ fn main() {
                                         Some(format!("supertype: {}", st))
                                     } else {
                                         // Check type_refs for TypedBy
-                                        let typed_by = first_sym.type_refs.iter()
+                                        let typed_by = first_sym
+                                            .type_refs
+                                            .iter()
                                             .filter_map(|tr| tr.as_refs().into_iter().next())
                                             .find(|tr| matches!(tr.kind, RefKind::TypedBy))
-                                            .and_then(|tr| tr.resolved_target.as_ref().or(Some(&tr.target)))
+                                            .and_then(|tr| {
+                                                tr.resolved_target.as_ref().or(Some(&tr.target))
+                                            })
                                             .map(|s| format!("typed_by: {}", s));
                                         typed_by.or_else(|| Some("no type info".to_string()))
                                     }
@@ -105,7 +110,10 @@ fn main() {
                                 position_in_chain: i,
                                 target: part.target.to_string(),
                                 prev_part: prev_part.target.to_string(),
-                                prev_resolved: prev_part.resolved_target.as_ref().map(|s| s.to_string()),
+                                prev_resolved: prev_part
+                                    .resolved_target
+                                    .as_ref()
+                                    .map(|s| s.to_string()),
                                 first_part: first_part.target.to_string(),
                                 first_resolved,
                                 first_type,
@@ -124,7 +132,10 @@ fn main() {
     // Group by first_type (the reason resolution fails)
     let mut by_type_issue: HashMap<String, Vec<&ChainFailure>> = HashMap::new();
     for f in &failures {
-        let key = f.first_type.clone().unwrap_or_else(|| "unknown".to_string());
+        let key = f
+            .first_type
+            .clone()
+            .unwrap_or_else(|| "unknown".to_string());
         by_type_issue.entry(key).or_default().push(f);
     }
 
@@ -134,13 +145,19 @@ fn main() {
     println!("=== GROUPED BY TYPE LOOKUP ISSUE ===\n");
     for (issue, failures) in &type_issues {
         println!("\n### {} ({} failures) ###\n", issue, failures.len());
-        
+
         for (i, f) in failures.iter().take(3).enumerate() {
             println!("  Example {}:", i + 1);
             println!("    File: {}", f.file);
             println!("    Line {}: {}", f.line + 1, f.source_line);
-            println!("    Chain: {} parts, failing at position {}", f.chain_length, f.position_in_chain);
-            println!("    First part: '{}' -> {:?}", f.first_part, f.first_resolved);
+            println!(
+                "    Chain: {} parts, failing at position {}",
+                f.chain_length, f.position_in_chain
+            );
+            println!(
+                "    First part: '{}' -> {:?}",
+                f.first_part, f.first_resolved
+            );
             println!("    Prev part: '{}' -> {:?}", f.prev_part, f.prev_resolved);
             println!("    Target: '{}'", f.target);
             println!();
@@ -152,7 +169,7 @@ fn main() {
 
     // Detailed look at specific patterns
     println!("\n=== DETAILED CHAIN ANALYSIS ===\n");
-    
+
     // Find unique chain patterns (first.second)
     let mut patterns: HashMap<String, Vec<&ChainFailure>> = HashMap::new();
     for f in &failures {
@@ -181,7 +198,7 @@ fn main() {
         println!("Line: {}", f.line + 1);
         println!("Source: {}", f.source_line);
         println!();
-        
+
         // Try to manually trace the chain
         println!("Chain trace:");
         println!("  1. First part: '{}'", f.first_part);
@@ -201,8 +218,12 @@ fn main() {
         } else {
             println!("     NOT resolved");
         }
-        
-        println!("\n  2. Prev part (position {}): '{}'", f.position_in_chain - 1, f.prev_part);
+
+        println!(
+            "\n  2. Prev part (position {}): '{}'",
+            f.position_in_chain - 1,
+            f.prev_part
+        );
         if let Some(ref resolved) = f.prev_resolved {
             println!("     Resolved to: {}", resolved);
             if let Some(sym) = index.lookup_qualified(resolved) {
@@ -213,8 +234,11 @@ fn main() {
         } else {
             println!("     NOT resolved");
         }
-        
-        println!("\n  3. Target (position {}): '{}'", f.position_in_chain, f.target);
+
+        println!(
+            "\n  3. Target (position {}): '{}'",
+            f.position_in_chain, f.target
+        );
         println!("     This is what fails to hover");
     }
 }

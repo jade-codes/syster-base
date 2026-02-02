@@ -186,7 +186,8 @@ fn test_colon_gt_on_usage() {
                     let has_specializes_or_subsets = specs.iter().any(|s| {
                         matches!(
                             s.kind(),
-                            Some(SpecializationKind::Specializes) | Some(SpecializationKind::Subsets)
+                            Some(SpecializationKind::Specializes)
+                                | Some(SpecializationKind::Subsets)
                         )
                     });
                     assert!(
@@ -468,9 +469,11 @@ fn test_specializes_keyword() {
     match &members[0] {
         NamespaceMember::Definition(def) => {
             let specs: Vec<_> = def.specializations().collect();
-            assert!(specs
-                .iter()
-                .any(|s| s.kind() == Some(SpecializationKind::Specializes)));
+            assert!(
+                specs
+                    .iter()
+                    .any(|s| s.kind() == Some(SpecializationKind::Specializes))
+            );
         }
         _ => panic!("Expected Definition"),
     }
@@ -494,9 +497,11 @@ fn test_subsets_keyword() {
             match &body_members[0] {
                 NamespaceMember::Usage(usage) => {
                     let specs: Vec<_> = usage.specializations().collect();
-                    assert!(specs
-                        .iter()
-                        .any(|s| s.kind() == Some(SpecializationKind::Subsets)));
+                    assert!(
+                        specs
+                            .iter()
+                            .any(|s| s.kind() == Some(SpecializationKind::Subsets))
+                    );
                 }
                 _ => panic!("Expected Usage"),
             }
@@ -523,9 +528,11 @@ fn test_references_keyword() {
             match &body_members[0] {
                 NamespaceMember::Usage(usage) => {
                     let specs: Vec<_> = usage.specializations().collect();
-                    assert!(specs
-                        .iter()
-                        .any(|s| s.kind() == Some(SpecializationKind::References)));
+                    assert!(
+                        specs
+                            .iter()
+                            .any(|s| s.kind() == Some(SpecializationKind::References))
+                    );
                 }
                 _ => panic!("Expected Usage"),
             }

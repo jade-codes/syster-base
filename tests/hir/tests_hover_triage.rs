@@ -371,11 +371,13 @@ package Test {
 
     // Line 12: `in item driverVehicle subsets getIn.getInVehicle_a;`
     // Find the line dynamically
-    let subset_line = source.lines().enumerate()
+    let subset_line = source
+        .lines()
+        .enumerate()
         .find(|(_, l)| l.contains("subsets getIn."))
         .map(|(i, _)| i as u32)
         .expect("subset line not found");
-    
+
     let hover = analysis.hover(file_id, subset_line, 55);
     assert!(
         hover.is_some(),
@@ -580,14 +582,17 @@ package Test {
     // Line 7: `        constraint { status == StatusKind::closed }`
     //                              ^22    ^32        ^44
 
-    // Hover on `status` (col 22)  
+    // Hover on `status` (col 22)
     let hover = analysis.hover(file_id, 7, 22);
-    assert!(hover.is_some(), "Should hover on 'status' in constraint expression");
-    
+    assert!(
+        hover.is_some(),
+        "Should hover on 'status' in constraint expression"
+    );
+
     // Hover on `StatusKind` (col 32)
     let hover = analysis.hover(file_id, 7, 32);
     assert!(hover.is_some(), "Should hover on 'StatusKind' enum type");
-    
+
     // Hover on `closed` (col 44)
     let hover = analysis.hover(file_id, 7, 44);
     assert!(hover.is_some(), "Should hover on 'closed' enum member");

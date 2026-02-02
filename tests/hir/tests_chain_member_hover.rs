@@ -69,31 +69,43 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Find the bind symbol
-        let bind_sym = analysis.symbol_index()
+        let bind_sym = analysis
+            .symbol_index()
             .symbols_in_file(file_id)
             .into_iter()
             .find(|s| s.name.contains("bind"))
             .expect("bind symbol should exist");
-        
+
         // Find the wheelPort1 type_ref (RHS chain member)
-        let wheel_port1_ref = bind_sym.type_refs.iter()
+        let wheel_port1_ref = bind_sym
+            .type_refs
+            .iter()
             .flat_map(|tr: &TypeRefKind| tr.as_refs())
             .find(|r| r.target.as_ref() == "wheelPort1");
-        
-        assert!(wheel_port1_ref.is_some(), 
-            "bind should have wheelPort1 as type_ref");
-        
+
+        assert!(
+            wheel_port1_ref.is_some(),
+            "bind should have wheelPort1 as type_ref"
+        );
+
         let ref_ = wheel_port1_ref.unwrap();
         let hover = analysis.hover(file_id, ref_.start_line, ref_.start_col + 1);
-        
-        assert!(hover.is_some(), 
-            "hover on 'wheelPort1' in bind RHS should resolve");
-        
+
+        assert!(
+            hover.is_some(),
+            "hover on 'wheelPort1' in bind RHS should resolve"
+        );
+
         let qn = hover.unwrap().qualified_name;
-        assert!(qn.as_ref().map(|s| s.contains("wheelPort1")).unwrap_or(false),
-            "hover should resolve to VehiclePort::wheelPort1, got {:?}", qn);
+        assert!(
+            qn.as_ref()
+                .map(|s| s.contains("wheelPort1"))
+                .unwrap_or(false),
+            "hover should resolve to VehiclePort::wheelPort1, got {:?}",
+            qn
+        );
     }
 }
 
@@ -147,45 +159,54 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Find the flow symbol
-        let flow_sym = analysis.symbol_index()
+        let flow_sym = analysis
+            .symbol_index()
             .symbols_in_file(file_id)
             .into_iter()
             .find(|s| s.qualified_name.contains("flow") || s.qualified_name.contains("Flow"));
-        
+
         // The flow should have type_refs for the endpoint chains
         if let Some(sym) = &flow_sym {
-            let has_outport = sym.type_refs.iter()
+            let has_outport = sym
+                .type_refs
+                .iter()
                 .flat_map(|tr: &TypeRefKind| tr.as_refs())
                 .any(|r| r.target.as_ref() == "outPort");
-            
-            assert!(has_outport, 
-                "flow should extract 'outPort' from 'sender.outPort' as type_ref");
+
+            assert!(
+                has_outport,
+                "flow should extract 'outPort' from 'sender.outPort' as type_ref"
+            );
         }
-        
+
         // Test hover on the flow line for 'outPort'
         // Line: flow of Signal from sender.outPort to receiver.inPort;
         // This is line 24 (0-indexed, accounting for empty line 0)
         let line = 24;
-        
+
         // Find column for 'outPort' - after "sender."
         // We'll search for hover success in the expected range
         let mut found_outport_hover = false;
         for col in 30..50 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("outPort"))
-                    .unwrap_or(false) 
+                    .unwrap_or(false)
                 {
                     found_outport_hover = true;
                     break;
                 }
             }
         }
-        
-        assert!(found_outport_hover, 
-            "hover on 'outPort' in flow endpoint should resolve to Sender::outPort");
+
+        assert!(
+            found_outport_hover,
+            "hover on 'outPort' in flow endpoint should resolve to Sender::outPort"
+        );
     }
 
     /// Test: flow endpoint chains extracted as type_refs
@@ -216,23 +237,27 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Find any flow-related symbol
-        let symbols: Vec<_> = analysis.symbol_index()
+        let symbols: Vec<_> = analysis
+            .symbol_index()
             .symbols_in_file(file_id)
             .into_iter()
             .filter(|s| s.qualified_name.contains("Pipeline"))
             .collect();
-        
+
         // Check if flow endpoints are captured somewhere
         let has_flow_refs = symbols.iter().any(|s| {
-            s.type_refs.iter()
+            s.type_refs
+                .iter()
                 .flat_map(|tr: &TypeRefKind| tr.as_refs())
                 .any(|r| r.target.as_ref() == "output" || r.target.as_ref() == "input")
         });
-        
-        assert!(has_flow_refs,
-            "flow endpoints 'producer.output' and 'consumer.input' should be extracted as type_refs");
+
+        assert!(
+            has_flow_refs,
+            "flow endpoints 'producer.output' and 'consumer.input' should be extracted as type_refs"
+        );
     }
 }
 
@@ -276,16 +301,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // The message endpoints should be extractable
         // Line: message of Command from driver.sendCmd to vehicle.receiveCmd;
         let line = 16;
-        
+
         // Test hover on 'sendCmd' - should resolve to Driver::sendCmd
         let mut found_sendcmd = false;
         for col in 35..55 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("sendCmd"))
                     .unwrap_or(false)
                 {
@@ -294,9 +321,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_sendcmd,
-            "hover on 'sendCmd' in message endpoint should resolve to Driver::sendCmd");
+
+        assert!(
+            found_sendcmd,
+            "hover on 'sendCmd' in message endpoint should resolve to Driver::sendCmd"
+        );
     }
 
     /// Test: succession (first/then) chain members should resolve
@@ -329,15 +358,17 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: first vehicle.started then driver.acknowledged;
         let line = 15;
-        
+
         // Test hover on 'started' - should resolve to Vehicle::started
         let mut found_started = false;
         for col in 14..30 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("started"))
                     .unwrap_or(false)
                 {
@@ -346,15 +377,19 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_started,
-            "hover on 'started' in first/then should resolve to Vehicle::started");
-        
+
+        assert!(
+            found_started,
+            "hover on 'started' in first/then should resolve to Vehicle::started"
+        );
+
         // Test hover on 'acknowledged' - should resolve to Driver::acknowledged
         let mut found_ack = false;
         for col in 35..55 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("acknowledged"))
                     .unwrap_or(false)
                 {
@@ -363,9 +398,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_ack,
-            "hover on 'acknowledged' in first/then should resolve to Driver::acknowledged");
+
+        assert!(
+            found_ack,
+            "hover on 'acknowledged' in first/then should resolve to Driver::acknowledged"
+        );
     }
 }
 
@@ -406,15 +443,17 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: connect portA ::> compositeA.subPort1 to portB ::> compositeB.subPort1;
         let line = 13;
-        
+
         // Test hover on first 'subPort1' after compositeA
         let mut found_subport1 = false;
         for col in 30..45 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("subPort1"))
                     .unwrap_or(false)
                 {
@@ -423,9 +462,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_subport1,
-            "hover on 'subPort1' after ::> chain should resolve to CompositePort::subPort1");
+
+        assert!(
+            found_subport1,
+            "hover on 'subPort1' after ::> chain should resolve to CompositePort::subPort1"
+        );
     }
 }
 
@@ -472,10 +513,10 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: attribute x = vehicle.software.controller.value;
         let line = 17;
-        
+
         // Test each part of the chain resolves
         let expected = [
             ("vehicle", "System::vehicle"),
@@ -483,7 +524,7 @@ package Test {
             ("controller", "Software::controller"),
             ("value", "Controller::value"),
         ];
-        
+
         for (name, expected_contains) in expected {
             let mut found = false;
             for col in 0..70 {
@@ -496,10 +537,12 @@ package Test {
                     }
                 }
             }
-            
-            assert!(found,
+
+            assert!(
+                found,
                 "hover on '{}' should resolve to something containing '{}', but it didn't",
-                name, expected_contains);
+                name, expected_contains
+            );
         }
     }
 
@@ -531,15 +574,17 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: event occurrence myTrigger = component.eventPort.trigger;
         let line = 13;
-        
+
         // Test hover on 'trigger' - the deepest member
         let mut found_trigger = false;
         for col in 50..70 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("trigger"))
                     .unwrap_or(false)
                 {
@@ -548,9 +593,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_trigger,
-            "hover on 'trigger' in deep chain should resolve to EventPort::trigger");
+
+        assert!(
+            found_trigger,
+            "hover on 'trigger' in deep chain should resolve to EventPort::trigger"
+        );
     }
 }
 
@@ -593,15 +640,17 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: attribute x = comp.myPort.dataValue;
         let line = 16;
-        
+
         // Test hover on 'dataValue' - should resolve via DataPort
         let mut found = false;
         for col in 30..50 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("dataValue"))
                     .unwrap_or(false)
                 {
@@ -610,9 +659,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found,
-            "hover on 'dataValue' should resolve to DataPort::dataValue through type hierarchy");
+
+        assert!(
+            found,
+            "hover on 'dataValue' should resolve to DataPort::dataValue through type hierarchy"
+        );
     }
 
     /// Test: nested type resolution (type of type's member)
@@ -645,20 +696,22 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: attribute x = device.outer.inner.innerValue;
         let line = 18;
-        
+
         // Each level should resolve through types:
         // device -> Device
         // outer -> Device::outer -> OuterPort
-        // inner -> OuterPort::inner -> InnerPort  
+        // inner -> OuterPort::inner -> InnerPort
         // innerValue -> InnerPort::innerValue
-        
+
         let mut found_inner_value = false;
         for col in 40..60 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("innerValue"))
                     .unwrap_or(false)
                 {
@@ -667,9 +720,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_inner_value,
-            "hover on 'innerValue' should resolve through nested type hierarchy");
+
+        assert!(
+            found_inner_value,
+            "hover on 'innerValue' should resolve through nested type hierarchy"
+        );
     }
 }
 
@@ -721,16 +776,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: bind rearAxleAssembly.rearWheel1.wheelToRoadPort = ...
         // The bind is at line 22 (0-indexed, line 0 is empty)
         let line = 22;
-        
+
         // Test hover on 'wheelToRoadPort' (3rd level) - should resolve to Wheel::wheelToRoadPort
         let mut found_wheel_port = false;
         for col in 40..60 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("wheelToRoadPort") && s.contains("Wheel"))
                     .unwrap_or(false)
                 {
@@ -739,9 +796,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_wheel_port,
-            "hover on 'wheelToRoadPort' (depth 3) should resolve to Wheel::wheelToRoadPort");
+
+        assert!(
+            found_wheel_port,
+            "hover on 'wheelToRoadPort' (depth 3) should resolve to Wheel::wheelToRoadPort"
+        );
     }
 }
 
@@ -788,16 +847,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: connect lugNutConnection ::> wheel.lugNutPort to shankConnection ::> lugNut.shankPort;
         // Connect is at line 17 (0-indexed, line 0 is empty)
         let line = 17;
-        
+
         // Test hover on 'lugNutPort' after ::> - should resolve to Wheel::lugNutPort
         let mut found_lug_port = false;
         for col in 35..55 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("lugNutPort") && s.contains("Wheel"))
                     .unwrap_or(false)
                 {
@@ -806,15 +867,19 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_lug_port,
-            "hover on 'lugNutPort' in connect endpoint should resolve to Wheel::lugNutPort");
-        
+
+        assert!(
+            found_lug_port,
+            "hover on 'lugNutPort' in connect endpoint should resolve to Wheel::lugNutPort"
+        );
+
         // Test hover on 'shankPort' after ::> - should resolve to LugNut::shankPort
         let mut found_shank_port = false;
         for col in 75..95 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("shankPort") && s.contains("LugNut"))
                     .unwrap_or(false)
                 {
@@ -823,9 +888,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_shank_port,
-            "hover on 'shankPort' in connect endpoint should resolve to LugNut::shankPort");
+
+        assert!(
+            found_shank_port,
+            "hover on 'shankPort' in connect endpoint should resolve to LugNut::shankPort"
+        );
     }
 }
 
@@ -871,16 +938,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: message of TurnVehicleOn from starter.start to trigger.receive;
         // Message is at line 16 (0-indexed, line 0 is empty)
         let line = 16;
-        
+
         // Test hover on 'start' - should resolve to Starter::start
         let mut found_start = false;
         for col in 45..60 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("start") && s.contains("Starter"))
                     .unwrap_or(false)
                 {
@@ -889,15 +958,19 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_start,
-            "hover on 'start' in message endpoint should resolve to Starter::start");
-        
+
+        assert!(
+            found_start,
+            "hover on 'start' in message endpoint should resolve to Starter::start"
+        );
+
         // Test hover on 'receive' - should resolve to Trigger::receive
         let mut found_receive = false;
         for col in 65..85 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("receive") && s.contains("Trigger"))
                     .unwrap_or(false)
                 {
@@ -906,9 +979,11 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_receive,
-            "hover on 'receive' in message endpoint should resolve to Trigger::receive");
+
+        assert!(
+            found_receive,
+            "hover on 'receive' in message endpoint should resolve to Trigger::receive"
+        );
     }
 }
 
@@ -951,16 +1026,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: event occurrence localSetSpeed = vehicle.setSpeedPort.setSpeedReceived;
         // Event occurrence is at line 13 (0-indexed, line 0 is empty)
         let line = 13;
-        
+
         // Test hover on 'setSpeedReceived' (depth 3) - should resolve to SetSpeedPort::setSpeedReceived
         let mut found_set_speed = false;
         for col in 55..75 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("setSpeedReceived") && s.contains("SetSpeedPort"))
                     .unwrap_or(false)
                 {
@@ -969,11 +1046,13 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_set_speed,
-            "hover on 'setSpeedReceived' (depth 3) should resolve to SetSpeedPort::setSpeedReceived");
+
+        assert!(
+            found_set_speed,
+            "hover on 'setSpeedReceived' (depth 3) should resolve to SetSpeedPort::setSpeedReceived"
+        );
     }
-    
+
     /// Test: attribute chain in flow from clause
     /// ```sysml
     /// from speedSensor.speedSensorPort.sensedSpeedSent to ...
@@ -1010,16 +1089,18 @@ package Test {
         host.set_file_content("test.sysml", source);
         let analysis = host.analysis();
         let file_id = analysis.get_file_id("test.sysml").unwrap();
-        
+
         // Line: flow of Speed from speedSensor.speedSensorPort.sensedSpeed to ...
         // Flow is at line 21 (0-indexed, line 0 is empty)
         let line = 21;
-        
+
         // Test hover on 'sensedSpeed' (depth 3) - should resolve to SpeedSensorPort::sensedSpeed
         let mut found_sensed_speed = false;
         for col in 50..75 {
             if let Some(hover) = analysis.hover(file_id, line, col) {
-                if hover.qualified_name.as_ref()
+                if hover
+                    .qualified_name
+                    .as_ref()
                     .map(|s| s.contains("sensedSpeed") && s.contains("SpeedSensorPort"))
                     .unwrap_or(false)
                 {
@@ -1028,8 +1109,10 @@ package Test {
                 }
             }
         }
-        
-        assert!(found_sensed_speed,
-            "hover on 'sensedSpeed' (depth 3) in flow should resolve to SpeedSensorPort::sensedSpeed");
+
+        assert!(
+            found_sensed_speed,
+            "hover on 'sensedSpeed' (depth 3) in flow should resolve to SpeedSensorPort::sensedSpeed"
+        );
     }
 }

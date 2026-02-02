@@ -1662,7 +1662,7 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
         p.parse_qualified_name();
         p.finish_node();
         p.skip_trivia();
-        
+
         // Handle optional 'after' clause: then step2 after trigger1;
         // This creates a guarded succession where step2 happens after trigger1 completes
         if p.at(SyntaxKind::AFTER_KW) {
@@ -1674,7 +1674,7 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
             p.finish_node();
             p.skip_trivia();
         }
-        
+
         p.expect(SyntaxKind::SEMICOLON);
     }
 
@@ -2566,9 +2566,9 @@ pub fn parse_include_usage<P: SysMLParser>(p: &mut P) {
                 | SyntaxKind::REDEFINES_KW
                 | SyntaxKind::REFERENCES_KW
                 | SyntaxKind::L_BRACKET  // multiplicity after name
-                | SyntaxKind::L_BRACE    // body after name
+                | SyntaxKind::L_BRACE // body after name
         );
-        
+
         if has_typing_or_spec {
             // This is a name (defines new element)
             p.parse_identification();
@@ -3208,7 +3208,10 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
         p.parse_qualified_name(); // Parses the full chain including dots
         p.skip_trivia();
         p.finish_node();
-    } else if (p.at_name_token() || p.at(SyntaxKind::LT)) && !p.at(SyntaxKind::CONNECT_KW) && !looks_like_connector_endpoint {
+    } else if (p.at_name_token() || p.at(SyntaxKind::LT))
+        && !p.at(SyntaxKind::CONNECT_KW)
+        && !looks_like_connector_endpoint
+    {
         p.parse_identification();
     }
     p.skip_trivia();

@@ -14,8 +14,9 @@ fn setup() -> (AnalysisHost, syster::base::FileId, String) {
         let _ = stdlib_loader.ensure_loaded_into_host(&mut host);
     }
 
-    let file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml");
+    let file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(
+        "tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml",
+    );
     let content = std::fs::read_to_string(&file_path).expect("Failed to read file");
     let path_str = file_path.to_string_lossy().to_string();
     let _ = host.set_file_content(&path_str, &content);

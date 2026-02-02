@@ -869,7 +869,7 @@ impl NormalizedUsage {
                     });
                 }
             }
-            
+
             // Extract named constructor arguments from `new Type(argName = value)` patterns
             // These resolve as Type.argName (feature of the constructed type)
             for (type_name, arg_name, arg_range) in expr.named_constructor_args() {
@@ -1389,7 +1389,7 @@ impl NormalizedUsage {
                             None
                         }
                     });
-                    
+
                     if let Some((name, range)) = redefines_name {
                         (Some(name), None, Some(range), None)
                     } else {
@@ -1500,15 +1500,27 @@ impl NormalizedUsage {
                 &usage,
             )));
         }
-        
+
         // Handle accept actions inside succession (e.g., `then action trigger accept ignitionCmd`)
-        for accept in succ.syntax().children().filter_map(parser::AcceptActionUsage::cast) {
-            children.push(NormalizedElement::Usage(NormalizedUsage::from_accept_action(&accept)));
+        for accept in succ
+            .syntax()
+            .children()
+            .filter_map(parser::AcceptActionUsage::cast)
+        {
+            children.push(NormalizedElement::Usage(
+                NormalizedUsage::from_accept_action(&accept),
+            ));
         }
-        
+
         // Handle send actions inside succession (e.g., `then action sender send msg`)
-        for send in succ.syntax().children().filter_map(parser::SendActionUsage::cast) {
-            children.push(NormalizedElement::Usage(NormalizedUsage::from_send_action(&send)));
+        for send in succ
+            .syntax()
+            .children()
+            .filter_map(parser::SendActionUsage::cast)
+        {
+            children.push(NormalizedElement::Usage(NormalizedUsage::from_send_action(
+                &send,
+            )));
         }
 
         // Compute a tighter range that excludes trailing whitespace
@@ -1833,9 +1845,12 @@ impl NormalizedUsage {
         let mut children = Vec::new();
 
         // Extract typing (: Type) for the accepted signal
-        let payload_type = accept.syntax().children().find_map(parser::Typing::cast)
+        let payload_type = accept
+            .syntax()
+            .children()
+            .find_map(parser::Typing::cast)
             .and_then(|t| t.target().map(|qn| qn.to_string()));
-        
+
         if let Some(typing) = accept.syntax().children().find_map(parser::Typing::cast) {
             if let Some(target) = typing.target() {
                 relationships.push(NormalizedRelationship {
@@ -1864,13 +1879,13 @@ impl NormalizedUsage {
         let mut name_range = None;
         let mut payload_name = None;
         let mut payload_name_range = None;
-        
+
         // First check preceding sibling (for `action <name> accept ...` pattern)
         if let Some(prev_sibling) = accept.syntax().prev_sibling() {
             if let Some(name_node) = parser::Name::cast(prev_sibling) {
                 name = name_node.text();
                 name_range = Some(name_node.syntax().text_range());
-                
+
                 // For pattern 1, the NAME inside is the payload name, not the action name
                 if let Some(inner_name) = accept.syntax().children().find_map(parser::Name::cast) {
                     payload_name = inner_name.text();
@@ -1878,7 +1893,7 @@ impl NormalizedUsage {
                 }
             }
         }
-        
+
         // If no sibling name, check inside node (for standalone `accept <name> ...` pattern)
         if name.is_none() {
             if let Some(name_node) = accept.syntax().children().find_map(parser::Name::cast) {
@@ -1886,7 +1901,7 @@ impl NormalizedUsage {
                 name_range = Some(name_node.syntax().text_range());
             }
         }
-        
+
         // For `action trigger1 accept ignitionCmd : IgnitionCmd` pattern,
         // create the payload as a child item so trigger1.ignitionCmd resolves
         if let Some(pname) = payload_name {
@@ -1912,7 +1927,11 @@ impl NormalizedUsage {
         }
 
         // Extract additional children from the accept action's body (if any)
-        if let Some(body) = accept.syntax().children().find_map(parser::NamespaceBody::cast) {
+        if let Some(body) = accept
+            .syntax()
+            .children()
+            .find_map(parser::NamespaceBody::cast)
+        {
             for member in body.members() {
                 children.push(NormalizedElement::from_rowan(&member));
             }
@@ -2070,7 +2089,7 @@ impl NormalizedUsage {
         }
 
         Self {
-            name: None,   // For loops are anonymous
+            name: None, // For loops are anonymous
             short_name: None,
             kind: NormalizedUsageKind::Action, // For loop is an action
             range: Some(for_loop.syntax().text_range()),
