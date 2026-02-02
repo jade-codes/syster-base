@@ -1,66 +1,49 @@
+use std::path::PathBuf;
+use syster::ide::AnalysisHost;
+use syster::project::StdLibLoader;
+
 fn main() {
-    // Full state example from user
-    let source = r#"package TestStates {
-    state def Vehicle {
-        state healthStates {
-            entry action initial;
-            do senseTemperature{
-                out temp;
-            }
-
-            state normal;
-            state maintenance;
-            state degraded;                    
-
-            transition initial then normal;
-
-            transition normal_To_maintenance
-                first normal
-                accept at maintenanceTime
-                then maintenance;
-
-            transition normal_To_degraded
-                first normal
-                accept when senseTemperature.temp > Tmax 
-                do send new OverTemp() to controller
-                then degraded;
-
-            transition maintenance_To_normal
-                first maintenance
-                accept ReturnToNormal
-                then normal;
-
-            transition degraded_To_normal
-                first degraded
-                accept ReturnToNormal
-                then normal;
-        }
+    let mut host = AnalysisHost::new();
+    let stdlib = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sysml.library");
+    if stdlib.exists() {
+        let mut stdlib_loader = StdLibLoader::with_path(stdlib);
+        let _ = stdlib_loader.ensure_loaded_into_host(&mut host);
     }
-}"#;
-    use syster::syntax::file::FileExtension;
-    let syntax_file = syster::syntax::SyntaxFile::new(source, FileExtension::SysML);
-
-    // Extract symbols
-    let symbols = syster::hir::extract_symbols_unified(syster::FileId(0), &syntax_file);
-
-    println!("=== EXTRACTED SYMBOLS ===");
-    for sym in &symbols {
-        println!("  {} ({:?})", sym.qualified_name, sym.kind);
-    }
-
-    // Also print AST to see transition structure
-    println!("\n=== TRANSITION AST ===");
-    let parse = syster::parser::parse_sysml(source);
-    fn find_transitions(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>) {
-        if node.kind() == syster::parser::SyntaxKind::TRANSITION_USAGE {
-            println!("TRANSITION_USAGE found:");
-            for child in node.children() {
-                println!("  child: {:?} - {:?}", child.kind(), child.text());
+    
+    let file_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml");
+    let content = std::fs::read_to_string(&file_path).expect("Failed to read file");
+    let path_str = file_path.to_string_lossy().to_string();
+    let _ = host.set_file_content(&path_str, &content);
+    let analysis = host.analysis();
+    let file_id = analysis.get_file_id(&path_str).expect("File not in index");
+    
+    // Find wheelFastenerInterface1 symbol
+    println!("=== wheelFastenerInterface1 in wheelHubAssy2 ===");
+    for sym in analysis.symbol_index().symbols_in_file(file_id) {
+        if sym.qualified_name.contains("wheelHubAssy2") && sym.qualified_name.contains("wheelFastenerInterface1") && !sym.qualified_name.contains("::wheelFastenerInterface1::") {
+            println!("Symbol: {}", sym.qualified_name);
+            println!("  start_line: {}, start_col: {}", sym.start_line, sym.start_col);
+            println!("  end_line: {}, end_col: {}", sym.end_line, sym.end_col);
+            println!("  kind: {:?}", sym.kind);
+            println!("\nType refs:");
+            for (i, tr) in sym.type_refs.iter().enumerate() {
+                println!("  [{}]: {:?}", i, tr);
             }
         }
-        for child in node.children() {
-            find_transitions(&child);
+    }
+    
+    // Show lines around 969 (0-indexed)
+    let lines: Vec<&str> = content.lines().collect();
+    println!("\n=== File content (0-indexed lines 967-971) ===");
+    for i in 967..=971 {
+        if i < lines.len() {
+            println!("  [{}]: {}", i, lines[i].trim());
         }
     }
-    find_transitions(&parse.syntax());
+    
+    // Test hover at position (969, 93) - shankPort first occurrence
+    println!("\n=== Testing hover at (969, 93) ===");
+    let hover = analysis.hover(file_id, 969, 93);
+    println!("  hover result: {:?}", hover.is_some());
 }

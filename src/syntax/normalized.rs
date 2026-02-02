@@ -255,6 +255,7 @@ pub enum NormalizedUsageKind {
     Flow,
     Transition,
     Accept,
+    End, // Connection/interface endpoint
     // Control nodes
     Fork,
     Join,
@@ -527,6 +528,18 @@ impl NormalizedElement {
                 // Convert control node (fork/join/merge/decide) to a usage
                 NormalizedElement::Usage(NormalizedUsage::from_control_node(node))
             }
+            NamespaceMember::ForLoop(for_loop) => {
+                // Convert for loop to a usage with loop variable as a child
+                NormalizedElement::Usage(NormalizedUsage::from_for_loop(for_loop))
+            }
+            NamespaceMember::IfAction(if_action) => {
+                // Convert if action to a usage with expression refs
+                NormalizedElement::Usage(NormalizedUsage::from_if_action(if_action))
+            }
+            NamespaceMember::WhileLoop(while_loop) => {
+                // Convert while loop to a usage with expression refs
+                NormalizedElement::Usage(NormalizedUsage::from_while_loop(while_loop))
+            }
         }
     }
 }
@@ -656,13 +669,33 @@ impl NormalizedDefinition {
             }
         }
 
+        // Extract prefix metadata (#name) as Meta relationships
+        // PREFIX_METADATA nodes are preceding siblings, not children of DEFINITION
+        for prefix_meta in def.prefix_metadata() {
+            if let (Some(name), Some(range)) = (prefix_meta.name(), prefix_meta.name_range()) {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::Meta,
+                    target: RelTarget::Simple(name),
+                    range: Some(range),
+                });
+            }
+        }
+
         // Extract children from body
+        // Try NAMESPACE_BODY first, then CONSTRAINT_BODY (for constraint/calc defs)
         let children: Vec<NormalizedElement> = def
             .body()
             .map(|b| {
                 b.members()
                     .map(|m| NormalizedElement::from_rowan(&m))
                     .collect()
+            })
+            .or_else(|| {
+                def.constraint_body().map(|cb| {
+                    cb.members()
+                        .map(|m| NormalizedElement::from_rowan(&m))
+                        .collect()
+                })
             })
             .unwrap_or_default();
 
@@ -1018,6 +1051,7 @@ impl NormalizedUsage {
 
         // Extract connect endpoints (e.g., `connect engine.output to wheel.input`)
         // First check for nested connect_usage, then direct connector_part on the usage
+        // We'll collect endpoint usages here and add them to children later
         let connector_part = if let Some(connect) = usage.connect_usage() {
             connect.connector_part()
         } else {
@@ -1025,10 +1059,43 @@ impl NormalizedUsage {
             usage.connector_part()
         };
 
+        // Collect endpoint usages to add to children later (after children is initialized)
+        let mut endpoint_usages: Vec<NormalizedElement> = Vec::new();
         if let Some(part) = connector_part {
             // Extract all connector ends, not just source/target
             for end in part.ends() {
-                if let Some(qn) = end.target() {
+                // Extract endpoint name if present (LHS of ::>)
+                // This is the redefinition name like `cause1` in `cause1 ::> a`
+                // Create it as a child usage so it becomes a symbol that can be hovered
+                if let Some(endpoint_qn) = end.endpoint_name() {
+                    let endpoint_name = endpoint_qn.to_string();
+
+                    // The target reference (RHS of ::>) becomes a References relationship
+                    let mut endpoint_rels = Vec::new();
+                    if let Some(target_qn) = end.target() {
+                        let target_str = target_qn.to_string();
+                        let rel_target = make_chain_or_simple(&target_str, &target_qn);
+                        endpoint_rels.push(NormalizedRelationship {
+                            kind: NormalizedRelKind::References,
+                            target: rel_target,
+                            range: Some(target_qn.syntax().text_range()),
+                        });
+                    }
+
+                    // Create the endpoint as a child usage
+                    endpoint_usages.push(NormalizedElement::Usage(NormalizedUsage {
+                        name: Some(endpoint_name),
+                        short_name: None,
+                        kind: NormalizedUsageKind::End, // Connection endpoint
+                        relationships: endpoint_rels,
+                        range: Some(endpoint_qn.syntax().text_range()),
+                        name_range: Some(endpoint_qn.syntax().text_range()),
+                        short_name_range: None,
+                        doc: None,
+                        children: Vec::new(),
+                    }));
+                } else if let Some(qn) = end.target() {
+                    // No endpoint name, just a direct reference (e.g., `a.port to b.port`)
                     let target_str = qn.to_string();
                     let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
@@ -1330,6 +1397,9 @@ impl NormalizedUsage {
                     }
                 }
             };
+
+        // Add endpoint usages (collected earlier, for named endpoints like `cause1` in `cause1 ::> a`)
+        children.extend(endpoint_usages);
 
         Self {
             name,
@@ -1953,6 +2023,184 @@ impl NormalizedUsage {
             short_name_range,
             doc: parser::extract_doc_comment(node.syntax()),
             relationships: Vec::new(),
+            children,
+        }
+    }
+
+    /// Create a normalized usage from a for loop action usage.
+    /// The for loop variable becomes a child usage.
+    fn from_for_loop(for_loop: &parser::ForLoopActionUsage) -> Self {
+        // For loop variable becomes a child
+        let mut children: Vec<NormalizedElement> = Vec::new();
+
+        // Create a synthetic usage for the loop variable (e.g., `n : Integer`)
+        if let Some(var_name) = for_loop.variable_name() {
+            let name_text = var_name.text();
+
+            // Extract typing if present
+            let mut relationships = Vec::new();
+            if let Some(typing) = for_loop.typing() {
+                if let Some(target) = typing.target() {
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::TypedBy,
+                        target: RelTarget::Simple(target.to_string()),
+                        range: Some(target.syntax().text_range()),
+                    });
+                }
+            }
+
+            children.push(NormalizedElement::Usage(NormalizedUsage {
+                name: name_text.clone(),
+                short_name: None,
+                kind: NormalizedUsageKind::Attribute, // Loop variable is like an attribute
+                relationships,
+                range: Some(var_name.syntax().text_range()),
+                name_range: Some(var_name.syntax().text_range()),
+                short_name_range: None,
+                doc: None,
+                children: Vec::new(),
+            }));
+        }
+
+        // Add members from the for loop body
+        if let Some(body) = for_loop.body() {
+            for member in body.members() {
+                children.push(NormalizedElement::from_rowan(&member));
+            }
+        }
+
+        Self {
+            name: None,   // For loops are anonymous
+            short_name: None,
+            kind: NormalizedUsageKind::Action, // For loop is an action
+            range: Some(for_loop.syntax().text_range()),
+            name_range: None,
+            short_name_range: None,
+            doc: parser::extract_doc_comment(for_loop.syntax()),
+            relationships: Vec::new(),
+            children,
+        }
+    }
+
+    /// Create a normalized usage from an if action usage.
+    /// Extracts expression refs from condition and then/else targets.
+    fn from_if_action(if_action: &parser::IfActionUsage) -> Self {
+        let mut relationships = Vec::new();
+        let mut children = Vec::new();
+
+        // Extract expression references from condition
+        for expr in if_action.expressions() {
+            for chain in expr.feature_chains() {
+                if chain.parts.len() == 1 {
+                    let (name, range) = &chain.parts[0];
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::Expression,
+                        target: RelTarget::Simple(name.clone()),
+                        range: Some(*range),
+                    });
+                } else {
+                    let parts: Vec<FeatureChainPart> = chain
+                        .parts
+                        .iter()
+                        .map(|(name, range)| FeatureChainPart {
+                            name: name.clone(),
+                            range: Some(*range),
+                        })
+                        .collect();
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::Expression,
+                        target: RelTarget::Chain(FeatureChain {
+                            parts,
+                            range: Some(chain.full_range),
+                        }),
+                        range: Some(chain.full_range),
+                    });
+                }
+            }
+        }
+
+        // Extract qualified name references (then/else action targets)
+        for qn in if_action.qualified_names() {
+            let name = qn.to_string();
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::Expression,
+                target: RelTarget::Simple(name),
+                range: Some(qn.syntax().text_range()),
+            });
+        }
+
+        // Add members from the if action body (if it has one)
+        if let Some(body) = if_action.body() {
+            for member in body.members() {
+                children.push(NormalizedElement::from_rowan(&member));
+            }
+        }
+
+        Self {
+            name: None,
+            short_name: None,
+            kind: NormalizedUsageKind::Action,
+            range: Some(if_action.syntax().text_range()),
+            name_range: None,
+            short_name_range: None,
+            doc: parser::extract_doc_comment(if_action.syntax()),
+            relationships,
+            children,
+        }
+    }
+
+    /// Create a normalized usage from a while loop action usage.
+    fn from_while_loop(while_loop: &parser::WhileLoopActionUsage) -> Self {
+        let mut relationships = Vec::new();
+        let mut children = Vec::new();
+
+        // Extract expression references from condition
+        for expr in while_loop.expressions() {
+            for chain in expr.feature_chains() {
+                if chain.parts.len() == 1 {
+                    let (name, range) = &chain.parts[0];
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::Expression,
+                        target: RelTarget::Simple(name.clone()),
+                        range: Some(*range),
+                    });
+                } else {
+                    let parts: Vec<FeatureChainPart> = chain
+                        .parts
+                        .iter()
+                        .map(|(name, range)| FeatureChainPart {
+                            name: name.clone(),
+                            range: Some(*range),
+                        })
+                        .collect();
+                    relationships.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::Expression,
+                        target: RelTarget::Chain(FeatureChain {
+                            parts,
+                            range: Some(chain.full_range),
+                        }),
+                        range: Some(chain.full_range),
+                    });
+                }
+            }
+        }
+
+        // Add members from the while loop body
+        if let Some(body) = while_loop.body() {
+            for member in body.members() {
+                children.push(NormalizedElement::from_rowan(&member));
+            }
+        }
+
+        Self {
+            name: None,
+            short_name: None,
+            kind: NormalizedUsageKind::Action,
+            range: Some(while_loop.syntax().text_range()),
+            name_range: None,
+            short_name_range: None,
+            doc: parser::extract_doc_comment(while_loop.syntax()),
+            relationships,
             children,
         }
     }

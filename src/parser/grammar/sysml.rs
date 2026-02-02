@@ -1662,6 +1662,19 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
         p.parse_qualified_name();
         p.finish_node();
         p.skip_trivia();
+        
+        // Handle optional 'after' clause: then step2 after trigger1;
+        // This creates a guarded succession where step2 happens after trigger1 completes
+        if p.at(SyntaxKind::AFTER_KW) {
+            p.bump(); // after
+            p.skip_trivia();
+            // Parse the event/trigger reference (can be a chain like step1.done)
+            p.start_node(SyntaxKind::SUCCESSION_ITEM);
+            p.parse_qualified_name();
+            p.finish_node();
+            p.skip_trivia();
+        }
+        
         p.expect(SyntaxKind::SEMICOLON);
     }
 
@@ -2009,14 +2022,33 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
     } else if p.at_name_token() {
-        // Could be: identifier ; or identifier { ... } or qualified_name ;
+        // Could be: identifier ; or identifier [: Type] [:> ref, ...] { ... } or semicolon
+        // Pattern: do myAction : ActionType { ... }
         p.parse_identification();
         p.skip_trivia();
+
+        // Optional typing (: Type)
+        if p.at(SyntaxKind::COLON) {
+            p.parse_typing();
+            p.skip_trivia();
+        }
+
+        // Optional specializations (:>, :>>, etc.)
+        parse_specializations(p);
+        p.skip_trivia();
+
+        // Optional multiplicity
+        if p.at(SyntaxKind::L_BRACKET) {
+            p.parse_multiplicity();
+            p.skip_trivia();
+        }
+
         if p.at(SyntaxKind::L_BRACE) {
             parse_action_body(p);
-        } else {
-            p.expect(SyntaxKind::SEMICOLON);
+        } else if p.at(SyntaxKind::SEMICOLON) {
+            p.bump();
         }
+        // else: no body, no semicolon - might be valid shorthand
     }
 
     p.finish_node();
@@ -2175,7 +2207,7 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
 /// SubjectUsage = 'subject' Identification? Typing? ';'
 /// Per pest: requirement_subject_usage = { requirement_subject_usage_declaration ~ (";"|requirement_body) }
 /// Per pest: requirement_subject_usage_declaration = { subject_prefix? ~ usage_declaration }
-/// Pattern: subject <name>? <typing>? <specializations>? <body|semicolon>
+/// Pattern: subject <name>? <typing>? <specializations>? <multiplicity>? <default>? <body|semicolon>
 pub fn parse_subject_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SUBJECT_USAGE);
 
@@ -2184,13 +2216,14 @@ pub fn parse_subject_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_identification(p);
 
-    // Multiplicity
-    parse_optional_multiplicity(p);
-
+    // Typing (optional, can come before or after specializations)
     parse_optional_typing(p);
 
     // Specializations (redefines, subsets, etc.)
     parse_specializations_with_skip(p);
+
+    // Multiplicity (can come after specializations)
+    parse_optional_multiplicity(p);
 
     // Default value (with 'default' keyword or '=' operator)
     parse_optional_default_value(p);
@@ -2504,7 +2537,9 @@ pub fn parse_allocate_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-/// IncludeUsage = 'include' 'use'? 'case'? QualifiedName ';'
+/// IncludeUsage = 'include' 'use'? 'case'? (Name | QualifiedName) Typing? Specializations? ';'
+/// When followed by typing/specialization, the first identifier is a NAME (defines new element)
+/// Otherwise, it's a QualifiedName (references existing element)
 pub fn parse_include_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -2514,9 +2549,33 @@ pub fn parse_include_usage<P: SysMLParser>(p: &mut P) {
     consume_if(p, SyntaxKind::USE_KW);
     consume_if(p, SyntaxKind::CASE_KW);
 
-    // Target (can be a qualified name or owned_feature_chain)
+    // Peek ahead to determine if this is a name (followed by typing/specialization) or a reference
+    // If next identifier is followed by : or :> etc, treat it as a NAME
     if p.at_name_token() {
-        p.parse_qualified_name();
+        let peek1 = p.peek_kind(1);
+        let has_typing_or_spec = matches!(
+            peek1,
+            SyntaxKind::COLON
+                | SyntaxKind::TYPED_KW
+                | SyntaxKind::OF_KW
+                | SyntaxKind::COLON_GT
+                | SyntaxKind::COLON_GT_GT
+                | SyntaxKind::COLON_COLON_GT
+                | SyntaxKind::SPECIALIZES_KW
+                | SyntaxKind::SUBSETS_KW
+                | SyntaxKind::REDEFINES_KW
+                | SyntaxKind::REFERENCES_KW
+                | SyntaxKind::L_BRACKET  // multiplicity after name
+                | SyntaxKind::L_BRACE    // body after name
+        );
+        
+        if has_typing_or_spec {
+            // This is a name (defines new element)
+            p.parse_identification();
+        } else {
+            // This is a reference to existing element
+            p.parse_qualified_name();
+        }
     }
 
     p.skip_trivia();
@@ -2973,6 +3032,8 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
     let is_message = p.at(SyntaxKind::MESSAGE_KW);
     let is_usecase = p.at(SyntaxKind::USE_KW); // use case usage
+    let is_connection_kw = p.at(SyntaxKind::CONNECTION_KW);
+    let is_interface_kw = p.at(SyntaxKind::INTERFACE_KW);
 
     // Usage keyword
     parse_usage_keyword(p);
@@ -3115,14 +3176,39 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
         false
     };
 
-    if has_chain {
+    // For interface/connection usages, check if this looks like a connector pattern
+    // Pattern: interface X.y to Z.w - the feature chain is a connector endpoint, not a specialization
+    let looks_like_connector_endpoint = if (is_connection_kw || is_interface_kw) && has_chain {
+        // Look ahead to see if there's a 'to' keyword after the chain
+        let mut depth = 0;
+        let mut found_to = false;
+        for i in 0..30 {
+            match p.peek_kind(i) {
+                SyntaxKind::TO_KW if depth == 0 => {
+                    found_to = true;
+                    break;
+                }
+                SyntaxKind::DOT | SyntaxKind::IDENT => {}
+                SyntaxKind::L_BRACKET => depth += 1,
+                SyntaxKind::R_BRACKET => depth -= 1,
+                SyntaxKind::WHITESPACE => {} // Skip whitespace in lookahead
+                SyntaxKind::SEMICOLON | SyntaxKind::L_BRACE | SyntaxKind::COLON => break,
+                _ => break,
+            }
+        }
+        found_to
+    } else {
+        false
+    };
+
+    if has_chain && !looks_like_connector_endpoint {
         // This is a feature chain reference like `sendSpeed.sourceEvent`
         // Parse as a SPECIALIZATION with a QUALIFIED_NAME containing the chain
         p.start_node(SyntaxKind::SPECIALIZATION);
         p.parse_qualified_name(); // Parses the full chain including dots
         p.skip_trivia();
         p.finish_node();
-    } else if (p.at_name_token() || p.at(SyntaxKind::LT)) && !p.at(SyntaxKind::CONNECT_KW) {
+    } else if (p.at_name_token() || p.at(SyntaxKind::LT)) && !p.at(SyntaxKind::CONNECT_KW) && !looks_like_connector_endpoint {
         p.parse_identification();
     }
     p.skip_trivia();
@@ -3181,6 +3267,70 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
     // More specializations
     parse_specializations(p);
     p.skip_trivia();
+
+    // For connection/interface usage: n-ary endpoint syntax after typing
+    // Pattern: connection : Type ( end1 ::> a, end2 ::> b );
+    // Pattern: interface : Type ( end1 ::> a, end2 ::> b );
+    if (is_connection_kw || is_interface_kw) && p.at(SyntaxKind::L_PAREN) {
+        p.start_node(SyntaxKind::CONNECTOR_PART);
+        bump_keyword(p); // (
+
+        parse_connector_end(p);
+        p.skip_trivia();
+
+        while p.at(SyntaxKind::COMMA) {
+            bump_keyword(p);
+            parse_connector_end(p);
+            p.skip_trivia();
+        }
+
+        p.expect(SyntaxKind::R_PAREN);
+        p.finish_node(); // CONNECTOR_PART
+        p.skip_trivia();
+    }
+
+    // For connection/interface usage: binary endpoint syntax with 'to'
+    // Pattern: interface source.port to target.port;
+    if (is_connection_kw || is_interface_kw) && p.at_name_token() && !p.at(SyntaxKind::CONNECT_KW) {
+        // Check if there's a 'to' keyword ahead
+        let has_to = {
+            let mut depth = 0;
+            let mut found_to = false;
+            for i in 0..20 {
+                match p.peek_kind(i) {
+                    SyntaxKind::TO_KW if depth == 0 => {
+                        found_to = true;
+                        break;
+                    }
+                    SyntaxKind::DOT | SyntaxKind::IDENT => {}
+                    SyntaxKind::L_BRACKET => depth += 1,
+                    SyntaxKind::R_BRACKET => depth -= 1,
+                    SyntaxKind::SEMICOLON | SyntaxKind::L_BRACE => break,
+                    _ => break,
+                }
+            }
+            found_to
+        };
+
+        if has_to {
+            p.start_node(SyntaxKind::CONNECTOR_PART);
+
+            // Parse source endpoint (chain like source.port)
+            parse_connector_end(p);
+            p.skip_trivia();
+
+            // 'to' keyword
+            if p.at(SyntaxKind::TO_KW) {
+                bump_keyword(p);
+
+                // Parse target endpoint
+                parse_connector_end(p);
+                p.skip_trivia();
+            }
+
+            p.finish_node(); // CONNECTOR_PART
+        }
+    }
 
     // For allocation usage: optional allocate clause
     let is_allocation = p.at(SyntaxKind::ALLOCATE_KW);
@@ -3744,42 +3894,17 @@ fn parse_multiplicity<P: SysMLParser>(p: &mut P) {
 }
 
 /// Parse a single multiplicity bound (number, *, or expression including function calls)
+/// Per spec: multiplicity_bound = { inline_expression | number | "*" }
+/// Bounds are typed as Expression in the metamodel
 fn parse_multiplicity_bound<P: SysMLParser>(p: &mut P) {
-    // Handle special cases: *, numbers
     if p.at(SyntaxKind::STAR) {
         p.bump();
-        return;
-    }
-
-    if p.at(SyntaxKind::INTEGER) {
-        p.bump();
-        return;
-    }
-
-    // Otherwise, parse as expression (handles identifiers, function calls like size(x), etc.)
-    // Use a depth counter to handle nested parens/brackets properly
-    let mut paren_depth = 0;
-
-    while !p.at(SyntaxKind::R_BRACKET) && !p.at(SyntaxKind::DOT_DOT) && !p.at(SyntaxKind::ERROR) {
-        if p.at(SyntaxKind::L_PAREN) {
-            paren_depth += 1;
-            p.bump();
-        } else if p.at(SyntaxKind::R_PAREN) {
-            if paren_depth > 0 {
-                paren_depth -= 1;
-                p.bump();
-            } else {
-                // Unmatched ), stop
-                break;
-            }
-        } else {
-            p.bump();
-        }
-
-        // Only skip trivia if we're still inside parens or haven't hit a stopping point
-        if paren_depth > 0 || (!p.at(SyntaxKind::R_BRACKET) && !p.at(SyntaxKind::DOT_DOT)) {
-            p.skip_trivia();
-        }
+    } else if p.at(SyntaxKind::INTEGER) {
+        // Integers are literals - parse as expression for consistency
+        super::kerml_expressions::parse_expression(p);
+    } else if p.at_name_token() || p.at(SyntaxKind::L_PAREN) {
+        // Parse as full expression (handles identifiers, function calls, etc.)
+        super::kerml_expressions::parse_expression(p);
     }
 }
 
@@ -3797,7 +3922,7 @@ pub fn parse_binding_or_succession<P: SysMLParser>(p: &mut P) {
     }
 
     if is_succession {
-        p.start_node(SyntaxKind::SUCCESSION_ITEM);
+        p.start_node(SyntaxKind::SUCCESSION);
     } else {
         p.start_node(SyntaxKind::BINDING_CONNECTOR);
     }
@@ -4356,7 +4481,10 @@ fn parse_metadata_body<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-// Parse metadata body usage: ref? :>>? identifier feature_specialization? value? body
+// Parse metadata body usage: ref? :>>? identifier typing? specializations? default? meta? value? body
+// Handles patterns like:
+//   - `ref :>> annotatedElement : SysML::Usage;`
+//   - `:>> baseType default global_sd meta SysML::PortUsage;`
 fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -4366,19 +4494,31 @@ fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
 
-    // Optional redefines operator
+    // Optional redefines operator - wrap in SPECIALIZATION node for AST extraction
     if p.at(SyntaxKind::COLON_GT_GT) || p.at(SyntaxKind::COLON_GT) || p.at(SyntaxKind::REDEFINES_KW)
     {
-        p.bump();
+        p.start_node(SyntaxKind::SPECIALIZATION);
+        p.bump(); // :>> or :> or redefines
         p.skip_trivia();
-    }
 
-    // Required identifier
-    if p.at(SyntaxKind::IDENT) {
-        p.bump();
-        p.skip_trivia();
+        // Required identifier (as qualified name)
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        } else {
+            p.error("expected identifier in metadata body usage");
+        }
+        p.finish_node(); // SPECIALIZATION
     } else {
-        p.error("expected identifier in metadata body usage");
+        // No redefines - parse name directly as NAME node for hoverable symbol
+        if p.at(SyntaxKind::IDENT) {
+            p.start_node(SyntaxKind::NAME);
+            p.bump();
+            p.finish_node();
+            p.skip_trivia();
+        } else {
+            p.error("expected identifier in metadata body usage");
+        }
     }
 
     // Optional typing
@@ -4390,6 +4530,32 @@ fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
     // Optional specializations
     parse_specializations(p);
     p.skip_trivia();
+
+    // Optional 'default' clause with expression
+    // Pattern: `default <expression>`
+    if p.at(SyntaxKind::DEFAULT_KW) {
+        p.bump(); // default
+        p.skip_trivia();
+        // The default value is an expression (usually an identifier reference)
+        if p.can_start_expression() {
+            parse_expression(p);
+            p.skip_trivia();
+        }
+    }
+
+    // Optional 'meta' clause with type reference
+    // Pattern: `meta <qualified_name>`
+    // We use TYPING node to wrap this since it functions similarly
+    if p.at(SyntaxKind::META_KW) {
+        p.start_node(SyntaxKind::TYPING);
+        p.bump(); // meta
+        p.skip_trivia();
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        }
+        p.finish_node();
+    }
 
     // Optional value (= expression or 'as' cast)
     if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {

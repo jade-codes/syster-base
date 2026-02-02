@@ -33,21 +33,11 @@ package TestPkg {
     let index = analysis.symbol_index();
     let symbols: Vec<_> = index.all_symbols().collect();
 
-    println!("\n=== All Symbols ===");
-    for sym in &symbols {
-        println!("  {} (kind: {:?})", sym.qualified_name, sym.kind);
-    }
-
     // Find all supplierPort symbols
     let supplier_ports: Vec<_> = symbols
         .iter()
         .filter(|s| s.name.as_ref() == "supplierPort")
         .collect();
-
-    println!("\n=== supplierPort symbols ===");
-    for sym in &supplier_ports {
-        println!("  {}", sym.qualified_name);
-    }
 
     // Each should have a unique qualified name
     assert_eq!(
@@ -109,19 +99,10 @@ package TestPkg {
     let analysis = host.analysis();
     let index = analysis.symbol_index();
 
-    // Get diagnostics using the check_file function
     let file_id = analysis
         .get_file_id("test.sysml")
         .expect("Should have file");
     let diagnostics = syster::hir::check_file(index, file_id);
-
-    println!("\n=== Diagnostics ===");
-    for diag in &diagnostics {
-        println!(
-            "  [{:?}] {} (line {})",
-            diag.severity, diag.message, diag.start_line
-        );
-    }
 
     // Check for any "duplicate" errors
     let duplicate_errors: Vec<_> = diagnostics

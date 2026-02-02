@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use syster::base::FileId;
-use syster::hir::{TypeRefKind, extract_symbols_unified};
+use syster::hir::{extract_symbols_unified, TypeRefKind};
 use syster::syntax::parser::parse_content;
 
 fn extract_type_ref_targets(source: &str) -> Vec<(String, Vec<String>)> {
@@ -32,22 +32,6 @@ fn extract_type_ref_targets(source: &str) -> Vec<(String, Vec<String>)> {
         .collect()
 }
 
-fn print_all_symbols(source: &str) {
-    let parse = parse_content(source, Path::new("test.sysml")).unwrap();
-    let syntax = parse;
-    let symbols = extract_symbols_unified(FileId::new(0), &syntax);
-
-    println!("=== All symbols ===");
-    for sym in &symbols {
-        println!("{} ({:?})", sym.qualified_name, sym.kind);
-        if !sym.type_refs.is_empty() {
-            for (i, tr) in sym.type_refs.iter().enumerate() {
-                println!("  type_ref[{}]: {:?}", i, tr);
-            }
-        }
-    }
-}
-
 // ==============================================================================
 // PATTERN: then (transition) - 11 occurrences
 // state s1 then s2;
@@ -63,11 +47,8 @@ fn test_then_simple_transition() {
     }
 }"#;
 
-    print_all_symbols(source);
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // The transition should have refs to s1 and s2
     let has_s1_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"s1".to_string()));
@@ -91,11 +72,8 @@ fn test_then_in_state_body() {
     }
 }"#;
 
-    print_all_symbols(source);
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Should have ref to 'running' from inside idle's body
     let has_running_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"running".to_string()));
@@ -122,11 +100,8 @@ fn test_first_state() {
     }
 }"#;
 
-    print_all_symbols(source);
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Should have ref to 'idle' from the first declaration
     let has_idle_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"idle".to_string()));
@@ -154,11 +129,8 @@ fn test_accept_signal() {
     }
 }"#;
 
-    print_all_symbols(source);
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Should have ref to 'Signal' type and 'running' state
     let has_signal_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"Signal".to_string()));
@@ -190,11 +162,8 @@ fn test_accept_with_when() {
     }
 }"#;
 
-    print_all_symbols(source);
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Should have ref to 'alarm' state and expression refs
     let has_alarm_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"alarm".to_string()));

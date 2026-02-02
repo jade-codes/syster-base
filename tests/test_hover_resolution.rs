@@ -1,28 +1,20 @@
 //! Focused tests for hover resolution issues.
 //!
-//! These tests isolate specific patterns that fail in the LSP hover test.
+//! These tests verify that hover works correctly for various SysML patterns.
 
 use syster::ide::AnalysisHost;
 
 fn create_analysis(source: &str) -> AnalysisHost {
-    println!("\n========== CREATING ANALYSIS ==========");
-    println!("Source code:\n{}", source);
     let mut host = AnalysisHost::new();
-    let errors = host.set_file_content("test.sysml", source);
-    println!("Parse errors: {:?}", errors);
+    let _errors = host.set_file_content("test.sysml", source);
     host
 }
 
 /// Helper to check if hover at a position returns something
-fn has_hover_at(host: &mut AnalysisHost, line: u32, col: u32) -> Option<String> {
-    println!("\n---------- HOVER REQUEST ----------");
-    println!("Position: line {}, col {}", line, col);
+fn hover_at(host: &mut AnalysisHost, line: u32, col: u32) -> Option<String> {
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-    println!("File ID: {:?}", file_id);
-    let result = analysis.hover(file_id, line, col).map(|h| h.contents);
-    println!("Hover result: {:?}", result);
-    result
+    analysis.hover(file_id, line, col).map(|h| h.contents)
 }
 
 // =============================================================================
@@ -31,8 +23,6 @@ fn has_hover_at(host: &mut AnalysisHost, line: u32, col: u32) -> Option<String> 
 
 #[test]
 fn test_hover_on_redefines_target() {
-    // Pattern: `perform ActionTree::providePower redefines providePower;`
-    // Hover on `providePower` (the redefines target) should resolve
     let source = r#"
 package TestPkg {
     action def ProvidePower;
@@ -52,21 +42,16 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 9: `perform ActionTree::providePower redefines providePower;`
-    // The `providePower` after `redefines` should hover to Vehicle::providePower
-    let hover = has_hover_at(&mut host, 9, 60); // "providePower" after redefines
+    let hover = hover_at(&mut host, 9, 60);
     assert!(
         hover.is_some(),
         "Expected hover on redefines target 'providePower'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("providePower"));
 }
 
 #[test]
 fn test_hover_on_qualified_redefines_source() {
-    // Pattern: `perform ActionTree::providePower redefines providePower;`
-    // Hover on `ActionTree::providePower` should resolve to the action in ActionTree
     let source = r#"
 package TestPkg {
     action def ProvidePower;
@@ -86,14 +71,12 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 9: hover on "providePower" part of "ActionTree::providePower"
-    let hover = has_hover_at(&mut host, 9, 36); // "providePower" in ActionTree::providePower
+    let hover = hover_at(&mut host, 9, 36);
     assert!(
         hover.is_some(),
         "Expected hover on qualified ref 'ActionTree::providePower'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("ActionTree::providePower"));
 }
 
 // =============================================================================
@@ -102,8 +85,6 @@ package TestPkg {
 
 #[test]
 fn test_hover_on_specializes_target() {
-    // Pattern: `part engine : Engine;`
-    // Hover on `Engine` should resolve to the part def
     let source = r#"
 package TestPkg {
     part def Engine;
@@ -115,12 +96,9 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 5: `part engine : Engine;`
-    // Hover on `Engine` should work
-    let hover = has_hover_at(&mut host, 5, 22); // "Engine"
+    let hover = hover_at(&mut host, 5, 22);
     assert!(hover.is_some(), "Expected hover on type 'Engine'");
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("Engine"));
 }
 
 // =============================================================================
@@ -129,8 +107,6 @@ package TestPkg {
 
 #[test]
 fn test_hover_on_feature_chain_first_part() {
-    // Pattern: `fuelTank.mass`
-    // Hover on `fuelTank` should resolve to the part
     let source = r#"
 package TestPkg {
     part def FuelTank {
@@ -145,21 +121,16 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 8: `attribute totalMass = fuelTank.mass;`
-    // Hover on `fuelTank` should work
-    let hover = has_hover_at(&mut host, 8, 32); // "fuelTank" in expression
+    let hover = hover_at(&mut host, 8, 32);
     assert!(
         hover.is_some(),
         "Expected hover on feature chain first part 'fuelTank'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("fuelTank"));
 }
 
 #[test]
 fn test_hover_on_feature_chain_second_part() {
-    // Pattern: `fuelTank.mass`
-    // Hover on `mass` should resolve to FuelTank::mass
     let source = r#"
 package TestPkg {
     part def FuelTank {
@@ -174,15 +145,12 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 8: `attribute totalMass = fuelTank.mass;`
-    // Hover on `mass` should work
-    let hover = has_hover_at(&mut host, 8, 41); // "mass" in expression
+    let hover = hover_at(&mut host, 8, 41);
     assert!(
         hover.is_some(),
         "Expected hover on feature chain second part 'mass'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("mass"));
 }
 
 // =============================================================================
@@ -191,7 +159,6 @@ package TestPkg {
 
 #[test]
 fn test_hover_on_subsets_target() {
-    // Pattern: `action doSomething subsets parentAction;`
     let source = r#"
 package TestPkg {
     action def ParentAction {
@@ -205,30 +172,20 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 7: `action doSomething subsets parentAction;`
-    // Hover on `parentAction` should work
-    let hover = has_hover_at(&mut host, 7, 40); // "parentAction" after subsets
+    let hover = hover_at(&mut host, 7, 40);
     assert!(
         hover.is_some(),
         "Expected hover on subsets target 'parentAction'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("parentAction"));
 }
 
 // =============================================================================
-// TRANSITION PATTERN (then)
+// TRANSITION PATTERN
 // =============================================================================
 
 #[test]
 fn test_hover_on_transition_target() {
-    use syster::parser::{
-        ast::{AstNode, NamespaceMember, SourceFile},
-        parse_sysml,
-    };
-
-    println!("\n\n========== TEST: TRANSITION TARGET ==========");
-    // Pattern: `transition initial then running;`
     let source = r#"
 package TestPkg {
     state def VehicleStates {
@@ -240,62 +197,23 @@ package TestPkg {
 }
 "#;
 
-    // Debug: print the AST structure first
-    println!("\n--- AST structure ---");
-    let parse = parse_sysml(source);
-    let root = SourceFile::cast(parse.syntax()).unwrap();
-    for member in root.members() {
-        if let NamespaceMember::Package(pkg) = member {
-            if let Some(body) = pkg.body() {
-                for inner in body.members() {
-                    println!("Inner: {:?}", inner.syntax().kind());
-                    if let NamespaceMember::Definition(def) = inner {
-                        println!(
-                            "  Definition body: {:?}",
-                            def.body().map(|b| b.syntax().kind())
-                        );
-                        println!(
-                            "  Definition children count: {}",
-                            def.body().map(|b| b.members().count()).unwrap_or(0)
-                        );
-                        println!("  Raw syntax children:");
-                        for child in def.syntax().children() {
-                            let text: String = child.text().to_string().chars().take(50).collect();
-                            println!("    {:?}: '{}'", child.kind(), text);
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     let mut host = create_analysis(source);
 
-    // Print what's at each position on line 6
-    println!("\n--- Scanning line 6 for hover positions ---");
-    for col in 0..50 {
-        let hover = has_hover_at(&mut host, 6, col);
-        if hover.is_some() {
-            println!("  Col {}: FOUND hover", col);
-        }
-    }
-
-    // Line 6: `transition initial then running;`
-    // Hover on `running` should work
-    println!("\n--- Testing specific position ---");
-    let hover = has_hover_at(&mut host, 6, 36); // "running" after then
-
-    // Also try nearby positions
-    println!("\n--- Trying nearby positions for 'running' ---");
-    for col in 30..45 {
-        let h = has_hover_at(&mut host, 6, col);
-        println!("  Col {}: {:?}", col, h.is_some());
-    }
-
+    // Hover on 'initial' (source)
+    let hover_initial = hover_at(&mut host, 6, 21);
     assert!(
-        hover.is_some(),
+        hover_initial.is_some(),
+        "Expected hover on transition source 'initial'"
+    );
+    assert!(hover_initial.unwrap().contains("initial"));
+
+    // Hover on 'running' (target)
+    let hover_running = hover_at(&mut host, 6, 36);
+    assert!(
+        hover_running.is_some(),
         "Expected hover on transition target 'running'"
     );
+    assert!(hover_running.unwrap().contains("running"));
 }
 
 // =============================================================================
@@ -304,7 +222,6 @@ package TestPkg {
 
 #[test]
 fn test_hover_on_expression_reference() {
-    // Pattern: `attribute x = y + 1;`
     let source = r#"
 package TestPkg {
     part def Calculator {
@@ -315,24 +232,20 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Line 4: `attribute x : Real = y + 1;`
-    // Hover on `y` should work
-    let hover = has_hover_at(&mut host, 4, 30); // "y" in expression
+    let hover = hover_at(&mut host, 4, 30);
     assert!(
         hover.is_some(),
         "Expected hover on expression reference 'y'"
     );
-    println!("Hover result: {:?}", hover);
+    assert!(hover.unwrap().contains("y"));
 }
+
 // =============================================================================
-// MESSAGE CHAIN PATTERN (from LSP test failure)
+// MESSAGE CHAIN PATTERN
 // =============================================================================
 
 #[test]
 fn test_hover_on_message_chain_second_part() {
-    // Pattern: `message of ignitionCmd:IgnitionCmd from driver.turnVehicleOn to vehicle.trigger1;`
-    // This is the exact pattern failing in the LSP test - hover on `turnVehicleOn` returns None
     let source = r#"
 package TestPkg {
     part def Sequence;
@@ -354,66 +267,33 @@ package TestPkg {
 
     let mut host = create_analysis(source);
 
-    // Print all symbols for debugging
-    println!("\n--- ALL SYMBOLS ---");
-    let analysis = host.analysis();
-    let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-    let index = analysis.symbol_index();
-    for sym in index.symbols_in_file(file_id) {
-        println!("  {} ({:?})", sym.qualified_name, sym.kind);
-        if !sym.type_refs.is_empty() {
-            for (i, tr) in sym.type_refs.iter().enumerate() {
-                println!("    type_ref[{}]: {:?}", i, tr);
-            }
-        }
-    }
-
-    // Line 14: `message of ignitionCmd:IgnitionCmd from driver.turnVehicleOn to vehicle.trigger1;`
-    // Count: 0         1         2         3         4         5         6         7         8
-    //        0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890
-    //                message of ignitionCmd:IgnitionCmd from driver.turnVehicleOn to vehicle.trigger1;
-    //                                                        ^     ^             ^  ^       ^
-    //                                                        52    59            75 79      87
-
-    println!("\n--- Testing hover positions on line 14 ---");
-
-    // First, hover on `driver` - should work
-    let hover_driver = has_hover_at(&mut host, 14, 56);
-    println!("Hover on 'driver' (col 56): {:?}", hover_driver.is_some());
-
-    // Now, hover on `turnVehicleOn` - this is the failing case
-    let hover_turn = has_hover_at(&mut host, 14, 63);
-    println!(
-        "Hover on 'turnVehicleOn' (col 63): {:?}",
-        hover_turn.is_some()
-    );
-
-    // Also test `trigger1`
-    let hover_trigger = has_hover_at(&mut host, 14, 87);
-    println!(
-        "Hover on 'trigger1' (col 87): {:?}",
-        hover_trigger.is_some()
-    );
-
+    // Hover on 'driver'
+    let hover_driver = hover_at(&mut host, 14, 56);
     assert!(hover_driver.is_some(), "Expected hover on 'driver'");
+
+    // Hover on 'turnVehicleOn'
+    let hover_turn = hover_at(&mut host, 14, 63);
     assert!(
         hover_turn.is_some(),
-        "Expected hover on 'turnVehicleOn' - this is the chain member"
+        "Expected hover on 'turnVehicleOn' - chain member"
     );
+    assert!(hover_turn.unwrap().contains("turnVehicleOn"));
+
+    // Hover on 'trigger1'
+    let hover_trigger = hover_at(&mut host, 14, 87);
     assert!(
         hover_trigger.is_some(),
-        "Expected hover on 'trigger1' - this is the chain member"
+        "Expected hover on 'trigger1' - chain member"
     );
+    assert!(hover_trigger.unwrap().contains("trigger1"));
 }
 
 // =============================================================================
-// BIND CHAIN PATTERN (from LSP test failure - "other" category)
+// BIND CHAIN PATTERN
 // =============================================================================
 
 #[test]
 fn test_hover_on_bind_chain_second_part() {
-    // Pattern: `bind shaftPort_d=differential.shaftPort_d;`
-    // This is failing as "other" in LSP test
     let source = r#"
 package TestPkg {
     port def ShaftPort;
@@ -432,46 +312,16 @@ package TestPkg {
 
     let mut host = create_analysis(source);
 
-    // Print all symbols for debugging
-    println!("\n--- ALL SYMBOLS ---");
-    {
-        let analysis = host.analysis();
-        let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-        let index = analysis.symbol_index();
-        for sym in index.symbols_in_file(file_id) {
-            println!("  {} ({:?})", sym.qualified_name, sym.kind);
-            if !sym.type_refs.is_empty() {
-                for (i, tr) in sym.type_refs.iter().enumerate() {
-                    println!("    type_ref[{}]: {:?}", i, tr);
-                }
-            }
-        }
-    }
+    // Hover on first 'shaftPort_d'
+    let hover1 = hover_at(&mut host, 11, 17);
+    assert!(hover1.is_some(), "Expected hover on first 'shaftPort_d'");
 
-    println!("\n--- Testing bind chain positions ---");
+    // Hover on 'differential'
+    let hover2 = hover_at(&mut host, 11, 31);
+    assert!(hover2.is_some(), "Expected hover on 'differential'");
 
-    // Line 11: `bind shaftPort_d = differential.shaftPort_d;`
-    //          0         1         2         3         4         5
-    //          0123456789012345678901234567890123456789012345678901234
-    //                  bind shaftPort_d = differential.shaftPort_d;
-    //                       ^            ^            ^
-    //                       13           27           40
-
-    // Hover on first `shaftPort_d`
-    let hover1 = has_hover_at(&mut host, 11, 17);
-    println!("Hover on first 'shaftPort_d': {:?}", hover1.is_some());
-
-    // Hover on `differential`
-    let hover2 = has_hover_at(&mut host, 11, 31);
-    println!("Hover on 'differential': {:?}", hover2.is_some());
-
-    // Hover on second `shaftPort_d` (the chain member)
-    let hover3 = has_hover_at(&mut host, 11, 44);
-    println!(
-        "Hover on second 'shaftPort_d' (chain): {:?}",
-        hover3.is_some()
-    );
-
+    // Hover on second 'shaftPort_d' (chain member)
+    let hover3 = hover_at(&mut host, 11, 44);
     assert!(
         hover3.is_some(),
         "Expected hover on 'differential.shaftPort_d' chain member"
@@ -479,14 +329,11 @@ package TestPkg {
 }
 
 // =============================================================================
-// REDEFINES IN ITEM PATTERN (from LSP test failure)
+// ITEM REDEFINES IN PORT DEF
 // =============================================================================
 
-/// Test for: `in item fuelCmd:FuelCmd redefines pwrCmd;`
-/// This is a nested item that redefines a feature from a parent port def.
 #[test]
 fn test_hover_on_item_redefines_in_port_def() {
-    // This pattern is from SimpleVehicleModel.sysml line 234
     let source = r#"
 package TestPkg {
     port def PwrCmdPort {
@@ -503,44 +350,18 @@ package TestPkg {
 "#;
 
     let mut host = create_analysis(source);
-
-    // Print all symbols for debugging
-    println!("\n--- ALL SYMBOLS ---");
-    {
-        let analysis = host.analysis();
-        let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-        let index = analysis.symbol_index();
-        for sym in index.symbols_in_file(file_id) {
-            println!("  {} ({:?})", sym.qualified_name, sym.kind);
-            if !sym.type_refs.is_empty() {
-                for (i, tr) in sym.type_refs.iter().enumerate() {
-                    println!("    type_ref[{}]: {:?}", i, tr);
-                }
-            }
-        }
-    }
-
-    // Line 7: `in item fuelCmd : FuelCmd redefines pwrCmd;`
-    // The `pwrCmd` after `redefines` should hover to PwrCmdPort::pwrCmd
-    let hover = has_hover_at(&mut host, 7, 48); // "pwrCmd" after redefines
-    println!("Hover result: {:?}", hover);
-
+    let hover = hover_at(&mut host, 7, 48);
     assert!(
         hover.is_some(),
         "Expected hover on redefines target 'pwrCmd'"
     );
+    assert!(hover.unwrap().contains("pwrCmd"));
 }
 
 // =============================================================================
-// BIND PATTERN (from LSP test failure - "other" category)
+// BIND EQUALS CHAIN
 // =============================================================================
 
-/// Test for: `bind shaftPort_d=differential.shaftPort_d;`
-/// This tests the scenario from LSP test failure report line 635.
-/// The test checks hover on:
-/// 1. First `shaftPort_d` (the bind target)
-/// 2. `differential` (first part of chain)
-/// 3. Second `shaftPort_d` (chain member)
 #[test]
 fn test_hover_on_bind_equals_chain() {
     let source = r#"
@@ -562,54 +383,19 @@ package TestPkg {
 
     let mut host = create_analysis(source);
 
-    // Print all symbols for debugging
-    println!("\n--- ALL SYMBOLS ---");
-    {
-        let analysis = host.analysis();
-        let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-        let index = analysis.symbol_index();
-        for sym in index.symbols_in_file(file_id) {
-            println!("  {} ({:?})", sym.qualified_name, sym.kind);
-            println!(
-                "    span: line {}-{}, col {}-{}",
-                sym.start_line, sym.end_line, sym.start_col, sym.end_col
-            );
-            if !sym.type_refs.is_empty() {
-                for (i, tr) in sym.type_refs.iter().enumerate() {
-                    println!("    type_ref[{}]: {:?}", i, tr);
-                }
-            }
-        }
-    }
-
-    // Line 12: `bind shaftPort_d = differential.shaftPort_d;`
-    //          0         1         2         3         4         5
-    //          0123456789012345678901234567890123456789012345678901234
-    //                  bind shaftPort_d = differential.shaftPort_d;
-    //                       ^            ^             ^
-    //                       13           28            41
-
-    // Hover on first `shaftPort_d` (the bind target)
-    println!("\n--- Testing hover on first shaftPort_d (bind target) ---");
-    let hover1 = has_hover_at(&mut host, 12, 17);
-    println!("Hover on first 'shaftPort_d': {:?}", hover1);
-
-    // Hover on `differential`
-    println!("\n--- Testing hover on differential ---");
-    let hover2 = has_hover_at(&mut host, 12, 32);
-    println!("Hover on 'differential': {:?}", hover2);
-
-    // Hover on second `shaftPort_d` (chain member)
-    println!("\n--- Testing hover on second shaftPort_d (chain) ---");
-    let hover3 = has_hover_at(&mut host, 12, 47);
-    println!("Hover on second 'shaftPort_d': {:?}", hover3);
-
-    // All should resolve
+    // Hover on first 'shaftPort_d' (bind target)
+    let hover1 = hover_at(&mut host, 12, 17);
     assert!(
         hover1.is_some(),
         "Expected hover on bind target 'shaftPort_d'"
     );
+
+    // Hover on 'differential'
+    let hover2 = hover_at(&mut host, 12, 32);
     assert!(hover2.is_some(), "Expected hover on 'differential'");
+
+    // Hover on second 'shaftPort_d' (chain member)
+    let hover3 = hover_at(&mut host, 12, 47);
     assert!(
         hover3.is_some(),
         "Expected hover on chain member 'shaftPort_d'"
@@ -617,11 +403,9 @@ package TestPkg {
 }
 
 // =============================================================================
-// TRANSITION PATTERN (from LSP test failure - "then (transition)" category)
+// TRANSITION NAMES
 // =============================================================================
 
-/// Test for: `transition initial then off;`
-/// This tests the scenario from LSP test failure report line 54.
 #[test]
 fn test_hover_on_transition_names() {
     let source = r#"
@@ -641,159 +425,25 @@ package TestPkg {
 
     let mut host = create_analysis(source);
 
-    // Print all symbols for debugging
-    println!("\n--- ALL SYMBOLS ---");
-    {
-        let analysis = host.analysis();
-        let file_id = analysis.get_file_id("test.sysml").expect("file not found");
-        let index = analysis.symbol_index();
-        for sym in index.symbols_in_file(file_id) {
-            println!("  {} ({:?})", sym.qualified_name, sym.kind);
-            println!(
-                "    span: line {}-{}, col {}-{}",
-                sym.start_line, sym.end_line, sym.start_col, sym.end_col
-            );
-            if !sym.type_refs.is_empty() {
-                for (i, tr) in sym.type_refs.iter().enumerate() {
-                    println!("    type_ref[{}]: {:?}", i, tr);
-                }
-            }
-        }
-    }
-
-    // Line 9: `transition initial then off;`
-    //         0         1         2         3         4
-    //         01234567890123456789012345678901234567890
-    //                 transition initial then off;
-    //                            ^       ^
-    //                            19      31
-
-    // Hover on `initial`
-    println!("\n--- Testing hover on initial ---");
-    let hover1 = has_hover_at(&mut host, 9, 21);
-    println!("Hover on 'initial': {:?}", hover1);
-
-    // Hover on `off`
-    println!("\n--- Testing hover on off ---");
-    let hover2 = has_hover_at(&mut host, 9, 33);
-    println!("Hover on 'off': {:?}", hover2);
-
-    // Check that hover contains the state name (not just any hover)
+    // Hover on 'initial'
+    let hover1 = hover_at(&mut host, 9, 21);
     assert!(
         hover1.is_some(),
         "Expected hover on transition source 'initial'"
     );
     let h1 = hover1.unwrap();
     assert!(
-        h1.contains("initial") || h1.contains("::initial"),
+        h1.contains("initial"),
         "Hover should mention 'initial', got: {}",
         h1
     );
 
+    // Hover on 'off'
+    let hover2 = hover_at(&mut host, 9, 33);
     assert!(
         hover2.is_some(),
         "Expected hover on transition target 'off'"
     );
     let h2 = hover2.unwrap();
-    assert!(
-        h2.contains("off") || h2.contains("::off"),
-        "Hover should mention 'off', got: {}",
-        h2
-    );
-}
-
-/// Debug test to see what the parse tree looks like for a transition
-#[test]
-fn test_debug_transition_parse_tree() {
-    use syster::parser::parse_sysml;
-
-    let source = "state def T { transition initial then off; }";
-    let parsed = parse_sysml(source);
-
-    println!("\n=== PARSE TREE ===");
-
-    fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {
-        let indent_str = "  ".repeat(indent);
-        println!("{}{:?} [{:?}]", indent_str, node.kind(), node.text_range());
-        for child in node.children_with_tokens() {
-            match child {
-                rowan::NodeOrToken::Node(n) => print_tree(&n, indent + 1),
-                rowan::NodeOrToken::Token(t) => {
-                    println!(
-                        "{}  {:?} {:?} [{:?}]",
-                        indent_str,
-                        t.kind(),
-                        t.text(),
-                        t.text_range()
-                    );
-                }
-            }
-        }
-    }
-
-    print_tree(&parsed.syntax(), 0);
-}
-
-/// Debug test for first X then Y parse tree
-#[test]
-fn test_debug_first_action_parse_tree() {
-    use syster::parser::parse_sysml;
-
-    let source = "action def T { action start; action middle; first start then middle; }";
-    let parsed = parse_sysml(source);
-
-    println!("\n=== FIRST ACTION PARSE TREE ===");
-
-    fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {
-        let indent_str = "  ".repeat(indent);
-        println!("{}{:?} [{:?}]", indent_str, node.kind(), node.text_range());
-        for child in node.children_with_tokens() {
-            match child {
-                rowan::NodeOrToken::Node(n) => print_tree(&n, indent + 1),
-                rowan::NodeOrToken::Token(t) => {
-                    println!(
-                        "{}  {:?} {:?} [{:?}]",
-                        indent_str,
-                        t.kind(),
-                        t.text(),
-                        t.text_range()
-                    );
-                }
-            }
-        }
-    }
-
-    print_tree(&parsed.syntax(), 0);
-}
-
-/// Debug test for assume constraint parse tree
-#[test]
-fn test_debug_assume_constraint_parse_tree() {
-    use syster::parser::parse_sysml;
-
-    let source = "requirement def R { attribute x; assume constraint { x <= 500; } }";
-    let parsed = parse_sysml(source);
-
-    println!("\n=== ASSUME CONSTRAINT PARSE TREE ===");
-
-    fn print_tree(node: &rowan::SyntaxNode<syster::parser::SysMLLanguage>, indent: usize) {
-        let indent_str = "  ".repeat(indent);
-        println!("{}{:?} [{:?}]", indent_str, node.kind(), node.text_range());
-        for child in node.children_with_tokens() {
-            match child {
-                rowan::NodeOrToken::Node(n) => print_tree(&n, indent + 1),
-                rowan::NodeOrToken::Token(t) => {
-                    println!(
-                        "{}  {:?} {:?} [{:?}]",
-                        indent_str,
-                        t.kind(),
-                        t.text(),
-                        t.text_range()
-                    );
-                }
-            }
-        }
-    }
-
-    print_tree(&parsed.syntax(), 0);
+    assert!(h2.contains("off"), "Hover should mention 'off', got: {}", h2);
 }

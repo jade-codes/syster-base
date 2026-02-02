@@ -1,6 +1,6 @@
 When we have failing tests, it's important to start from the bottom up
 
-1. Write the failing tests for the scenario
+1. Write the set of failing tests for the scenario
 2. Work from the bottom up:
 - Does the data flow to the parser?
 - Does the data flow to the AST?

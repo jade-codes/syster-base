@@ -214,6 +214,12 @@ pub enum NamespaceMember {
     StateSubaction(StateSubaction),
     /// Control node (fork, join, merge, decide)
     ControlNode(ControlNode),
+    /// For loop action usage (e.g., `for n : Integer in (1,2,3) { }`)
+    ForLoop(ForLoopActionUsage),
+    /// If action usage (e.g., `if x == 1 then A1;`)
+    IfAction(IfActionUsage),
+    /// While loop action usage (e.g., `while x > 0 { }`)
+    WhileLoop(WhileLoopActionUsage),
 }
 
 impl AstNode for NamespaceMember {
@@ -243,6 +249,9 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::ACCEPT_ACTION_USAGE
                 | SyntaxKind::STATE_SUBACTION
                 | SyntaxKind::CONTROL_NODE
+                | SyntaxKind::FOR_LOOP_ACTION_USAGE
+                | SyntaxKind::IF_ACTION_USAGE
+                | SyntaxKind::WHILE_LOOP_ACTION_USAGE
         )
     }
 
@@ -271,6 +280,15 @@ impl AstNode for NamespaceMember {
             SyntaxKind::ACCEPT_ACTION_USAGE => Some(Self::AcceptAction(AcceptActionUsage(node))),
             SyntaxKind::STATE_SUBACTION => Some(Self::StateSubaction(StateSubaction(node))),
             SyntaxKind::CONTROL_NODE => Some(Self::ControlNode(ControlNode(node))),
+            SyntaxKind::FOR_LOOP_ACTION_USAGE => {
+                Some(Self::ForLoop(ForLoopActionUsage(node)))
+            }
+            SyntaxKind::IF_ACTION_USAGE => {
+                Some(Self::IfAction(IfActionUsage(node)))
+            }
+            SyntaxKind::WHILE_LOOP_ACTION_USAGE => {
+                Some(Self::WhileLoop(WhileLoopActionUsage(node)))
+            }
             _ => None,
         }
     }
@@ -296,6 +314,9 @@ impl AstNode for NamespaceMember {
             Self::AcceptAction(n) => n.syntax(),
             Self::StateSubaction(n) => n.syntax(),
             Self::ControlNode(n) => n.syntax(),
+            Self::ForLoop(n) => n.syntax(),
+            Self::IfAction(n) => n.syntax(),
+            Self::WhileLoop(n) => n.syntax(),
         }
     }
 }
@@ -788,6 +809,31 @@ impl Definition {
 
     pub fn body(&self) -> Option<NamespaceBody> {
         self.0.children().find_map(NamespaceBody::cast)
+    }
+
+    /// Get the constraint body (for constraint def, calc def, etc.)
+    /// These use CONSTRAINT_BODY instead of NAMESPACE_BODY for their members
+    pub fn constraint_body(&self) -> Option<ConstraintBody> {
+        self.0.children().find_map(ConstraintBody::cast)
+    }
+
+    /// Get prefix metadata references from preceding siblings.
+    /// e.g., `#service port def ServiceDiscovery` -> returns [PrefixMetadata for "service"]
+    pub fn prefix_metadata(&self) -> Vec<PrefixMetadata> {
+        let mut result = Vec::new();
+        let mut current = self.0.prev_sibling();
+        while let Some(sibling) = current {
+            if sibling.kind() == SyntaxKind::PREFIX_METADATA {
+                if let Some(pm) = PrefixMetadata::cast(sibling.clone()) {
+                    result.push(pm);
+                }
+                current = sibling.prev_sibling();
+            } else {
+                break;
+            }
+        }
+        result.reverse();
+        result
     }
 }
 
@@ -1546,6 +1592,84 @@ impl SendActionUsage {
 }
 
 // ============================================================================
+// For Loop Action Usage
+// ============================================================================
+
+ast_node!(ForLoopActionUsage, FOR_LOOP_ACTION_USAGE);
+
+impl ForLoopActionUsage {
+    /// Get the loop variable name (e.g., `n` in `for n : Integer`)
+    pub fn variable_name(&self) -> Option<Name> {
+        self.0.children().find_map(Name::cast)
+    }
+
+    /// Get the typing relationship (the type of the loop variable)
+    pub fn typing(&self) -> Option<Typing> {
+        self.0.children().find_map(Typing::cast)
+    }
+
+    /// Get the body of the for loop
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+
+    /// Get members from the loop body
+    pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
+        self.body()
+            .into_iter()
+            .flat_map(|b| b.members().collect::<Vec<_>>())
+    }
+}
+
+// ============================================================================
+// If Action Usage
+// ============================================================================
+
+ast_node!(IfActionUsage, IF_ACTION_USAGE);
+
+impl IfActionUsage {
+    /// Get descendant expressions (condition and then/else targets)
+    pub fn expressions(&self) -> impl Iterator<Item = Expression> + '_ {
+        self.0.descendants().filter_map(Expression::cast)
+    }
+
+    /// Get qualified names (then/else action references)
+    pub fn qualified_names(&self) -> impl Iterator<Item = QualifiedName> + '_ {
+        self.0.children().filter_map(QualifiedName::cast)
+    }
+
+    /// Get the body of the if action (if it has one)
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+}
+
+// ============================================================================
+// While Loop Action Usage
+// ============================================================================
+
+ast_node!(WhileLoopActionUsage, WHILE_LOOP_ACTION_USAGE);
+
+impl WhileLoopActionUsage {
+    /// Get descendant expressions (condition)
+    pub fn expressions(&self) -> impl Iterator<Item = Expression> + '_ {
+        self.0.descendants().filter_map(Expression::cast)
+    }
+
+    /// Get the body of the while loop
+    pub fn body(&self) -> Option<NamespaceBody> {
+        self.0.children().find_map(NamespaceBody::cast)
+    }
+
+    /// Get members from the loop body
+    pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
+        self.body()
+            .into_iter()
+            .flat_map(|b| b.members().collect::<Vec<_>>())
+    }
+}
+
+// ============================================================================
 // State Subaction (entry/do/exit)
 // ============================================================================
 
@@ -1804,6 +1928,30 @@ impl ConnectorEnd {
         // Direct child lookup as fallback
         self.0.children().find_map(QualifiedName::cast)
     }
+
+    /// Get the endpoint name (LHS of ::> if present).
+    /// For patterns like `cause1 ::> a`, returns `cause1`.
+    /// For simple patterns like `comp.lugNutPort`, returns None.
+    pub fn endpoint_name(&self) -> Option<QualifiedName> {
+        // Check if we have a CONNECTOR_END_REFERENCE child
+        if let Some(ref_node) = self
+            .0
+            .children()
+            .find(|n| n.kind() == SyntaxKind::CONNECTOR_END_REFERENCE)
+        {
+            // Check if there's a ::> or references keyword
+            let has_references = ref_node.children_with_tokens().any(|n| {
+                n.kind() == SyntaxKind::COLON_COLON_GT || n.kind() == SyntaxKind::REFERENCES_KW
+            });
+
+            if has_references {
+                // Return the first QN (endpoint name before ::>)
+                return ref_node.children().filter_map(QualifiedName::cast).next();
+            }
+        }
+        // No endpoint name in simple patterns
+        None
+    }
 }
 
 // ============================================================================
@@ -1948,8 +2096,8 @@ impl Expression {
                 if token.kind() == SyntaxKind::NEW_KW {
                     // Find the type name (QUALIFIED_NAME after new)
                     let mut type_name = None;
-                    for j in (i + 1)..children.len() {
-                        if let Some(qn_node) = children[j].as_node() {
+                    for child in children.iter().skip(i + 1) {
+                        if let Some(qn_node) = child.as_node() {
                             if qn_node.kind() == SyntaxKind::QUALIFIED_NAME {
                                 type_name = Some(qn_node.text().to_string());
                                 break;
@@ -1959,8 +2107,8 @@ impl Expression {
                     
                     // Find ARGUMENT_LIST and extract named arguments
                     if let Some(type_name) = type_name {
-                        for j in (i + 1)..children.len() {
-                            if let Some(arg_list_node) = children[j].as_node() {
+                        for child in children.iter().skip(i + 1) {
+                            if let Some(arg_list_node) = child.as_node() {
                                 if arg_list_node.kind() == SyntaxKind::ARGUMENT_LIST {
                                     self.extract_named_args_from_list(
                                         arg_list_node,
@@ -2043,9 +2191,24 @@ impl Expression {
             return; // Don't recurse into QUALIFIED_NAME, we've handled it
         }
 
-        // Recurse into child nodes
-        for child in node.children() {
-            self.collect_feature_chains(&child, chains);
+        // Check for bare identifier tokens that are not inside a QUALIFIED_NAME
+        // This handles cases like `[n]` in multiplicities where `n` is just an IDENT
+        for child in node.children_with_tokens() {
+            match &child {
+                rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::IDENT => {
+                    // Found a bare identifier - treat as a single-part chain
+                    let parts = vec![(token.text().to_string(), token.text_range())];
+                    chains.push(FeatureChainRef {
+                        parts,
+                        full_range: token.text_range(),
+                    });
+                }
+                rowan::NodeOrToken::Node(child_node) => {
+                    // Recurse into child nodes
+                    self.collect_feature_chains(child_node, chains);
+                }
+                _ => {}
+            }
         }
     }
 

@@ -1,4 +1,4 @@
-//! Debug test for transition extraction
+//! Test for transition reference extraction
 //!
 //! Checks that transition source/target references and feature chains
 //! are being extracted properly at the symbol level.
@@ -7,24 +7,6 @@ use std::path::Path;
 use syster::base::FileId;
 use syster::hir::extract_symbols_unified;
 use syster::syntax::parser::parse_content;
-
-fn print_all_symbols_and_refs(source: &str) {
-    let parse = parse_content(source, Path::new("test.sysml")).unwrap();
-    let syntax = parse;
-    let symbols = extract_symbols_unified(FileId::new(0), &syntax);
-
-    println!("\n=== All symbols with type_refs ===");
-    for sym in &symbols {
-        println!("\n{} ({:?})", sym.qualified_name, sym.kind);
-        if sym.type_refs.is_empty() {
-            println!("  (no type_refs)");
-        } else {
-            for (i, tr) in sym.type_refs.iter().enumerate() {
-                println!("  type_ref[{}]: {:?}", i, tr);
-            }
-        }
-    }
-}
 
 fn get_all_ref_targets(source: &str) -> Vec<String> {
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
@@ -53,15 +35,8 @@ fn test_transition_targets_in_symbols() {
         }
     "#;
 
-    print_all_symbols_and_refs(source);
     let targets = get_all_ref_targets(source);
 
-    println!("\n=== All ref targets ===");
-    for t in &targets {
-        println!("  {}", t);
-    }
-
-    // Check that transition source/target are captured
     assert!(
         targets.iter().any(|t| t == "initial"),
         "Should have 'initial' as target"
@@ -88,15 +63,8 @@ fn test_perform_chain_in_symbols() {
         }
     "#;
 
-    print_all_symbols_and_refs(source);
     let targets = get_all_ref_targets(source);
 
-    println!("\n=== All ref targets ===");
-    for t in &targets {
-        println!("  {}", t);
-    }
-
-    // Check that feature chain parts are captured (either as full chain or parts)
     let has_chain = targets
         .iter()
         .any(|t| t.contains("distributeTorque") || t.contains("providePower"));
@@ -115,25 +83,13 @@ fn test_constraint_has_name_in_symbols() {
         }
     "#;
 
-    print_all_symbols_and_refs(source);
-
     let parse = parse_content(source, Path::new("test.sysml")).unwrap();
     let syntax = parse;
     let symbols = extract_symbols_unified(FileId::new(0), &syntax);
 
-    let constraint_names: Vec<_> = symbols
+    let has_constraint = symbols
         .iter()
-        .filter(|s| s.qualified_name.contains("fuelConstraint"))
-        .map(|s| s.qualified_name.clone())
-        .collect();
+        .any(|s| s.qualified_name.contains("fuelConstraint"));
 
-    println!("\n=== Constraint symbols ===");
-    for n in &constraint_names {
-        println!("  {}", n);
-    }
-
-    assert!(
-        !constraint_names.is_empty(),
-        "Should have symbol for 'fuelConstraint'"
-    );
+    assert!(has_constraint, "Should have symbol for 'fuelConstraint'");
 }

@@ -489,6 +489,7 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowUsage,
             NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
+            NormalizedUsageKind::End => Self::PortUsage, // Connection endpoints are like ports
             NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
             NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
@@ -600,6 +601,7 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowUsage,
             NormalizedUsageKind::Transition => Self::Other, // Transitions map to Other
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
+            NormalizedUsageKind::End => Self::PortUsage, // Connection endpoints are like ports
             NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
             NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
             NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
@@ -1392,6 +1394,10 @@ fn extract_from_normalized_usage(
     // Extract doc comment
     let doc = usage.doc.as_ref().map(|s| Arc::from(s.trim()));
 
+    // Extend end position to include all type_refs (for multi-line constructs like message from/to)
+    let (extended_end_line, extended_end_col) =
+        max_end_position_from_type_refs(&type_refs, span.end_line, span.end_col);
+    
     symbols.push(HirSymbol {
         name: Arc::from(name.as_str()),
         short_name: usage.short_name.as_ref().map(|s| Arc::from(s.as_str())),
@@ -1400,8 +1406,8 @@ fn extract_from_normalized_usage(
         file: ctx.file,
         start_line: span.start_line,
         start_col: span.start_col,
-        end_line: span.end_line,
-        end_col: span.end_col,
+        end_line: extended_end_line,
+        end_col: extended_end_col,
         short_name_start_line: sn_start_line,
         short_name_start_col: sn_start_col,
         short_name_end_line: sn_end_line,
@@ -1585,6 +1591,42 @@ fn extract_from_normalized_comment(
         is_public: false,
         metadata_annotations: Vec::new(), // Comments don't have metadata
     });
+}
+
+/// Compute the maximum end position (line, col) from a set of TypeRefs.
+/// This is used to extend a symbol's span to include all its type references,
+/// ensuring hover works for multi-line constructs like `message from X.Y to A.B`.
+///
+/// Returns (max_end_line, max_end_col) where:
+/// - If max_end_line > base_end_line, max_end_col is the column from the type_ref on that line
+/// - Otherwise returns (base_end_line, base_end_col)
+fn max_end_position_from_type_refs(
+    type_refs: &[TypeRefKind],
+    base_end_line: u32,
+    base_end_col: u32,
+) -> (u32, u32) {
+    let mut max_line = base_end_line;
+    let mut max_col = base_end_col;
+    
+    for tr in type_refs {
+        match tr {
+            TypeRefKind::Simple(r) => {
+                if r.end_line > max_line || (r.end_line == max_line && r.end_col > max_col) {
+                    max_line = r.end_line;
+                    max_col = r.end_col;
+                }
+            }
+            TypeRefKind::Chain(chain) => {
+                for part in &chain.parts {
+                    if part.end_line > max_line || (part.end_line == max_line && part.end_col > max_col) {
+                        max_line = part.end_line;
+                        max_col = part.end_col;
+                    }
+                }
+            }
+        }
+    }
+    (max_line, max_col)
 }
 
 /// Extract type references from normalized relationships.

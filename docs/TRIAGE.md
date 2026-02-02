@@ -1,10 +1,12 @@
-BOTTOM UP TRIAGE
+When we have failing tests, it's important to start from the bottom up
 
-1. Follow data chain from grammar
-2. Move up to parser
-3. Move up to AST/Normalizer
-4. Move up to symbols
-5. Move up to extractor
-6. Move up to resolver
-7. Identify location/bottlneck
-8. Suggest approach
+1. Write the failing tests for the scenario
+2. Work from the bottom up:
+- Does the data flow to the parser?
+- Does the data flow to the AST?
+- Does the data flow to the extraction?
+- Does the data flow to the resolver?
+3. Add logging if you need to.
+4. What is the expected behaviour vs the anticipated behaviour?
+5. What is the best solution for this fix? Where does the chain of responsibility sit?
+6. Implement the fix.

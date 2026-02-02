@@ -894,6 +894,10 @@ impl SymbolIndex {
             }
         }
 
+        // Note: Anonymous redefining symbols (like `<:>>speedSensor#N>`) are now registered
+        // in visibility maps under their base name during build_visibility_maps().
+        // The regular resolve_with_scope_walk will find them via visibility map lookup.
+
         // For simple references, use cache
         let cache_key = (Arc::from(target), Arc::from(scope));
         if let Some(cached) = cache.get(&cache_key) {
@@ -986,7 +990,8 @@ impl SymbolIndex {
         }
 
         // Step 1: Resolve the first part using full lexical scoping
-        // This walks up the scope hierarchy to find the symbol
+        // Anonymous redefining symbols are registered in visibility maps under their base name,
+        // so resolve_with_scope_walk will find them automatically.
         let first_part = &chain_parts[0];
         let first_sym = self.resolve_with_scope_walk(first_part, scope)?;
 
@@ -1127,8 +1132,7 @@ impl SymbolIndex {
     }
 
     /// Find a member within a type scope.
-    /// Tries direct lookup, then searches inherited members from supertypes,
-    /// then checks chain-based relationships (perform, exhibit, satisfy, etc.).
+    /// Tries visibility map lookup first, then searches inherited members from supertypes.
     pub fn find_member_in_scope(&self, type_scope: &str, member_name: &str) -> Option<HirSymbol> {
         let mut visited = HashSet::new();
         self.find_member_in_scope_internal(type_scope, member_name, &mut visited)
@@ -1146,74 +1150,12 @@ impl SymbolIndex {
             return None;
         }
 
-        // Strategy 1: Direct qualified lookup
-        let direct_qname = format!("{}::{}", type_scope, member_name);
-        if let Some(sym) = self.lookup_qualified(&direct_qname) {
-            return Some(sym.clone());
-        }
-
-        // Strategy 2: Check visibility map for the type scope
+        // Check visibility map for the type scope
+        // This includes direct children and inherited members from imports
         if let Some(vis) = self.visibility_for_scope(type_scope) {
             if let Some(qname) = vis.lookup(member_name) {
                 if let Some(sym) = self.lookup_qualified(qname) {
                     return Some(sym.clone());
-                }
-            }
-        }
-
-        // Strategy 3: Look in supertypes (inheritance)
-        if let Some(type_sym) = self.lookup_qualified(type_scope) {
-            for supertype in &type_sym.supertypes {
-                // Resolve the supertype name
-                let parent_scope = Self::parent_scope(type_scope).unwrap_or("");
-                if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
-                    // Recursively search in the supertype (with visited tracking)
-                    if let Some(found) = self.find_member_in_scope_internal(
-                        &super_sym.qualified_name,
-                        member_name,
-                        visited,
-                    ) {
-                        return Some(found);
-                    }
-                }
-            }
-
-            // Strategy 4: Check chain-based type_refs on the symbol
-            // In SysML, relationships like `perform x.y`, `exhibit a.b`, `satisfy r.s`
-            // make the target accessible as a member of the containing symbol.
-            // e.g., `part driver { perform startVehicle.turnVehicleOn; }`
-            // makes `turnVehicleOn` accessible as `driver.turnVehicleOn`
-            for trk in &type_sym.type_refs {
-                use crate::hir::symbols::TypeRefKind;
-                match trk {
-                    TypeRefKind::Chain(chain) => {
-                        // Check if the last part of the chain matches the member we're looking for
-                        if let Some(last_part) = chain.parts.last() {
-                            if &*last_part.target == member_name {
-                                // Use the pre-resolved target (should be set by resolve_all_type_refs)
-                                if let Some(ref resolved) = last_part.resolved_target {
-                                    if let Some(sym) = self.lookup_qualified(resolved) {
-                                        return Some(sym.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    TypeRefKind::Simple(tr) => {
-                        // Legacy: also check simple refs that might contain dots
-                        let target_name = tr.target.as_ref();
-                        if target_name.contains('.') {
-                            let last_part = target_name.rsplit('.').next().unwrap_or(target_name);
-                            if last_part == member_name {
-                                // Use the pre-resolved target (should be set by resolve_all_type_refs)
-                                if let Some(ref resolved) = tr.resolved_target {
-                                    if let Some(sym) = self.lookup_qualified(resolved) {
-                                        return Some(sym.clone());
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }
@@ -1246,22 +1188,22 @@ impl SymbolIndex {
             return Some(result);
         }
 
-        // If not found on parent, check ALL symbols in the same parent scope and its descendants
-        // This handles cases where the parser places the satisfy relationship
-        // on a nested symbol rather than the parent
-        let parent_prefix = format!("{}::", parent_qname);
-        for sym in &self.symbols {
-            // Check if this symbol is under the parent scope
-            if sym.qualified_name.starts_with(parent_prefix.as_str())
-                && sym.qualified_name.as_ref() != symbol_qname
-            {
-                if let Some(result) = self.check_satisfy_context(sym, member_name) {
-                    return Some(result);
+        // Check siblings and descendants using indexed lookup (O(1) for scope, O(children) for iteration)
+        // This handles cases where the parser places the satisfy relationship on a nested symbol
+        let parent_arc: Arc<str> = Arc::from(parent_qname);
+        if let Some(sibling_indices) = self.by_parent_scope.get(&parent_arc) {
+            for &idx in sibling_indices {
+                if let Some(sym) = self.symbols.get(idx) {
+                    if sym.qualified_name.as_ref() != symbol_qname {
+                        if let Some(result) = self.check_satisfy_context(sym, member_name) {
+                            return Some(result);
+                        }
+                    }
                 }
             }
         }
 
-        // NEW: Check the parent's typing relationship (inheritance)
+        // Check the parent's typing relationship (inheritance)
         // For `part vehicle_b : Vehicle { perform redefines providePower; }`
         // The parent (vehicle_b) is typed by Vehicle, so look for providePower in Vehicle
         if let Some(result) = self.resolve_in_parent_type(parent, member_name) {
@@ -1637,6 +1579,18 @@ impl SymbolIndex {
                 vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
             }
 
+            // Register anonymous redefining symbols under their base name.
+            // Pattern: `<:>>speedSensor#77@L789>` should be accessible as `speedSensor`
+            // This enables chains like `speedSensor.speedSensorPort.sensedSpeedSent` to resolve
+            // through the local redefining symbol rather than the inherited definition.
+            if symbol.name.starts_with("<:>>") {
+                // Extract base name: `<:>>speedSensor#77@L789>` -> `speedSensor`
+                if let Some(hash_pos) = symbol.name.find('#') {
+                    let base_name: Arc<str> = Arc::from(&symbol.name[4..hash_pos]);
+                    vis.add_direct(base_name, symbol.qualified_name.clone());
+                }
+            }
+
             // If the parent scope is anonymous (contains `<` which indicates generated names),
             // also add this symbol to the grandparent scope so it's accessible from siblings.
             // This handles cases like `then action foo { ... }` where `foo` needs to be visible
@@ -1651,6 +1605,13 @@ impl SymbolIndex {
                     gp_vis.add_direct(symbol.name.clone(), symbol.qualified_name.clone());
                     if let Some(ref short_name) = symbol.short_name {
                         gp_vis.add_direct(short_name.clone(), symbol.qualified_name.clone());
+                    }
+                    // Also register anonymous redefining symbols in grandparent
+                    if symbol.name.starts_with("<:>>") {
+                        if let Some(hash_pos) = symbol.name.find('#') {
+                            let base_name: Arc<str> = Arc::from(&symbol.name[4..hash_pos]);
+                            gp_vis.add_direct(base_name, symbol.qualified_name.clone());
+                        }
                     }
                 }
             }
@@ -1681,44 +1642,55 @@ impl SymbolIndex {
 
     /// Propagate inherited members from supertypes into scope visibility maps.
     /// When `Shape :> Path`, members of `Path` become visible in `Shape`.
+    /// 
+    /// Uses topological ordering by scope depth: shallower scopes are processed first.
+    /// This ensures that when processing `Shape::tfe` (which inherits from `edges`),
+    /// `Shape` has already inherited `edges` from `Path`.
     fn propagate_inherited_members(&mut self) {
-        // Collect inheritance info: (scope, resolved_supertype_qname)
-        let mut inheritance_pairs: Vec<(Arc<str>, Arc<str>)> = Vec::new();
-
+        // Collect all symbols with supertypes, sorted by scope depth (shallowest first)
+        let mut symbols_with_inheritance: Vec<(Arc<str>, Arc<str>, Arc<str>)> = Vec::new();
+        
         for symbol in &self.symbols {
             if !symbol.supertypes.is_empty() {
-                let scope = &symbol.qualified_name;
-                let parent_scope = Self::parent_scope(scope).unwrap_or("");
-
+                let scope = symbol.qualified_name.clone();
+                let parent_scope: Arc<str> = Self::parent_scope(&scope)
+                    .map(Arc::from)
+                    .unwrap_or_else(|| Arc::from(""));
+                
                 for supertype in &symbol.supertypes {
-                    // Resolve supertype name to qualified name
-                    if let Some(resolved) =
-                        self.resolve_supertype_for_inheritance(supertype, parent_scope)
-                    {
-                        inheritance_pairs.push((scope.clone(), resolved));
-                    }
+                    symbols_with_inheritance.push((
+                        scope.clone(),
+                        parent_scope.clone(),
+                        supertype.clone(),
+                    ));
                 }
             }
         }
 
-        // Now propagate: for each (child_scope, parent_scope), add parent's direct members to child
-        for (child_scope, parent_scope) in inheritance_pairs {
-            // Get parent's direct members
-            let parent_members: Vec<(Arc<str>, Arc<str>)> = self
-                .visibility_map
-                .get(&parent_scope)
-                .map(|vis| {
-                    vis.direct_defs
-                        .iter()
-                        .map(|(k, v)| (k.clone(), v.clone()))
-                        .collect()
-                })
-                .unwrap_or_default();
+        // Sort by scope depth (count of "::" separators) - shallowest first
+        symbols_with_inheritance.sort_by_key(|(scope, _, _)| scope.matches("::").count());
 
-            // Add to child's visibility (if not already present - direct takes priority)
-            if let Some(child_vis) = self.visibility_map.get_mut(&child_scope) {
-                for (name, qname) in parent_members {
-                    child_vis.direct_defs.entry(name).or_insert(qname);
+        // Process in order
+        for (scope, parent_scope, supertype) in symbols_with_inheritance {
+            // Resolve the supertype name from the parent scope's context
+            if let Some(resolved) = self.resolve_supertype_for_inheritance(&supertype, &parent_scope) {
+                // Get members from the resolved supertype's visibility
+                let parent_members: Vec<(Arc<str>, Arc<str>)> = self
+                    .visibility_map
+                    .get(&*resolved)
+                    .map(|vis| {
+                        vis.direct_defs
+                            .iter()
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                // Add to child's visibility
+                if let Some(child_vis) = self.visibility_map.get_mut(&*scope) {
+                    for (name, qname) in parent_members {
+                        child_vis.direct_defs.entry(name).or_insert(qname);
+                    }
                 }
             }
         }

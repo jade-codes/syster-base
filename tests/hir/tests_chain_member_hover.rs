@@ -606,7 +606,6 @@ package Test {
                     .unwrap_or(false)
                 {
                     found = true;
-                    println!("Found dataValue at col {}: {:?}", col, hover.qualified_name);
                     break;
                 }
             }

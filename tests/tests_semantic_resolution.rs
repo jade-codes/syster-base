@@ -66,20 +66,6 @@ fn test_simple_vehicle_model_resolution() {
     // Run semantic checks
     let diagnostics = check_file(analysis.symbol_index(), file_id);
 
-    // Debug: print all diagnostics
-    if !diagnostics.is_empty() {
-        eprintln!("\n=== Semantic Diagnostics ({}) ===", diagnostics.len());
-        for diag in &diagnostics {
-            eprintln!(
-                "  [{:?}] Line {}: {}",
-                diag.severity,
-                diag.start_line + 1,
-                diag.message
-            );
-        }
-        eprintln!("===================================\n");
-    }
-
     // Test specific resolution cases
     let index = analysis.symbol_index();
 
@@ -105,49 +91,10 @@ fn test_simple_vehicle_model_resolution() {
 
     let result = resolver.resolve("IgnitionCmdPort");
 
-    match &result {
-        ResolveResult::Found(sym) => {
-            eprintln!("✓ IgnitionCmdPort resolved to: {}", sym.qualified_name);
-        }
-        ResolveResult::NotFound => {
-            // Debug: what IS visible from this scope?
-            eprintln!("\n=== Debug: Visibility from Vehicle scope ===");
-            if let Some(vis) =
-                index.visibility_for_scope("SimpleVehicleModel::Definitions::PartDefinitions")
-            {
-                eprintln!("Direct defs in PartDefinitions:");
-                for (name, qname) in vis.direct_defs().take(10) {
-                    eprintln!("  {} -> {}", name, qname);
-                }
-                eprintln!("Imports in PartDefinitions:");
-                for (name, qname) in vis.imports().take(10) {
-                    eprintln!("  {} -> {}", name, qname);
-                }
-            }
-            if let Some(vis) = index.visibility_for_scope("SimpleVehicleModel::Definitions") {
-                eprintln!("\nDirect defs in Definitions:");
-                for (name, qname) in vis.direct_defs().take(10) {
-                    eprintln!("  {} -> {}", name, qname);
-                }
-                eprintln!("Imports in Definitions:");
-                for (name, qname) in vis.imports().take(10) {
-                    eprintln!("  {} -> {}", name, qname);
-                }
-            }
-            eprintln!("=============================================\n");
-
-            panic!("IgnitionCmdPort should resolve from Vehicle scope!");
-        }
-        ResolveResult::Ambiguous(candidates) => {
-            panic!(
-                "IgnitionCmdPort is ambiguous: {:?}",
-                candidates
-                    .iter()
-                    .map(|s| &s.qualified_name)
-                    .collect::<Vec<_>>()
-            );
-        }
-    }
+    assert!(
+        matches!(result, ResolveResult::Found(_)),
+        "IgnitionCmdPort should resolve from Vehicle scope"
+    );
 
     // The actual test: there should be NO undefined reference errors for types
     // defined in the same file's package structure

@@ -11,6 +11,11 @@
 pub mod tests_chain_member_hover;
 pub mod tests_diagnostics;
 pub mod tests_edge_cases;
+pub mod tests_hover_connections;
+pub mod tests_hover_constraint_def;
+pub mod tests_hover_control_flow;
+pub mod tests_hover_expressions;
+pub mod tests_hover_metadata;
 pub mod tests_hover_satisfy_via;
 pub mod tests_hover_triage;
 pub mod tests_import_resolution;

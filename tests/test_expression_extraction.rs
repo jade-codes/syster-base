@@ -5,7 +5,7 @@
 
 use std::path::Path;
 use syster::base::FileId;
-use syster::hir::{TypeRefKind, extract_symbols_unified};
+use syster::hir::{extract_symbols_unified, TypeRefKind};
 use syster::syntax::parser::parse_content;
 
 fn extract_type_ref_targets(source: &str) -> Vec<(String, Vec<String>)> {
@@ -43,9 +43,7 @@ fn test_expression_simple_multiplication() {
 }"#;
 
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // The `distance` attribute should have refs to `speed` and `time`
     let distance_refs = refs
         .iter()
         .find(|(name, _)| name == "P::Vehicle::distance")
@@ -75,16 +73,13 @@ fn test_expression_feature_chain() {
 }"#;
 
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // totalMass should have a chain ref to fuelTank.mass
     let total_refs = refs
         .iter()
         .find(|(name, _)| name == "P::Vehicle::totalMass")
         .map(|(_, targets)| targets.clone())
         .unwrap_or_default();
 
-    // Should contain both parts of the chain
     assert!(
         total_refs.contains(&"fuelTank".to_string())
             || total_refs.contains(&"fuelTank.mass".to_string()),
@@ -103,7 +98,6 @@ fn test_expression_qualified_name() {
 }"#;
 
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
     let length_refs = refs
         .iter()
@@ -111,7 +105,6 @@ fn test_expression_qualified_name() {
         .map(|(_, targets)| targets.clone())
         .unwrap_or_default();
 
-    // Should have the qualified type reference
     assert!(
         length_refs
             .iter()
@@ -131,56 +124,8 @@ fn test_expression_comparison() {
     }
 }"#;
 
-    // Step 1: Check parser output
-    let parse = syster::parser::parse_sysml(source);
-    println!("=== PARSER OUTPUT ===");
-    println!("Parse errors: {:?}", parse.errors);
-    fn print_tree(node: &syster::parser::SyntaxNode, indent: usize) {
-        let spaces = "  ".repeat(indent);
-        let text: String = node
-            .text()
-            .to_string()
-            .chars()
-            .take(40)
-            .collect::<String>()
-            .replace('\n', "\\n");
-        println!("{}{:?} \"{}\"", spaces, node.kind(), text);
-        for child in node.children() {
-            print_tree(&child, indent + 1);
-        }
-    }
-    print_tree(&parse.syntax(), 0);
-
-    // Step 2: Check AST layer
-    println!("\n=== AST LAYER ===");
-    use syster::parser::{AstNode, NamespaceMember, SourceFile};
-    let root = SourceFile::cast(parse.syntax()).unwrap();
-    for member in root.members() {
-        println!("Member: {:?}", std::mem::discriminant(&member));
-        if let NamespaceMember::Package(pkg) = member {
-            println!("  Package: {:?}", pkg.name().and_then(|n| n.text()));
-            if let Some(body) = pkg.body() {
-                for inner in body.members() {
-                    println!("  Inner: {:?}", std::mem::discriminant(&inner));
-                    if let NamespaceMember::Definition(def) = inner {
-                        println!("    Def: {:?}", def.name().and_then(|n| n.text()));
-                        if let Some(body) = def.body() {
-                            for item in body.members() {
-                                println!("    Item: {:?}", std::mem::discriminant(&item));
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    // Step 3: Check HIR extraction
-    println!("\n=== HIR EXTRACTION ===");
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Find any symbol that references temp and maxTemp
     let has_temp_ref = refs
         .iter()
         .any(|(_, targets)| targets.contains(&"temp".to_string()));
@@ -211,9 +156,7 @@ fn test_expression_in_constraint_block() {
 }"#;
 
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
-    // Should extract refs from the constraint expression
     let has_speed_refs = refs.iter().any(|(_, targets)| {
         targets.contains(&"currentSpeed".to_string()) || targets.contains(&"maxSpeed".to_string())
     });
@@ -235,7 +178,6 @@ fn test_expression_enum_literal() {
 }"#;
 
     let refs = extract_type_ref_targets(source);
-    println!("Extracted refs: {:#?}", refs);
 
     let status_refs = refs
         .iter()
@@ -243,7 +185,6 @@ fn test_expression_enum_literal() {
         .map(|(_, targets)| targets.clone())
         .unwrap_or_default();
 
-    // Should have both type and value refs
     assert!(
         status_refs.iter().any(|t| t.contains("StatusKind")),
         "status should reference StatusKind, got: {:?}",

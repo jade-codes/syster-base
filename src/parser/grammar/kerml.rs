@@ -1356,52 +1356,17 @@ fn parse_type_with_modifiers<P: KerMLParser>(p: &mut P) {
 }
 
 /// Parse a multiplicity bound (lower or upper)
-/// Supports: integers, *, qualified names, and expressions like function calls
+/// Per spec: multiplicity_bound = { inline_expression | number | "*" }
+/// Bounds are typed as Expression in the metamodel
 fn parse_multiplicity_bound<P: KerMLParser>(p: &mut P) {
-    if p.at(SyntaxKind::INTEGER) || p.at(SyntaxKind::STAR) {
+    if p.at(SyntaxKind::STAR) {
         p.bump();
-    } else if p.at_name_token() {
-        // Could be a simple name reference or a function call like size(items)
-        p.parse_qualified_name();
-        p.skip_trivia();
-
-        // Check for function call syntax: name(args)
-        if p.at(SyntaxKind::L_PAREN) {
-            parse_multiplicity_function_call(p);
-        }
-    }
-}
-
-/// Parse function call arguments in multiplicity context
-/// Handles nested parens for expressions like size(items) or compute(a, b)
-fn parse_multiplicity_function_call<P: KerMLParser>(p: &mut P) {
-    if !p.at(SyntaxKind::L_PAREN) {
-        return;
-    }
-
-    bump_and_skip(p); // (
-
-    let mut paren_depth = 1;
-    while paren_depth > 0 && !p.at(SyntaxKind::ERROR) {
-        if p.at(SyntaxKind::L_PAREN) {
-            paren_depth += 1;
-            p.bump();
-        } else if p.at(SyntaxKind::R_PAREN) {
-            paren_depth -= 1;
-            if paren_depth > 0 {
-                p.bump();
-            }
-        } else {
-            p.bump();
-        }
-
-        if paren_depth > 0 {
-            p.skip_trivia();
-        }
-    }
-
-    if p.at(SyntaxKind::R_PAREN) {
-        p.bump(); // )
+    } else if p.at(SyntaxKind::INTEGER) {
+        // Integers are literals - parse as expression for consistency
+        super::kerml_expressions::parse_expression(p);
+    } else if p.at_name_token() || p.at(SyntaxKind::L_PAREN) {
+        // Parse as full expression (handles identifiers, function calls, etc.)
+        super::kerml_expressions::parse_expression(p);
     }
 }
 
