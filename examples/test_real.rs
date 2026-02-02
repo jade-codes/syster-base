@@ -62,13 +62,21 @@ package TestPkg {
     println!("\n=== Hover on line 11 (event sendSensedSpeed.sourceEvent) ===");
     for col in [20u32, 25, 30, 35, 40, 45, 50, 55] {
         let hover = analysis.hover(file_id, 11, col);
-        println!("col {}: {:?}", col, hover.as_ref().map(|h| h.qualified_name.as_ref()));
+        println!(
+            "col {}: {:?}",
+            col,
+            hover.as_ref().map(|h| h.qualified_name.as_ref())
+        );
     }
 
     // Line 16: then event sendSensedSpeed.targetEvent;
     println!("\n=== Hover on line 17 (then event sendSensedSpeed.targetEvent) ===");
     for col in [20u32, 25, 30, 35, 40, 45, 50, 55] {
         let hover = analysis.hover(file_id, 17, col);
-        println!("col {}: {:?}", col, hover.as_ref().map(|h| h.qualified_name.as_ref()));
+        println!(
+            "col {}: {:?}",
+            col,
+            hover.as_ref().map(|h| h.qualified_name.as_ref())
+        );
     }
 }

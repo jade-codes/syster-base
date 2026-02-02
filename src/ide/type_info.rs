@@ -86,12 +86,21 @@ pub fn resolve_type_ref_with_chain(
     }
 
     // Fallback: try to resolve at query time from containing scope
-    let scope = ctx
+    // Use parent scope (strip the containing symbol's name) for synthetic symbols like flows/binds
+    let containing_qn = ctx
         .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
+    let scope = containing_qn.rsplit_once("::").map(|(s, _)| s).unwrap_or(containing_qn);
+    
+    // Try direct qualified name first (child of scope)
+    let direct_qn = format!("{}::{}", scope, ctx.target_name);
+    if let Some(sym) = index.lookup_qualified(&direct_qn).cloned() {
+        return Some(sym);
+    }
+    
     let resolver = index.resolver_for_scope(scope);
-
+    
     match resolver.resolve(&ctx.target_name) {
         ResolveResult::Found(sym) => Some(sym),
         ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
@@ -104,11 +113,15 @@ pub fn resolve_type_ref_with_chain(
 
 /// Resolve a chain member like `mass` in `fuelTank.mass` by following the chain.
 fn resolve_chain_member(index: &SymbolIndex, ctx: &TypeRefContext<'_>) -> Option<HirSymbol> {
-    // Start from the containing symbol's scope
-    let base_scope = ctx
+    // Start from the containing symbol's parent scope (not the symbol itself)
+    // For a bind like <bind:...>, we want to resolve from the parent (e.g., vehicle_b)
+    let containing_qn = ctx
         .containing_symbol
         .map(|s| s.qualified_name.as_ref())
         .unwrap_or("");
+    
+    // Strip the last component to get parent scope
+    let base_scope = containing_qn.rsplit_once("::").map(|(s, _)| s).unwrap_or(containing_qn);
 
     // Resolve the first part of the chain
     let first_part = ctx.chain_prefix.first()?;
@@ -120,13 +133,35 @@ fn resolve_chain_member(index: &SymbolIndex, ctx: &TypeRefContext<'_>) -> Option
         ResolveResult::NotFound => return None,
     };
 
-    // Follow the chain through types
+    // Follow the chain through symbol members (handles redefinitions and type inheritance)
     for part in ctx.chain_prefix.iter().skip(1) {
-        current_symbol = resolve_member_in_type(index, &current_symbol, &part.target)?;
+        current_symbol = resolve_member_of_symbol(index, &current_symbol, &part.target)?;
     }
 
-    // Finally, resolve the target in the type of the last prefix part
-    resolve_member_in_type(index, &current_symbol, &ctx.target_name)
+    // Finally, resolve the target in the last symbol
+    resolve_member_of_symbol(index, &current_symbol, &ctx.target_name)
+}
+
+/// Resolve a member name in a symbol - checks direct children first, then type members.
+///
+/// For example, given `vehicleToRoadPort.wheelToRoadPort1`:
+/// 1. If `vehicleToRoadPort` has a direct child `wheelToRoadPort1` (e.g., added via redefinition), return it
+/// 2. Otherwise, look for `wheelToRoadPort1` as a member of `vehicleToRoadPort`'s type (e.g., `VehicleToRoadPort`)
+///
+/// This handles SysML v2 redefinitions where a usage can add new nested elements.
+fn resolve_member_of_symbol(
+    index: &SymbolIndex,
+    symbol: &HirSymbol,
+    member_name: &str,
+) -> Option<HirSymbol> {
+    // First: check for direct children (handles redefinitions that add new members)
+    let direct_child = format!("{}::{}", symbol.qualified_name, member_name);
+    if let Some(sym) = index.lookup_qualified(&direct_child).cloned() {
+        return Some(sym);
+    }
+
+    // Second: look through the type hierarchy for inherited members
+    resolve_member_in_type(index, symbol, member_name)
 }
 
 /// Resolve a member name within the type of a symbol.
@@ -136,6 +171,7 @@ fn resolve_member_in_type(
     symbol: &HirSymbol,
     member_name: &str,
 ) -> Option<HirSymbol> {
+    
     // Get the type of the symbol from its supertypes (the first one is usually the type)
     // or from type_refs with TypedBy kind
     let type_name = symbol.supertypes.first().or_else(|| {
@@ -148,9 +184,21 @@ fn resolve_member_in_type(
     })?;
 
     // Look up the member in the type's scope
+    // First try qualified, then definition, then resolve from symbol's scope
     let type_symbol = index
         .lookup_qualified(type_name)
-        .or_else(|| index.lookup_definition(type_name))?;
+        .or_else(|| index.lookup_definition(type_name))
+        .cloned()
+        .or_else(|| {
+            // Try resolving from the containing symbol's scope
+            let scope = symbol.qualified_name.rsplit_once("::").map(|(s, _)| s).unwrap_or("");
+            let resolver = index.resolver_for_scope(scope);
+            match resolver.resolve(type_name) {
+                ResolveResult::Found(sym) => Some(sym),
+                ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
+                ResolveResult::NotFound => None,
+            }
+        })?;
 
     // The member should be qualified as TypeName::memberName
     let member_qualified = format!("{}::{}", type_symbol.qualified_name, member_name);
@@ -200,6 +248,7 @@ pub fn resolve_type_ref(
 /// Find a type reference at a specific position in a file.
 ///
 /// Returns context including the chain prefix if the position is on part of a feature chain.
+/// Prefers the most specific (smallest) containing symbol to ensure correct scope resolution.
 pub fn find_type_ref_at_position(
     index: &SymbolIndex,
     file: FileId,
@@ -208,29 +257,44 @@ pub fn find_type_ref_at_position(
 ) -> Option<TypeRefContext<'_>> {
     let symbols = index.symbols_in_file(file);
 
+    // Find all matches, then pick the most specific one
+    let mut best_match: Option<(&HirSymbol, usize, &TypeRef, Vec<&TypeRef>)> = None;
+
     for symbol in symbols {
         for type_ref_kind in symbol.type_refs.iter() {
             if type_ref_kind.contains(line, col) {
                 // Find which part contains the position
                 if let Some((part_idx, tr)) = type_ref_kind.part_at(line, col) {
                     // Collect chain prefix (all parts before the current one)
-                    let chain_prefix = match type_ref_kind {
+                    let chain_prefix: Vec<&TypeRef> = match type_ref_kind {
                         TypeRefKind::Simple(_) => Vec::new(),
                         TypeRefKind::Chain(chain) => chain.parts.iter().take(part_idx).collect(),
                     };
 
-                    return Some(TypeRefContext {
-                        target_name: tr.target.clone(),
-                        type_ref: tr,
-                        containing_symbol: Some(symbol),
-                        chain_prefix,
-                    });
+                    // Check if this is a more specific match
+                    let is_better = match &best_match {
+                        None => true,
+                        Some((best_sym, _, _, _)) => {
+                            // Prefer the symbol with the longer qualified name (more specific)
+                            // This typically means a nested/child symbol
+                            symbol.qualified_name.len() > best_sym.qualified_name.len()
+                        }
+                    };
+
+                    if is_better {
+                        best_match = Some((symbol, part_idx, tr, chain_prefix));
+                    }
                 }
             }
         }
     }
 
-    None
+    best_match.map(|(symbol, _part_idx, tr, chain_prefix)| TypeRefContext {
+        target_name: tr.target.clone(),
+        type_ref: tr,
+        containing_symbol: Some(symbol),
+        chain_prefix,
+    })
 }
 
 #[cfg(test)]

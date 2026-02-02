@@ -15,8 +15,8 @@
 //! This is correct: expressions are defined in kerml_expressions.pest and shared by both grammars.
 //! SysML extends KerML expressions but uses the same precedence and base operators.
 
-use super::kerml_expressions::{ExpressionParser, parse_expression};
 use super::kerml::is_name_kind;
+use super::kerml_expressions::{ExpressionParser, parse_expression};
 use crate::parser::parser::kind_to_name;
 use crate::parser::syntax_kind::SyntaxKind;
 
@@ -926,7 +926,19 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         | SyntaxKind::MESSAGE_KW
         | SyntaxKind::SNAPSHOT_KW
         | SyntaxKind::TIMESLICE_KW
-        | SyntaxKind::ABOUT_KW => {
+        | SyntaxKind::ABOUT_KW
+        // KerML definition keywords (for standard library and KerML interop)
+        | SyntaxKind::CLASS_KW
+        | SyntaxKind::STRUCT_KW
+        | SyntaxKind::DATATYPE_KW
+        | SyntaxKind::BEHAVIOR_KW
+        | SyntaxKind::FUNCTION_KW
+        | SyntaxKind::ASSOC_KW
+        | SyntaxKind::INTERACTION_KW
+        | SyntaxKind::PREDICATE_KW
+        | SyntaxKind::METACLASS_KW
+        | SyntaxKind::CLASSIFIER_KW
+        | SyntaxKind::TYPE_KW => {
             p.parse_definition_or_usage();
         }
 
@@ -2710,6 +2722,7 @@ pub fn parse_definition_or_usage<P: SysMLParser>(p: &mut P) {
 
     match classification {
         DefinitionClassification::SysmlDefinition => parse_definition(p),
+        DefinitionClassification::KermlDefinition => parse_kerml_definition(p),
         DefinitionClassification::Usage => parse_usage(p),
     }
 }
@@ -2717,13 +2730,45 @@ pub fn parse_definition_or_usage<P: SysMLParser>(p: &mut P) {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DefinitionClassification {
     SysmlDefinition,
+    KermlDefinition,
     Usage,
+}
+
+/// Check if kind is a KerML-only definition keyword (without 'def')
+fn is_kerml_definition_keyword(kind: SyntaxKind) -> bool {
+    matches!(
+        kind,
+        SyntaxKind::CLASS_KW
+            | SyntaxKind::STRUCT_KW
+            | SyntaxKind::DATATYPE_KW
+            | SyntaxKind::BEHAVIOR_KW
+            | SyntaxKind::FUNCTION_KW
+            | SyntaxKind::ASSOC_KW
+            | SyntaxKind::INTERACTION_KW
+            | SyntaxKind::PREDICATE_KW
+            | SyntaxKind::METACLASS_KW
+            | SyntaxKind::CLASSIFIER_KW
+            | SyntaxKind::TYPE_KW
+    )
 }
 
 fn classify_definition_or_usage<P: SysMLParser>(p: &P) -> DefinitionClassification {
     // Scan ahead (skipping trivia) to determine what we have
+    // KerML definition: struct, class, datatype, etc. (no 'def' keyword)
     // SysML definition: has 'def' keyword
     // Usage: everything else (no 'def' keyword)
+
+    // Check first token for KerML definition keywords
+    // Skip over ABSTRACT_KW if present
+    let first_non_prefix = if p.peek_kind(0) == SyntaxKind::ABSTRACT_KW {
+        p.peek_kind(1)
+    } else {
+        p.peek_kind(0)
+    };
+
+    if is_kerml_definition_keyword(first_non_prefix) {
+        return DefinitionClassification::KermlDefinition;
+    }
 
     for i in 0..20 {
         // Look ahead up to 20 tokens
@@ -2805,6 +2850,36 @@ fn parse_definition<P: SysMLParser>(p: &mut P) {
     } else {
         p.parse_body();
     }
+
+    p.finish_node();
+}
+
+/// Parse a KerML definition (class, struct, datatype, etc.)
+/// These definitions don't use 'def' keyword like SysML definitions
+/// Per pest: structure = { abstract? ~ struct_token ~ identification? ~ specializations ~ namespace_body }
+fn parse_kerml_definition<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::DEFINITION);
+
+    // Optional abstract prefix
+    consume_if(p, SyntaxKind::ABSTRACT_KW);
+
+    // KerML definition keyword (class, struct, datatype, etc.)
+    if is_kerml_definition_keyword(p.current_kind()) {
+        bump_keyword(p);
+    }
+    p.skip_trivia();
+
+    // Identification (name)
+    if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+    }
+    p.skip_trivia();
+
+    // Specializations
+    parse_specializations_with_skip(p);
+
+    // Body
+    p.parse_body();
 
     p.finish_node();
 }
@@ -3017,7 +3092,8 @@ fn parse_usage<P: SysMLParser>(p: &mut P) {
     // Identification - but NOT if we're at CONNECT_KW (which is part of connector clause)
     // Check if this is a feature chain reference (name.member) vs a simple name
     // For patterns like `event sendSpeed.sourceEvent;`, the chain is a reference, not a name
-    let has_chain = if (p.at_name_token() || p.at(SyntaxKind::LT)) && !p.at(SyntaxKind::CONNECT_KW) {
+    let has_chain = if (p.at_name_token() || p.at(SyntaxKind::LT)) && !p.at(SyntaxKind::CONNECT_KW)
+    {
         // Look ahead to see if there's a dot after the name
         let mut lookahead = 0;
         if p.at(SyntaxKind::LT) {

@@ -4,7 +4,9 @@ use syster::ide::AnalysisHost;
 fn main() {
     let mut host = AnalysisHost::new();
 
-    let source = include_str!("../tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml");
+    let source = include_str!(
+        "../tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml"
+    );
     host.set_file_content("test.sysml", source);
     let analysis = host.analysis();
     let index = analysis.symbol_index();
@@ -14,15 +16,27 @@ fn main() {
     for sym in index.all_symbols() {
         if sym.qualified_name.contains("satisfy:sv") {
             println!("Symbol: {}", sym.qualified_name);
-            println!("  Location: line {} cols {}-{}", sym.start_line, sym.start_col, sym.end_col);
+            println!(
+                "  Location: line {} cols {}-{}",
+                sym.start_line, sym.start_col, sym.end_col
+            );
             println!("  Type refs:");
             for trk in &sym.type_refs {
                 match trk {
                     TypeRefKind::Simple(tr) => {
-                        println!("    Simple: '{}' at line {} cols {}-{}", tr.target, tr.start_line, tr.start_col, tr.end_col);
+                        println!(
+                            "    Simple: '{}' at line {} cols {}-{}",
+                            tr.target, tr.start_line, tr.start_col, tr.end_col
+                        );
                     }
                     TypeRefKind::Chain(c) => {
-                        println!("    Chain: {:?}", c.parts.iter().map(|p| p.target.as_ref()).collect::<Vec<_>>());
+                        println!(
+                            "    Chain: {:?}",
+                            c.parts
+                                .iter()
+                                .map(|p| p.target.as_ref())
+                                .collect::<Vec<_>>()
+                        );
                     }
                 }
             }
@@ -38,7 +52,7 @@ fn main() {
     println!("\nLine 1573: '{}'", line);
     println!("Chars with indices:");
     for (i, c) in line.chars().enumerate() {
-        if i >= 30 && i <= 60 {
+        if (30..=60).contains(&i) {
             print!("{}:{} ", i, c);
         }
     }

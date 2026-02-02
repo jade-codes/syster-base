@@ -8,8 +8,11 @@
 //! - Semantic diagnostics
 //! - Standard library loading
 
+pub mod tests_chain_member_hover;
 pub mod tests_diagnostics;
 pub mod tests_edge_cases;
+pub mod tests_hover_satisfy_via;
+pub mod tests_hover_triage;
 pub mod tests_import_resolution;
 pub mod tests_kerml_extraction;
 pub mod tests_name_resolution;

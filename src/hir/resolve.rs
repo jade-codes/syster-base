@@ -682,14 +682,28 @@ impl SymbolIndex {
         // Pass 1: Resolve simple refs and chain first-parts
         for (sym_idx, trk_idx, part_idx, target, chain_context, ref_kind) in pass1_work {
             let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
-            let mut resolved = self.resolve_type_ref_cached(
-                &symbol_qname,
-                &target,
-                &chain_context,
-                &mut resolution_cache,
-            );
+            
+            // For Redefines refs, try context resolution FIRST before normal scope walk.
+            // This handles cases like `requirement X :>> X` where X redefines a member
+            // from the parent/satisfy context, not itself in the current scope.
+            let mut resolved = if ref_kind == RefKind::Redefines {
+                self.resolve_redefines_in_context(&symbol_qname, &target)
+            } else {
+                None
+            };
+            
+            // If context resolution didn't find anything (or wasn't a Redefines), try normal resolution
+            if resolved.is_none() {
+                resolved = self.resolve_type_ref_cached(
+                    &symbol_qname,
+                    &target,
+                    &chain_context,
+                    &mut resolution_cache,
+                );
+            }
 
-            // For unresolved Redefines refs, try satisfy/perform context resolution
+            // For unresolved Redefines refs (when context resolution was skipped or failed), 
+            // try one more time with context resolution as fallback
             if resolved.is_none() && ref_kind == RefKind::Redefines {
                 resolved = self.resolve_redefines_in_context(&symbol_qname, &target);
             }
@@ -1292,7 +1306,11 @@ impl SymbolIndex {
                 self.lookup_qualified(resolved).cloned()
             } else {
                 // Target isn't resolved yet - try to resolve it now using parent's scope
-                let parent_scope = parent.qualified_name.rsplit_once("::").map(|(p, _)| p).unwrap_or("");
+                let parent_scope = parent
+                    .qualified_name
+                    .rsplit_once("::")
+                    .map(|(p, _)| p)
+                    .unwrap_or("");
                 let resolver = self.resolver_for_scope(parent_scope);
                 match resolver.resolve(&type_ref.target) {
                     ResolveResult::Found(sym) => Some(sym),
@@ -1489,19 +1507,54 @@ impl SymbolIndex {
                 }
             } else {
                 // Single import: add just that symbol
+                // The import target may use a short name (e.g., "Pkg::mop" where mop is a short name)
                 if let Some(sym) = self.lookup_qualified(&resolved_target) {
-                    let simple_name = sym.name.clone();
-                    vis.add_import(simple_name, sym.qualified_name.clone());
+                    // Add the symbol's name to visibility
+                    vis.add_import(sym.name.clone(), sym.qualified_name.clone());
+                    
+                    // Also add the short name if importing by short name
+                    // e.g., `import Pkg::mop` should make `mop` visible
+                    if let Some(ref short_name) = sym.short_name {
+                        vis.add_import(short_name.clone(), sym.qualified_name.clone());
+                    }
+                    
+                    // If the import target's last segment differs from the symbol's name,
+                    // it was imported by short name - add that name too
+                    let import_last_seg = import_target.rsplit("::").next().unwrap_or(import_target);
+                    if import_last_seg != sym.name.as_ref() {
+                        vis.add_import(Arc::from(import_last_seg), sym.qualified_name.clone());
+                    }
                 }
             }
         }
     }
 
     /// Simple import target resolution (used in lazy visibility building).
+    /// Handles both regular names and short names in the target.
     fn resolve_import_target_simple(&self, scope: &str, target: &str) -> String {
         // If already qualified, check as-is
         if target.contains("::") && self.by_qualified_name.contains_key(target) {
             return target.to_string();
+        }
+
+        // Check if the last segment is a short name
+        // e.g., "ParametersOfInterestMetadata::mop" where "mop" is the short name of "MeasureOfPerformance"
+        if target.contains("::") {
+            if let Some((parent, last_segment)) = target.rsplit_once("::") {
+                // Resolve the parent scope
+                let parent_qualified = self.resolve_import_target_simple(scope, parent);
+                
+                // Check if last_segment is a short name in that scope
+                if let Some(children) = self.by_parent_scope.get(&Arc::from(parent_qualified.as_str())) {
+                    for &idx in children {
+                        if let Some(sym) = self.symbols.get(idx) {
+                            if sym.short_name.as_ref().map(|s| s.as_ref()) == Some(last_segment) {
+                                return sym.qualified_name.to_string();
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // Try relative to scope and parent scopes
@@ -1851,16 +1904,30 @@ impl SymbolIndex {
             } else {
                 // Specific import: import a single symbol
                 // E.g., `import EngineDefs::Engine;` makes `Engine` visible as `EngineDefs::Engine`
+                // Also handles short name imports: `import Pkg::mop` where mop is a short name
+                // for MeasureOfPerformance - both `mop` and `MeasureOfPerformance` become visible
 
-                // Get the simple name (last component of path)
+                // Get the resolved symbol's simple name (last component of resolved path)
                 let simple_name = resolved_target
                     .rsplit("::")
                     .next()
                     .unwrap_or(&resolved_target);
 
+                // Get the import's last segment (may differ if importing via short name)
+                let import_last_seg = import_target
+                    .rsplit("::")
+                    .next()
+                    .unwrap_or(import_target);
+
                 // Add to this scope's imports
                 if let Some(vis) = self.visibility_map.get_mut(scope) {
+                    // Always add the resolved symbol's name
                     vis.add_import(Arc::from(simple_name), Arc::from(resolved_target.as_str()));
+                    
+                    // If imported via a different name (e.g., short name), add that too
+                    if import_last_seg != simple_name {
+                        vis.add_import(Arc::from(import_last_seg), Arc::from(resolved_target.as_str()));
+                    }
                 }
             }
         }
@@ -1945,6 +2012,40 @@ impl SymbolIndex {
             return target.to_string();
         }
 
+        // For qualified paths like "Pkg::member", check if the last segment is a short name
+        // E.g., "ParametersOfInterestMetadata::mop" where mop is short for MeasureOfPerformance
+        if target.contains("::") {
+            if let Some(last_sep_idx) = target.rfind("::") {
+                let parent_part = &target[..last_sep_idx];
+                let last_segment = &target[last_sep_idx + 2..];
+                
+                // First check if parent resolves directly
+                let parent_qualified = if self.visibility_map.contains_key(parent_part) {
+                    parent_part.to_string()
+                } else {
+                    // Try resolving parent from current scope
+                    self.resolve_import_target(scope, parent_part)
+                };
+                
+                // Check if last_segment is a direct child (by name)
+                let direct_child = format!("{}::{}", parent_qualified, last_segment);
+                if self.visibility_map.contains_key(&direct_child as &str) {
+                    return direct_child;
+                }
+                
+                // Check if last_segment matches a child's short_name
+                if let Some(children) = self.by_parent_scope.get(&Arc::from(parent_qualified.as_str())) {
+                    for &idx in children {
+                        if let Some(sym) = self.symbols.get(idx) {
+                            if sym.short_name.as_ref().map(|s| s.as_ref()) == Some(last_segment) {
+                                return sym.qualified_name.to_string();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // For simple names (no ::), first check if it's visible via imports in current scope
         // This handles the SysML pattern: import P1::*; import C::*;
         // where C was imported from P1
@@ -2002,7 +2103,7 @@ impl SymbolIndex {
             }
             return Some(&qualified_name[..import_pos]);
         }
-        
+
         // Handle anonymous scopes like `<perform:...>` or `<anon#...>`
         // For `A::B::<perform:C::D>`, we want parent `A::B`
         // Find the last `::` that isn't inside angle brackets
@@ -2017,13 +2118,14 @@ impl SymbolIndex {
                 if depth > 0 {
                     depth -= 1;
                 }
-            } else if depth == 0 && i + 1 < bytes.len() && bytes[i] == b':' && bytes[i + 1] == b':' {
+            } else if depth == 0 && i + 1 < bytes.len() && bytes[i] == b':' && bytes[i + 1] == b':'
+            {
                 last_separator_outside_brackets = Some(i);
                 i += 1; // Skip the second ':'
             }
             i += 1;
         }
-        
+
         match last_separator_outside_brackets {
             Some(idx) => Some(&qualified_name[..idx]),
             None => Some(""), // Root level

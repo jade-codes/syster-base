@@ -459,3 +459,113 @@ fn test_conjugated_port_extraction() {
     // Conjugated ports may be represented differently - just verify it parsed
     let _ = input.type_refs.len();
 }
+
+// =============================================================================
+// SUPERTYPES EXTRACTION (for member resolution)
+// These tests verify that supertypes are correctly extracted and include
+// Specializes relationships - critical for hover/member lookup to work.
+// =============================================================================
+
+/// Test that `:>` (Specializes) is included in supertypes
+/// This was a bug fix - Specializes was not being included, causing chain
+/// member resolution failures during hover.
+#[test]
+fn test_specializes_in_supertypes() {
+    let source = r#"
+        part def Vehicle {
+            attribute mass : Real;
+        }
+        part def Car :> Vehicle {
+            attribute speed : Real;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let car = get_symbol(analysis.symbol_index(), "Car");
+
+    // Car should have Vehicle in supertypes (via `:>`)
+    assert!(
+        car.supertypes.iter().any(|s| s.as_ref() == "Vehicle"),
+        "Car should have Vehicle in supertypes. Found supertypes: {:?}",
+        car.supertypes
+    );
+}
+
+/// Test TypedBy (`:`) is in supertypes
+#[test]
+fn test_typed_by_in_supertypes() {
+    let source = r#"
+        part def Vehicle;
+        part myCar : Vehicle;
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let my_car = get_symbol(analysis.symbol_index(), "myCar");
+
+    // myCar should have Vehicle in supertypes (via `:`)
+    assert!(
+        my_car.supertypes.iter().any(|s| s.as_ref() == "Vehicle"),
+        "myCar should have Vehicle in supertypes. Found supertypes: {:?}",
+        my_car.supertypes
+    );
+}
+
+/// Test that both TypedBy and Specializes contribute to supertypes
+#[test]
+fn test_typed_by_and_specializes_in_supertypes() {
+    let source = r#"
+        part def BaseType;
+        part def DerivedType :> BaseType;
+        part instance : DerivedType;
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // DerivedType should have BaseType in supertypes (via `:>`)
+    let derived = get_symbol(analysis.symbol_index(), "DerivedType");
+    assert!(
+        derived.supertypes.iter().any(|s| s.as_ref() == "BaseType"),
+        "DerivedType should have BaseType in supertypes"
+    );
+
+    // instance should have DerivedType in supertypes (via `:`)
+    let instance = get_symbol(analysis.symbol_index(), "instance");
+    assert!(
+        instance.supertypes.iter().any(|s| s.as_ref() == "DerivedType"),
+        "instance should have DerivedType in supertypes"
+    );
+}
+
+/// Test supertypes in complex inheritance hierarchy
+#[test]
+fn test_deep_specialization_supertypes() {
+    let source = r#"
+        part def Thing;
+        part def Vehicle :> Thing;
+        part def Car :> Vehicle;
+        part def SportsCar :> Car;
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    // Each definition should have its direct parent in supertypes
+    let vehicle = get_symbol(analysis.symbol_index(), "Vehicle");
+    assert!(
+        vehicle.supertypes.iter().any(|s| s.as_ref() == "Thing"),
+        "Vehicle should have Thing in supertypes"
+    );
+
+    let car = get_symbol(analysis.symbol_index(), "Car");
+    assert!(
+        car.supertypes.iter().any(|s| s.as_ref() == "Vehicle"),
+        "Car should have Vehicle in supertypes"
+    );
+
+    let sports_car = get_symbol(analysis.symbol_index(), "SportsCar");
+    assert!(
+        sports_car.supertypes.iter().any(|s| s.as_ref() == "Car"),
+        "SportsCar should have Car in supertypes"
+    );
+}

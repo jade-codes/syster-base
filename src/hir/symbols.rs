@@ -1245,8 +1245,10 @@ fn extract_from_normalized_usage(
             let span = ctx.range_to_info(anon_span_range);
 
             // Build supertypes for anonymous symbol:
-            // 1. From relationships (Redefines, Subsets, TypedBy, Specializes)
+            // 1. From relationships (Redefines, Subsets, TypedBy, Specializes, Satisfies, Verifies)
             // 2. From parent's TypedBy (so we can resolve inherited members)
+            // Note: Satisfies/Verifies blocks should inherit from the satisfied/verified requirement
+            //       so that nested members can resolve redefines targets in the satisfied element
             let mut anon_supertypes: Vec<Arc<str>> = usage
                 .relationships
                 .iter()
@@ -1257,6 +1259,8 @@ fn extract_from_normalized_usage(
                             | NormalizedRelKind::Subsets
                             | NormalizedRelKind::Specializes
                             | NormalizedRelKind::Redefines
+                            | NormalizedRelKind::Satisfies
+                            | NormalizedRelKind::Verifies
                     )
                 })
                 .map(|r| Arc::from(r.target.as_str().as_ref()))
@@ -1320,13 +1324,17 @@ fn extract_from_normalized_usage(
         ctx.range_to_optional(usage.short_name_range);
 
     // Extract typing and subsetting as supertypes
+    // For member resolution, we need to look in:
+    // - TypedBy: explicit type annotation (`: Type`)
+    // - Subsets: subset relationship (`:>` on usages)
+    // - Specializes: specialization (`:>` can also be specializes in some contexts)
     let mut supertypes: Vec<Arc<str>> = usage
         .relationships
         .iter()
         .filter(|r| {
             matches!(
                 r.kind,
-                NormalizedRelKind::TypedBy | NormalizedRelKind::Subsets
+                NormalizedRelKind::TypedBy | NormalizedRelKind::Subsets | NormalizedRelKind::Specializes
             )
         })
         .map(|r| Arc::from(r.target.as_str().as_ref()))
@@ -1598,21 +1606,28 @@ fn extract_type_refs_from_normalized(
         match &rel.target {
             RelTarget::Chain(chain) => {
                 // Emit as a TypeRefChain with individual parts
+                let num_parts = chain.parts.len();
                 let parts: Vec<TypeRef> = chain
                     .parts
                     .iter()
-                    .map(|part| {
+                    .enumerate()
+                    .map(|(idx, part)| {
                         let (start_line, start_col, end_line, end_col) = if let Some(r) = part.range
                         {
                             let start = line_index.line_col(r.start());
                             let end = line_index.line_col(r.end());
                             (start.line, start.col, end.line, end.col)
-                        } else if let Some(r) = rel.range {
-                            // Fallback to relationship range if part range is missing
-                            let start = line_index.line_col(r.start());
-                            let end = line_index.line_col(r.end());
-                            (start.line, start.col, end.line, end.col)
+                        } else if idx == num_parts - 1 {
+                            // For the last part, fallback to relationship range if available
+                            if let Some(r) = rel.range {
+                                let start = line_index.line_col(r.start());
+                                let end = line_index.line_col(r.end());
+                                (start.line, start.col, end.line, end.col)
+                            } else {
+                                (0, 0, 0, 0)
+                            }
                         } else {
+                            // Non-last parts without ranges are synthetic (not hoverable)
                             (0, 0, 0, 0)
                         };
                         TypeRef {
@@ -1683,10 +1698,14 @@ fn extract_from_normalized_dependency(
     ctx: &mut ExtractionContext,
     dep: &NormalizedDependency,
 ) {
-    // Collect type refs from both sources and targets
+    // Collect type refs from sources, targets, and relationships (including prefix metadata)
     let mut type_refs = extract_type_refs_from_normalized(&dep.sources, &ctx.line_index);
     type_refs.extend(extract_type_refs_from_normalized(
         &dep.targets,
+        &ctx.line_index,
+    ));
+    type_refs.extend(extract_type_refs_from_normalized(
+        &dep.relationships,
         &ctx.line_index,
     ));
 
@@ -1714,7 +1733,7 @@ fn extract_from_normalized_dependency(
             relationships: Vec::new(),
             type_refs,
             is_public: false,
-            metadata_annotations: Vec::new(), // Dependencies don't have metadata
+            metadata_annotations: Vec::new(),
         });
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
@@ -1740,7 +1759,7 @@ fn extract_from_normalized_dependency(
             relationships: Vec::new(),
             type_refs,
             is_public: false,
-            metadata_annotations: Vec::new(), // Dependencies don't have metadata
+            metadata_annotations: Vec::new(),
         });
     }
 }

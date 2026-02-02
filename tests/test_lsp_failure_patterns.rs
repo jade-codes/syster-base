@@ -222,7 +222,7 @@ package TestPkg {
         
         transition off_To_starting
             first off
-            accept ignitionCmd
+            accept ignitionCmd : IgnitionCmd
             if ignitionCmd.ignitionOnOff == 1
             then starting;
         

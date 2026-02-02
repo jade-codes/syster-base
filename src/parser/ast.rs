@@ -547,6 +547,25 @@ impl Dependency {
         }
         None
     }
+
+    /// Get prefix metadata references from preceding siblings.
+    /// e.g., `#refinement dependency a to b;` -> returns [PrefixMetadata for "refinement"]
+    pub fn prefix_metadata(&self) -> Vec<PrefixMetadata> {
+        let mut result = Vec::new();
+        let mut current = self.0.prev_sibling();
+        while let Some(sibling) = current {
+            if sibling.kind() == SyntaxKind::PREFIX_METADATA {
+                if let Some(pm) = PrefixMetadata::cast(sibling.clone()) {
+                    result.push(pm);
+                }
+                current = sibling.prev_sibling();
+            } else {
+                break;
+            }
+        }
+        result.reverse();
+        result
+    }
 }
 
 // ============================================================================
@@ -663,6 +682,33 @@ impl MetadataUsage {
     /// Get the body of the metadata (for nested metadata definitions)
     pub fn body(&self) -> Option<NamespaceBody> {
         self.0.children().find_map(NamespaceBody::cast)
+    }
+}
+
+// ============================================================================
+// Prefix Metadata (#name)
+// ============================================================================
+
+ast_node!(PrefixMetadata, PREFIX_METADATA);
+
+impl PrefixMetadata {
+    /// Get the metadata type name (the identifier after #)
+    /// e.g., `mop` in `#mop attribute mass : Real;`
+    pub fn name(&self) -> Option<String> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .map(|t| t.text().to_string())
+    }
+
+    /// Get the text range of the identifier (for hover/goto)
+    pub fn name_range(&self) -> Option<rowan::TextRange> {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .find(|t| t.kind() == SyntaxKind::IDENT)
+            .map(|t| t.text_range())
     }
 }
 
@@ -851,6 +897,43 @@ impl Usage {
             }
         }
         None
+    }
+
+    /// Get prefix metadata references.
+    /// e.g., `#mop attribute mass : Real;` -> returns [PrefixMetadata for "mop"]
+    /// 
+    /// PREFIX_METADATA nodes can be in two locations depending on the usage type:
+    /// 1. For most usages (part, attribute, etc.): preceding siblings in the namespace body
+    /// 2. For end features: children of the USAGE node (after END_KW)
+    pub fn prefix_metadata(&self) -> Vec<PrefixMetadata> {
+        let mut result = Vec::new();
+        
+        // First check preceding siblings (most common case)
+        let mut current = self.0.prev_sibling();
+        while let Some(sibling) = current {
+            if sibling.kind() == SyntaxKind::PREFIX_METADATA {
+                if let Some(pm) = PrefixMetadata::cast(sibling.clone()) {
+                    result.push(pm);
+                }
+                current = sibling.prev_sibling();
+            } else {
+                // Stop when we hit a non-PREFIX_METADATA node
+                break;
+            }
+        }
+        // Reverse to get them in source order
+        result.reverse();
+        
+        // Also check children (for end features where PREFIX_METADATA is inside USAGE)
+        for child in self.0.children() {
+            if child.kind() == SyntaxKind::PREFIX_METADATA {
+                if let Some(pm) = PrefixMetadata::cast(child) {
+                    result.push(pm);
+                }
+            }
+        }
+        
+        result
     }
 
     pub fn name(&self) -> Option<Name> {
@@ -1137,7 +1220,15 @@ impl QualifiedName {
                         | SyntaxKind::DONE_KW
                 )
             })
-            .map(|t| t.text().to_string())
+            .map(|t| {
+                let text = t.text();
+                // Strip surrounding quotes from unrestricted names like 'My Name'
+                if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
+                    text[1..text.len() - 1].to_string()
+                } else {
+                    text.to_string()
+                }
+            })
             .collect()
     }
 
@@ -1157,7 +1248,16 @@ impl QualifiedName {
                         | SyntaxKind::DONE_KW
                 )
             })
-            .map(|t| (t.text().to_string(), t.text_range()))
+            .map(|t| {
+                let text = t.text();
+                // Strip surrounding quotes from unrestricted names like 'My Name'
+                let stripped = if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
+                    text[1..text.len() - 1].to_string()
+                } else {
+                    text.to_string()
+                };
+                (stripped, t.text_range())
+            })
             .collect()
     }
 
@@ -1201,18 +1301,28 @@ impl Specialization {
         for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
             match token.kind() {
                 SyntaxKind::COLON_GT => return Some(SpecializationKind::Specializes),
-                SyntaxKind::COLON_GT_GT => return Some(SpecializationKind::Conjugates),
+                SyntaxKind::COLON_GT_GT => return Some(SpecializationKind::Redefines),
                 SyntaxKind::COLON_COLON_GT => return Some(SpecializationKind::FeatureChain),
                 SyntaxKind::SPECIALIZES_KW => return Some(SpecializationKind::Specializes),
                 SyntaxKind::SUBSETS_KW => return Some(SpecializationKind::Subsets),
                 SyntaxKind::REDEFINES_KW => return Some(SpecializationKind::Redefines),
                 SyntaxKind::REFERENCES_KW => return Some(SpecializationKind::References),
+                SyntaxKind::TILDE => return Some(SpecializationKind::Conjugates),
                 SyntaxKind::FROM_KW => return Some(SpecializationKind::FeatureChain),
                 SyntaxKind::TO_KW => return Some(SpecializationKind::FeatureChain),
                 _ => {}
             }
         }
         None
+    }
+
+    /// Check if this is a shorthand redefines (`:>>`) vs keyword (`redefines`)
+    /// Returns true for `:>> name`, false for `redefines name`
+    pub fn is_shorthand_redefines(&self) -> bool {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::COLON_GT_GT)
     }
 
     pub fn target(&self) -> Option<QualifiedName> {
@@ -1318,6 +1428,27 @@ impl TransitionUsage {
     pub fn accept_typing(&self) -> Option<Typing> {
         self.0.children().find_map(Typing::cast)
     }
+
+    /// Get the 'via' target for the accept trigger
+    /// e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`
+    pub fn accept_via(&self) -> Option<QualifiedName> {
+        use crate::parser::SyntaxKind;
+        let mut seen_via = false;
+        for child in self.0.children_with_tokens() {
+            match child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::VIA_KW => {
+                    seen_via = true;
+                }
+                rowan::NodeOrToken::Node(n) if seen_via => {
+                    if let Some(qn) = QualifiedName::cast(n) {
+                        return Some(qn);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
 }
 
 // ============================================================================
@@ -1373,6 +1504,26 @@ impl AcceptActionUsage {
     /// Get the qualified name if accepting a named signal
     pub fn accepted(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the 'via' target port (the QualifiedName after VIA_KW)
+    /// e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`
+    pub fn via(&self) -> Option<QualifiedName> {
+        let mut seen_via = false;
+        for child in self.0.children_with_tokens() {
+            match child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::VIA_KW => {
+                    seen_via = true;
+                }
+                rowan::NodeOrToken::Node(n) if seen_via => {
+                    if let Some(qn) = QualifiedName::cast(n) {
+                        return Some(qn);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 }
 
@@ -1535,9 +1686,29 @@ impl RequirementVerification {
             .any(|t| t.kind() == SyntaxKind::ASSERT_KW)
     }
 
-    /// Get the requirement being satisfied/verified
+    /// Get the requirement being satisfied/verified (the first QualifiedName)
     pub fn requirement(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the 'by' target (the QualifiedName after BY_KW)
+    /// e.g., `vehicle_b` in `satisfy R by vehicle_b`
+    pub fn by_target(&self) -> Option<QualifiedName> {
+        let mut seen_by = false;
+        for child in self.0.children_with_tokens() {
+            match child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::BY_KW => {
+                    seen_by = true;
+                }
+                rowan::NodeOrToken::Node(n) if seen_by => {
+                    if let Some(qn) = QualifiedName::cast(n) {
+                        return Some(qn);
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
     }
 
     /// Get the typing if present
@@ -1712,6 +1883,12 @@ impl ConstraintBody {
     pub fn expression(&self) -> Option<Expression> {
         self.0.children().find_map(Expression::cast)
     }
+
+    /// Get the namespace members inside the constraint body (for satisfy/verify blocks)
+    /// e.g., `satisfy R { requirement x :>> y { ... } }` - the nested requirement is a member
+    pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
+        self.0.children().filter_map(NamespaceMember::cast)
+    }
 }
 
 // ============================================================================
@@ -1745,6 +1922,107 @@ impl Expression {
         let mut chains = Vec::new();
         self.collect_feature_chains(&self.0, &mut chains);
         chains
+    }
+
+    /// Extract named constructor arguments from `new Type(argName = value)` patterns.
+    /// Returns tuples of (type_name, arg_name, arg_name_range).
+    /// The arg_name should resolve as Type.argName (a feature of the constructed type).
+    pub fn named_constructor_args(&self) -> Vec<(String, String, rowan::TextRange)> {
+        let mut results = Vec::new();
+        self.collect_named_constructor_args(&self.0, &mut results);
+        results
+    }
+
+    fn collect_named_constructor_args(
+        &self,
+        node: &SyntaxNode,
+        results: &mut Vec<(String, String, rowan::TextRange)>,
+    ) {
+        // Look for pattern: NEW_KW followed by QUALIFIED_NAME then ARGUMENT_LIST
+        let children: Vec<_> = node.children_with_tokens().collect();
+        
+        let mut i = 0;
+        while i < children.len() {
+            // Check for NEW_KW token
+            if let Some(token) = children[i].as_token() {
+                if token.kind() == SyntaxKind::NEW_KW {
+                    // Find the type name (QUALIFIED_NAME after new)
+                    let mut type_name = None;
+                    for j in (i + 1)..children.len() {
+                        if let Some(qn_node) = children[j].as_node() {
+                            if qn_node.kind() == SyntaxKind::QUALIFIED_NAME {
+                                type_name = Some(qn_node.text().to_string());
+                                break;
+                            }
+                        }
+                    }
+                    
+                    // Find ARGUMENT_LIST and extract named arguments
+                    if let Some(type_name) = type_name {
+                        for j in (i + 1)..children.len() {
+                            if let Some(arg_list_node) = children[j].as_node() {
+                                if arg_list_node.kind() == SyntaxKind::ARGUMENT_LIST {
+                                    self.extract_named_args_from_list(
+                                        arg_list_node,
+                                        &type_name,
+                                        results,
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            i += 1;
+        }
+
+        // Recurse into child nodes
+        for child in node.children() {
+            self.collect_named_constructor_args(&child, results);
+        }
+    }
+
+    fn extract_named_args_from_list(
+        &self,
+        arg_list: &SyntaxNode,
+        type_name: &str,
+        results: &mut Vec<(String, String, rowan::TextRange)>,
+    ) {
+        // Nested ARGUMENT_LIST nodes contain the actual arguments
+        for child in arg_list.children() {
+            if child.kind() == SyntaxKind::ARGUMENT_LIST {
+                // Check for pattern: IDENT EQ ...
+                let tokens: Vec<_> = child.children_with_tokens().collect();
+                
+                // Look for IDENT followed by EQ (named argument pattern)
+                for (idx, elem) in tokens.iter().enumerate() {
+                    if let Some(token) = elem.as_token() {
+                        if token.kind() == SyntaxKind::IDENT {
+                            // Check if next non-whitespace is EQ
+                            for next_elem in tokens.iter().skip(idx + 1) {
+                                if let Some(next_token) = next_elem.as_token() {
+                                    if next_token.kind() == SyntaxKind::WHITESPACE {
+                                        continue;
+                                    }
+                                    if next_token.kind() == SyntaxKind::EQ {
+                                        // Found named argument!
+                                        results.push((
+                                            type_name.to_string(),
+                                            token.text().to_string(),
+                                            token.text_range(),
+                                        ));
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                // Recurse into nested argument lists
+                self.extract_named_args_from_list(&child, type_name, results);
+            }
+        }
     }
 
     fn collect_feature_chains(&self, node: &SyntaxNode, chains: &mut Vec<FeatureChainRef>) {

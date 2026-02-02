@@ -40,7 +40,10 @@ package TestPkg {
     for sym in index.all_symbols() {
         if sym.qualified_name.contains("speedSensorPort") {
             println!("Symbol: {} ({:?})", sym.qualified_name, sym.kind);
-            println!("  Location: line {} cols {}-{}", sym.start_line, sym.start_col, sym.end_col);
+            println!(
+                "  Location: line {} cols {}-{}",
+                sym.start_line, sym.start_col, sym.end_col
+            );
             println!("  Supertypes: {:?}", sym.supertypes);
             println!("  Relationships: {:?}", sym.relationships);
         }
@@ -49,10 +52,15 @@ package TestPkg {
     // Look for any succession-related symbols
     println!("\n=== Succession-related symbols ===");
     for sym in index.all_symbols() {
-        if sym.name.contains("then") || 
-           matches!(sym.kind, SymbolKind::OccurrenceUsage) && sym.qualified_name.contains("speedSensorPort") {
+        if sym.name.contains("then")
+            || matches!(sym.kind, SymbolKind::OccurrenceUsage)
+                && sym.qualified_name.contains("speedSensorPort")
+        {
             println!("Symbol: {} ({:?})", sym.qualified_name, sym.kind);
-            println!("  Location: line {} cols {}-{}", sym.start_line, sym.start_col, sym.end_col);
+            println!(
+                "  Location: line {} cols {}-{}",
+                sym.start_line, sym.start_col, sym.end_col
+            );
         }
     }
 
@@ -63,7 +71,11 @@ package TestPkg {
     println!("\n=== Testing hover on line 8 (then event occurrence sendData) ===");
     for col in [16u32, 17, 18, 19, 20, 21, 38, 40, 45] {
         let hover = analysis.hover(file_id, 8, col);
-        println!("Hover at line 8, col {}: {:?}", col, hover.as_ref().map(|h| &h.qualified_name));
+        println!(
+            "Hover at line 8, col {}: {:?}",
+            col,
+            hover.as_ref().map(|h| &h.qualified_name)
+        );
     }
 }
 
@@ -105,8 +117,10 @@ package TestPkg {
                 let names: Vec<&str> = chain.parts.iter().map(|p| p.target.as_ref()).collect();
                 println!("Found chain {:?} on symbol '{}'", names, sym.qualified_name);
                 for (i, part) in chain.parts.iter().enumerate() {
-                    println!("  Part {}: '{}' at line {} cols {}-{}", 
-                        i, part.target, part.start_line, part.start_col, part.end_col);
+                    println!(
+                        "  Part {}: '{}' at line {} cols {}-{}",
+                        i, part.target, part.start_line, part.start_col, part.end_col
+                    );
                     println!("    resolved: {:?}", part.resolved_target);
                 }
             }
@@ -121,7 +135,10 @@ package TestPkg {
             println!("  Supertypes: {:?}", sym.supertypes);
             for trk in &sym.type_refs {
                 for tr in trk.as_refs() {
-                    println!("  TypeRef: {} kind={:?} resolved={:?}", tr.target, tr.kind, tr.resolved_target);
+                    println!(
+                        "  TypeRef: {} kind={:?} resolved={:?}",
+                        tr.target, tr.kind, tr.resolved_target
+                    );
                 }
             }
         }
@@ -130,7 +147,10 @@ package TestPkg {
     // Look for Message symbol in stdlib
     println!("\n=== Looking for Message and sourceEvent in stdlib ===");
     for sym in index.all_symbols() {
-        if sym.name.as_ref() == "Message" || sym.name.as_ref() == "sourceEvent" || sym.name.as_ref() == "targetEvent" {
+        if sym.name.as_ref() == "Message"
+            || sym.name.as_ref() == "sourceEvent"
+            || sym.name.as_ref() == "targetEvent"
+        {
             println!("Found: {} ({:?})", sym.qualified_name, sym.kind);
             println!("  Supertypes: {:?}", sym.supertypes);
         }
@@ -143,15 +163,19 @@ package TestPkg {
     println!("\n=== Testing hover on line 6 (event sendSpeed.sourceEvent) ===");
     for col in [12u32, 18, 20, 26, 28, 30, 35, 38] {
         let hover = analysis.hover(file_id, 6, col);
-        println!("Hover at line 6, col {}: {:?}", col, hover.as_ref().map(|h| &h.qualified_name));
+        println!(
+            "Hover at line 6, col {}: {:?}",
+            col,
+            hover.as_ref().map(|h| &h.qualified_name)
+        );
     }
 }
 
 /// Test redefines hover (from the failing test)
-#[test]  
+#[test]
 fn test_hover_on_redefines_basic() {
     let mut host = AnalysisHost::new();
-    
+
     let source = r#"
 package TestPkg {
     part def Vehicle {
@@ -187,7 +211,10 @@ package TestPkg {
             for rel in &sym.relationships {
                 if matches!(rel.kind, syster::hir::RelationshipKind::Redefines) {
                     println!("Symbol '{}' redefines '{}'", sym.qualified_name, rel.target);
-                    println!("  Location: line {} cols {}-{}", sym.start_line, sym.start_col, sym.end_col);
+                    println!(
+                        "  Location: line {} cols {}-{}",
+                        sym.start_line, sym.start_col, sym.end_col
+                    );
                 }
             }
         }
@@ -199,8 +226,10 @@ package TestPkg {
         for trk in &sym.type_refs {
             for tr in trk.as_refs() {
                 if matches!(tr.kind, syster::hir::RefKind::Redefines) {
-                    println!("Symbol '{}' has redefines typeref to '{}' at line {} cols {}-{}", 
-                        sym.qualified_name, tr.target, tr.start_line, tr.start_col, tr.end_col);
+                    println!(
+                        "Symbol '{}' has redefines typeref to '{}' at line {} cols {}-{}",
+                        sym.qualified_name, tr.target, tr.start_line, tr.start_col, tr.end_col
+                    );
                     println!("  resolved: {:?}", tr.resolved_target);
                 }
             }
@@ -215,6 +244,10 @@ package TestPkg {
     println!("\n=== Testing hover on line 7 (port redefines fuelPort) ===");
     for col in [8u32, 13, 20, 23, 25, 27, 30, 31] {
         let hover = analysis.hover(file_id, 7, col);
-        println!("Hover at line 7, col {}: {:?}", col, hover.as_ref().map(|h| &h.qualified_name));
+        println!(
+            "Hover at line 7, col {}: {:?}",
+            col,
+            hover.as_ref().map(|h| &h.qualified_name)
+        );
     }
 }

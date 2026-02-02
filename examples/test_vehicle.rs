@@ -7,7 +7,9 @@ fn main() {
     let flows_source = include_str!("../sysml.library/Systems Library/Flows.sysml");
     host.set_file_content("stdlib/Flows.sysml", flows_source);
 
-    let source = include_str!("../tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml");
+    let source = include_str!(
+        "../tests/sysml-examples/Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml"
+    );
     host.set_file_content("test.sysml", source);
     let analysis = host.analysis();
     let index = analysis.symbol_index();
@@ -30,7 +32,11 @@ fn main() {
                     for part in &chain.parts {
                         println!(
                             "  Part '{}': line {} cols {}-{} resolved={:?}",
-                            part.target, part.start_line, part.start_col, part.end_col, part.resolved_target
+                            part.target,
+                            part.start_line,
+                            part.start_col,
+                            part.end_col,
+                            part.resolved_target
                         );
                     }
                 }
@@ -50,7 +56,11 @@ fn main() {
                 let col = pos as u32;
                 for test_col in [col, col + 5, col + 10] {
                     let hover = analysis.hover(file_id, line_num as u32, test_col);
-                    println!("  col {}: {:?}", test_col, hover.as_ref().map(|h| h.qualified_name.as_ref()));
+                    println!(
+                        "  col {}: {:?}",
+                        test_col,
+                        hover.as_ref().map(|h| h.qualified_name.as_ref())
+                    );
                 }
             }
         }

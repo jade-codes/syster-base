@@ -179,6 +179,8 @@ pub struct NormalizedDependency {
     pub short_name: Option<String>,
     pub sources: Vec<NormalizedRelationship>,
     pub targets: Vec<NormalizedRelationship>,
+    /// Additional relationships like prefix metadata (e.g., #refinement, #derivation)
+    pub relationships: Vec<NormalizedRelationship>,
     pub range: Option<TextRange>,
 }
 
@@ -737,6 +739,18 @@ impl NormalizedUsage {
             }
         }
 
+        // Extract prefix metadata (#name) as Meta relationships
+        // PREFIX_METADATA nodes are preceding siblings, not children of USAGE
+        for prefix_meta in usage.prefix_metadata() {
+            if let (Some(name), Some(range)) = (prefix_meta.name(), prefix_meta.name_range()) {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::Meta,
+                    target: RelTarget::Simple(name),
+                    range: Some(range),
+                });
+            }
+        }
+
         // Extract "of Type" clause (for messages, items, etc.)
         // e.g., `message sendCmd of SensedSpeed`
         if let Some(of_type) = usage.of_type() {
@@ -822,6 +836,29 @@ impl NormalizedUsage {
                     });
                 }
             }
+            
+            // Extract named constructor arguments from `new Type(argName = value)` patterns
+            // These resolve as Type.argName (feature of the constructed type)
+            for (type_name, arg_name, arg_range) in expr.named_constructor_args() {
+                let parts = vec![
+                    FeatureChainPart {
+                        name: type_name,
+                        range: None, // Only the arg_name should be highlighted
+                    },
+                    FeatureChainPart {
+                        name: arg_name,
+                        range: Some(arg_range),
+                    },
+                ];
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::Expression,
+                    target: RelTarget::Chain(FeatureChain {
+                        parts,
+                        range: Some(arg_range), // Only highlight the argument name
+                    }),
+                    range: Some(arg_range),
+                });
+            }
         }
 
         // Extract from-to clause for message/flow usages (e.g., `from driver.turnVehicleOn to vehicle.trigger1`)
@@ -880,9 +917,11 @@ impl NormalizedUsage {
             let items: Vec<_> = succession.items().collect();
             if let Some(first) = items.first() {
                 if let Some(qn) = first.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
                         kind: NormalizedRelKind::SuccessionSource,
-                        target: RelTarget::Simple(qn.to_string()),
+                        target: rel_target,
                         range: Some(qn.syntax().text_range()),
                     });
                 }
@@ -890,9 +929,11 @@ impl NormalizedUsage {
             // All subsequent items are targets
             for item in items.iter().skip(1) {
                 if let Some(qn) = item.target() {
+                    let target_str = qn.to_string();
+                    let rel_target = make_chain_or_simple(&target_str, &qn);
                     relationships.push(NormalizedRelationship {
                         kind: NormalizedRelKind::SuccessionTarget,
-                        target: RelTarget::Simple(qn.to_string()),
+                        target: rel_target,
                         range: Some(qn.syntax().text_range()),
                     });
                 }
@@ -950,7 +991,7 @@ impl NormalizedUsage {
                     range: Some(qn.syntax().text_range()),
                 });
             }
-            
+
             // Also extract typing if present (e.g., `sv:SafetyViewpoint` - SafetyViewpoint is the type)
             // This allows hover on the type name to work
             if let Some(typing) = req_ver.typing() {
@@ -961,6 +1002,17 @@ impl NormalizedUsage {
                         range: Some(target.syntax().text_range()),
                     });
                 }
+            }
+
+            // Extract 'by' target (e.g., `vehicle_b` in `satisfy R by vehicle_b`)
+            // This is the subject/verifier being bound
+            if let Some(by_target) = req_ver.by_target() {
+                let target_str = by_target.to_string();
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::References, // Use References for the by-target
+                    target: make_chain_or_simple(&target_str, &by_target),
+                    range: Some(by_target.syntax().text_range()),
+                });
             }
         }
 
@@ -1105,6 +1157,7 @@ impl NormalizedUsage {
 
         // Extract children from body
         // For perform actions, the body is inside the PERFORM_ACTION_USAGE
+        // For satisfy/verify blocks, children are in CONSTRAINT_BODY not NAMESPACE_BODY
         let mut children: Vec<NormalizedElement> =
             if let Some(perform) = usage.perform_action_usage() {
                 perform
@@ -1115,6 +1168,12 @@ impl NormalizedUsage {
                             .collect()
                     })
                     .unwrap_or_default()
+            } else if let Some(constraint_body) = usage.constraint_body() {
+                // Satisfy/verify blocks use CONSTRAINT_BODY for their children
+                constraint_body
+                    .members()
+                    .map(|m| NormalizedElement::from_rowan(&m))
+                    .collect()
             } else {
                 usage
                     .body()
@@ -1145,6 +1204,16 @@ impl NormalizedUsage {
                             range: Some(target.syntax().text_range()),
                         });
                     }
+                }
+
+                // Get accept via if present (e.g., `accept sig via port`)
+                if let Some(via_target) = trans.accept_via() {
+                    let target_str = via_target.to_string();
+                    payload_rels.push(NormalizedRelationship {
+                        kind: NormalizedRelKind::AcceptVia,
+                        target: make_chain_or_simple(&target_str, &via_target),
+                        range: Some(via_target.syntax().text_range()),
+                    });
                 }
 
                 children.push(NormalizedElement::Usage(NormalizedUsage {
@@ -1219,17 +1288,47 @@ impl NormalizedUsage {
                 }
             } else {
                 let usage_name = usage.name();
-                (
-                    usage_name.as_ref().and_then(|n| n.text()),
-                    usage_name
-                        .as_ref()
-                        .and_then(|n| n.short_name())
-                        .and_then(|sn| sn.text()),
-                    usage_name.as_ref().map(|n| n.syntax().text_range()),
-                    usage_name
-                        .and_then(|n| n.short_name())
-                        .map(|sn| sn.syntax().text_range()),
-                )
+                if usage_name.is_some() {
+                    // Explicit name present
+                    (
+                        usage_name.as_ref().and_then(|n| n.text()),
+                        usage_name
+                            .as_ref()
+                            .and_then(|n| n.short_name())
+                            .and_then(|sn| sn.text()),
+                        usage_name.as_ref().map(|n| n.syntax().text_range()),
+                        usage_name
+                            .and_then(|n| n.short_name())
+                            .map(|sn| sn.syntax().text_range()),
+                    )
+                } else {
+                    // No explicit name - check for shorthand redefines (`:>> name`)
+                    // In SysML, `:>> name` is equivalent to naming the element with `name`
+                    // and adding a redefines relationship to the parent's `name` feature.
+                    // This ONLY applies to the `:>>` operator, NOT the `redefines` keyword.
+                    let redefines_name = usage.specializations().find_map(|spec| {
+                        // Only consider shorthand redefines (:>>), not keyword (redefines)
+                        if spec.is_shorthand_redefines() {
+                            spec.target().and_then(|t| {
+                                let target_str = t.to_string();
+                                // Only use simple names (not qualified names like A::B)
+                                if !target_str.contains("::") && !target_str.contains('.') {
+                                    Some((target_str, t.syntax().text_range()))
+                                } else {
+                                    None
+                                }
+                            })
+                        } else {
+                            None
+                        }
+                    });
+                    
+                    if let Some((name, range)) = redefines_name {
+                        (Some(name), None, Some(range), None)
+                    } else {
+                        (None, None, None, None)
+                    }
+                }
             };
 
         Self {
@@ -1291,9 +1390,11 @@ impl NormalizedUsage {
         if !items.is_empty() {
             // First item is the source
             if let Some(qn) = items[0].target() {
+                let target_str = qn.to_string();
+                let rel_target = make_chain_or_simple(&target_str, &qn);
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::SuccessionSource,
-                    target: RelTarget::Simple(qn.to_string()),
+                    target: rel_target,
                     range: Some(qn.syntax().text_range()),
                 });
             } else if let Some(usage) = items[0].usage() {
@@ -1307,9 +1408,11 @@ impl NormalizedUsage {
         // Remaining wrapped items are targets
         for item in items.iter().skip(1) {
             if let Some(qn) = item.target() {
+                let target_str = qn.to_string();
+                let rel_target = make_chain_or_simple(&target_str, &qn);
                 relationships.push(NormalizedRelationship {
                     kind: NormalizedRelKind::SuccessionTarget,
-                    target: RelTarget::Simple(qn.to_string()),
+                    target: rel_target,
                     range: Some(qn.syntax().text_range()),
                 });
             } else if let Some(usage) = item.usage() {
@@ -1326,6 +1429,16 @@ impl NormalizedUsage {
             children.push(NormalizedElement::Usage(NormalizedUsage::from_rowan(
                 &usage,
             )));
+        }
+        
+        // Handle accept actions inside succession (e.g., `then action trigger accept ignitionCmd`)
+        for accept in succ.syntax().children().filter_map(parser::AcceptActionUsage::cast) {
+            children.push(NormalizedElement::Usage(NormalizedUsage::from_accept_action(&accept)));
+        }
+        
+        // Handle send actions inside succession (e.g., `then action sender send msg`)
+        for send in succ.syntax().children().filter_map(parser::SendActionUsage::cast) {
+            children.push(NormalizedElement::Usage(NormalizedUsage::from_send_action(&send)));
         }
 
         // Compute a tighter range that excludes trailing whitespace
@@ -1609,17 +1722,28 @@ impl NormalizedUsage {
             })
             .unwrap_or_default();
 
-        // Extract name if present
-        let name = send
+        // Extract name - first try inside the SEND_ACTION_USAGE node,
+        // then check preceding sibling (for patterns like `action sendStatus send ...`)
+        let mut name = send
             .syntax()
             .children()
             .find_map(parser::Name::cast)
             .and_then(|n| n.text());
-        let name_range = send
+        let mut name_range = send
             .syntax()
             .children()
             .find_map(parser::Name::cast)
             .map(|n| n.syntax().text_range());
+
+        // If no name inside, check preceding sibling (grammar puts name before SEND_ACTION_USAGE)
+        if name.is_none() {
+            if let Some(prev_sibling) = send.syntax().prev_sibling() {
+                if let Some(name_node) = parser::Name::cast(prev_sibling) {
+                    name = name_node.text();
+                    name_range = Some(name_node.syntax().text_range());
+                }
+            }
+        }
 
         Self {
             name,
@@ -1636,8 +1760,12 @@ impl NormalizedUsage {
 
     fn from_accept_action(accept: &parser::AcceptActionUsage) -> Self {
         let mut relationships = Vec::new();
+        let mut children = Vec::new();
 
         // Extract typing (: Type) for the accepted signal
+        let payload_type = accept.syntax().children().find_map(parser::Typing::cast)
+            .and_then(|t| t.target().map(|qn| qn.to_string()));
+        
         if let Some(typing) = accept.syntax().children().find_map(parser::Typing::cast) {
             if let Some(target) = typing.target() {
                 relationships.push(NormalizedRelationship {
@@ -1648,29 +1776,77 @@ impl NormalizedUsage {
             }
         }
 
-        // Extract name if present
-        let name = accept
-            .syntax()
-            .children()
-            .find_map(parser::Name::cast)
-            .and_then(|n| n.text());
-        let name_range = accept
-            .syntax()
-            .children()
-            .find_map(parser::Name::cast)
-            .map(|n| n.syntax().text_range());
+        // Extract 'via' port target (e.g., `ignitionCmdPort` in `accept sig via ignitionCmdPort`)
+        if let Some(via_target) = accept.via() {
+            let target_str = via_target.to_string();
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::AcceptVia,
+                target: make_chain_or_simple(&target_str, &via_target),
+                range: Some(via_target.syntax().text_range()),
+            });
+        }
 
-        // Extract children from the accept action's body (if any)
-        let children: Vec<NormalizedElement> = accept
-            .syntax()
-            .children()
-            .find_map(parser::NamespaceBody::cast)
-            .map(|body| {
-                body.members()
-                    .map(|m| NormalizedElement::from_rowan(&m))
-                    .collect()
-            })
-            .unwrap_or_default();
+        // Extract name - two patterns to handle:
+        // 1. `action trigger1 accept sig:Signal via port` - name (trigger1) is preceding sibling
+        // 2. `accept ignitionCmd : IgnitionCmd via port` - name (ignitionCmd) is inside node
+        // Check sibling FIRST, fallback to inside for standalone accept
+        let mut name = None;
+        let mut name_range = None;
+        let mut payload_name = None;
+        let mut payload_name_range = None;
+        
+        // First check preceding sibling (for `action <name> accept ...` pattern)
+        if let Some(prev_sibling) = accept.syntax().prev_sibling() {
+            if let Some(name_node) = parser::Name::cast(prev_sibling) {
+                name = name_node.text();
+                name_range = Some(name_node.syntax().text_range());
+                
+                // For pattern 1, the NAME inside is the payload name, not the action name
+                if let Some(inner_name) = accept.syntax().children().find_map(parser::Name::cast) {
+                    payload_name = inner_name.text();
+                    payload_name_range = Some(inner_name.syntax().text_range());
+                }
+            }
+        }
+        
+        // If no sibling name, check inside node (for standalone `accept <name> ...` pattern)
+        if name.is_none() {
+            if let Some(name_node) = accept.syntax().children().find_map(parser::Name::cast) {
+                name = name_node.text();
+                name_range = Some(name_node.syntax().text_range());
+            }
+        }
+        
+        // For `action trigger1 accept ignitionCmd : IgnitionCmd` pattern,
+        // create the payload as a child item so trigger1.ignitionCmd resolves
+        if let Some(pname) = payload_name {
+            let mut payload_rels = Vec::new();
+            if let Some(ptype) = &payload_type {
+                payload_rels.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TypedBy,
+                    target: RelTarget::Simple(ptype.clone()),
+                    range: None,
+                });
+            }
+            children.push(NormalizedElement::Usage(NormalizedUsage {
+                name: Some(pname),
+                short_name: None,
+                kind: NormalizedUsageKind::Item,
+                range: payload_name_range,
+                name_range: payload_name_range,
+                short_name_range: None,
+                doc: None,
+                relationships: payload_rels,
+                children: Vec::new(),
+            }));
+        }
+
+        // Extract additional children from the accept action's body (if any)
+        if let Some(body) = accept.syntax().children().find_map(parser::NamespaceBody::cast) {
+            for member in body.members() {
+                children.push(NormalizedElement::from_rowan(&member));
+            }
+        }
 
         Self {
             name,
@@ -1840,6 +2016,7 @@ impl NormalizedDependency {
     fn from_rowan(dep: &parser::Dependency) -> Self {
         let mut sources = Vec::new();
         let mut targets = Vec::new();
+        let mut relationships = Vec::new();
 
         // Extract source references (before "to")
         for source in dep.sources() {
@@ -1863,11 +2040,23 @@ impl NormalizedDependency {
             });
         }
 
+        // Extract prefix metadata (#name) as Meta relationships
+        for prefix_meta in dep.prefix_metadata() {
+            if let (Some(name), Some(range)) = (prefix_meta.name(), prefix_meta.name_range()) {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::Meta,
+                    target: RelTarget::Simple(name),
+                    range: Some(range),
+                });
+            }
+        }
+
         Self {
             name: None, // Dependencies typically don't have names
             short_name: None,
             sources,
             targets,
+            relationships,
             range: Some(dep.syntax().text_range()),
         }
     }

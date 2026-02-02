@@ -38,8 +38,10 @@ package TestPkg {
     for sym in index.all_symbols() {
         if sym.qualified_name.contains("speedSensorPort") {
             println!("Symbol: {} ({:?})", sym.qualified_name, sym.kind);
-            println!("  Span: line {} cols {}-{} to line {} col {}", 
-                sym.start_line, sym.start_col, sym.end_col, sym.end_line, sym.end_col);
+            println!(
+                "  Span: line {} cols {}-{} to line {} col {}",
+                sym.start_line, sym.start_col, sym.end_col, sym.end_line, sym.end_col
+            );
         }
     }
 }
