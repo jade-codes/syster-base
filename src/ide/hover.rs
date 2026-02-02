@@ -123,6 +123,24 @@ pub fn hover(index: &SymbolIndex, file: FileId, line: u32, col: u32) -> Option<H
                 end_line: ctx.type_ref.end_line,
                 end_col: ctx.type_ref.end_col,
             });
+        } else {
+            // Type reference found but couldn't be resolved - show unresolved message
+            // This happens when the referenced symbol is not visible (e.g., import was removed)
+            let contents = format!(
+                "```sysml\n{}\n```\n\n**Symbol not resolved**\n\nThe symbol `{}` is not visible in this scope. \
+                 You may need to add an import statement.",
+                ctx.target_name, ctx.target_name
+            );
+            return Some(HoverResult {
+                contents,
+                qualified_name: None,
+                is_definition: false,
+                relationships: Vec::new(),
+                start_line: ctx.type_ref.start_line,
+                start_col: ctx.type_ref.start_col,
+                end_line: ctx.type_ref.end_line,
+                end_col: ctx.type_ref.end_col,
+            });
         }
     }
 

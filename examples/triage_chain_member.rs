@@ -255,6 +255,7 @@ struct ChainFailure {
     first_part: String,
     first_resolved: Option<String>,
     first_type: Option<String>,
+    #[allow(dead_code)]
     containing_symbol: String,
 }
 

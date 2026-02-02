@@ -2,6 +2,8 @@
 //!
 //! Tests hover resolution for connect statement endpoints.
 
+#![allow(non_snake_case)]
+
 use std::path::PathBuf;
 use syster::ide::AnalysisHost;
 use syster::project::StdLibLoader;

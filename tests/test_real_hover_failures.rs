@@ -3,6 +3,9 @@
 //! These tests use the actual file and actual positions that fail.
 //! Each test MUST fail initially, then we fix and it passes.
 
+#![allow(non_snake_case)]
+#![allow(clippy::drop_non_drop)]
+
 use std::path::PathBuf;
 use syster::ide::AnalysisHost;
 use syster::project::StdLibLoader;

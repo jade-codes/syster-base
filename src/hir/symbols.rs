@@ -955,7 +955,7 @@ fn extract_from_normalized_package(
         relationships: Vec::new(),
         type_refs: Vec::new(),
         is_public: false,
-view_data: None,
+        view_data: None,
         metadata_annotations: Vec::new(),
     });
 
@@ -2038,14 +2038,17 @@ fn extract_view_data_from_definition(
                             WildcardKind::None
                         };
 
-                        let expose_rel =
-                            ExposeRelationship::new(Arc::from(expose.import_path.as_str()), wildcard);
+                        let expose_rel = ExposeRelationship::new(
+                            Arc::from(expose.import_path.as_str()),
+                            wildcard,
+                        );
                         view_def.add_expose(expose_rel);
                     }
                     NormalizedElement::Filter(filter) => {
                         // Extract metadata filters
                         for meta_ref in &filter.metadata_refs {
-                            let filter_cond = FilterCondition::metadata(Arc::from(meta_ref.as_str()));
+                            let filter_cond =
+                                FilterCondition::metadata(Arc::from(meta_ref.as_str()));
                             view_def.add_filter(filter_cond);
                         }
                     }

@@ -561,7 +561,15 @@ impl SymbolIndex {
 
         self.by_parent_scope.clear();
 
+        // Only include symbols that are still valid (in by_qualified_name)
+        // This handles the case where remove_file marks symbols as invalid
+        // but doesn't remove them from the symbols vec
         for (idx, symbol) in self.symbols.iter().enumerate() {
+            // Skip symbols that have been removed (not in by_qualified_name lookup)
+            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+                continue;
+            }
+
             let parent_scope: Arc<str> = Self::parent_scope(&symbol.qualified_name)
                 .map(Arc::from)
                 .unwrap_or_else(|| Arc::from(""));
@@ -917,13 +925,13 @@ impl SymbolIndex {
             return cached.clone();
         }
 
-        // Not in cache - do the actual resolution
-        let result = if let Some(sym) = self.resolve_with_scope_walk(target, scope) {
-            Some(sym.qualified_name.clone())
-        } else {
-            self.lookup_qualified(target)
-                .map(|s| s.qualified_name.clone())
-        };
+        // Not in cache - do the actual resolution using visibility maps
+        // NOTE: We intentionally do NOT fall back to lookup_qualified here.
+        // If the name isn't visible through imports or direct definitions,
+        // it should remain unresolved (the user removed the import).
+        let result = self
+            .resolve_with_scope_walk(target, scope)
+            .map(|sym| sym.qualified_name.clone());
 
         // Store in cache
         cache.insert(cache_key, result.clone());
@@ -1561,6 +1569,11 @@ impl SymbolIndex {
             .insert(Arc::from(""), ScopeVisibility::new(""));
 
         for symbol in &self.symbols {
+            // Skip symbols that have been removed (not in by_qualified_name lookup)
+            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+                continue;
+            }
+
             // Ensure this symbol's scope exists (for namespace-creating symbols)
             // Include usages too - they can have nested members and need inherited members from their type
             if symbol.kind == SymbolKind::Package
@@ -1668,6 +1681,11 @@ impl SymbolIndex {
         let mut symbols_with_inheritance: Vec<(Arc<str>, Arc<str>, Arc<str>)> = Vec::new();
 
         for symbol in &self.symbols {
+            // Skip symbols that have been removed
+            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+                continue;
+            }
+
             if !symbol.supertypes.is_empty() {
                 let scope = symbol.qualified_name.clone();
                 let parent_scope: Arc<str> = Self::parent_scope(&scope)

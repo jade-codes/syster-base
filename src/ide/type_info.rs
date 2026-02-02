@@ -107,10 +107,7 @@ pub fn resolve_type_ref_with_chain(
     match resolver.resolve(&ctx.target_name) {
         ResolveResult::Found(sym) => Some(sym),
         ResolveResult::Ambiguous(syms) => syms.into_iter().next(),
-        ResolveResult::NotFound => {
-            // Try qualified name directly
-            index.lookup_qualified(&ctx.target_name).cloned()
-        }
+        ResolveResult::NotFound => None,
     }
 }
 
@@ -177,16 +174,53 @@ fn resolve_member_in_type(
     symbol: &HirSymbol,
     member_name: &str,
 ) -> Option<HirSymbol> {
-    // Get the type of the symbol from its supertypes (the first one is usually the type)
-    // or from type_refs with TypedBy kind
-    let type_name = symbol.supertypes.first().or_else(|| {
-        symbol
-            .type_refs
-            .iter()
-            .filter_map(|tr| tr.as_refs().into_iter().next())
-            .find(|tr| matches!(tr.kind, crate::hir::RefKind::TypedBy))
-            .and_then(|tr| tr.resolved_target.as_ref().or(Some(&tr.target)))
-    })?;
+    use crate::hir::RelationshipKind;
+
+    // Get the type of the symbol from:
+    // 1. supertypes (the first one is usually the type)
+    // 2. type_refs with TypedBy kind
+    // 3. relationships with domain-specific kinds (Performs, Exhibits, Includes, etc.)
+    let type_name = symbol
+        .supertypes
+        .first()
+        .map(|s| s.as_ref())
+        .or_else(|| {
+            symbol
+                .type_refs
+                .iter()
+                .filter_map(|tr| tr.as_refs().into_iter().next())
+                .find(|tr| matches!(tr.kind, crate::hir::RefKind::TypedBy))
+                .and_then(|tr| {
+                    tr.resolved_target
+                        .as_ref()
+                        .map(|s| s.as_ref())
+                        .or(Some(tr.target.as_ref()))
+                })
+        })
+        .or_else(|| {
+            // Check relationships for domain-specific kinds that establish a type relationship:
+            // - Performs: perform action (e.g., `perform takePicture :> TakePicture;`)
+            // - Exhibits: exhibit state (e.g., `exhibit state running :> Running;`)
+            // - Includes: include use case (e.g., `include use case login :> Login;`)
+            // - Satisfies: satisfy requirement (e.g., `satisfy requirement safety :> SafetyReq;`)
+            // - Asserts: assert constraint (e.g., `assert constraint limit :> SpeedLimit;`)
+            // - Verifies: verify requirement (e.g., `verify requirement safety :> SafetyReq;`)
+            symbol
+                .relationships
+                .iter()
+                .find(|r| {
+                    matches!(
+                        r.kind,
+                        RelationshipKind::Performs
+                            | RelationshipKind::Exhibits
+                            | RelationshipKind::Includes
+                            | RelationshipKind::Satisfies
+                            | RelationshipKind::Asserts
+                            | RelationshipKind::Verifies
+                    )
+                })
+                .map(|r| r.target.as_ref())
+        })?;
 
     // Look up the member in the type's scope
     // First try qualified, then definition, then resolve from symbol's scope
