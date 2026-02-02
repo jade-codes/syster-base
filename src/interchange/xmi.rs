@@ -215,6 +215,10 @@ mod reader {
             let mut short_name: Option<String> = None;
             let mut element_id: Option<String> = None;
             let mut is_abstract = false;
+            let mut is_variation = false;
+            let mut is_derived = false;
+            let mut is_readonly = false;
+            let mut is_parallel = false;
             let mut is_standard = false;
             let mut is_composite = false;
             let mut body: Option<String> = None;
@@ -243,6 +247,10 @@ mod reader {
                     "shortName" | "declaredShortName" => short_name = Some(value),
                     "elementId" => element_id = Some(value),
                     "isAbstract" => is_abstract = value == "true",
+                    "isVariation" => is_variation = value == "true",
+                    "isDerived" => is_derived = value == "true",
+                    "isReadOnly" => is_readonly = value == "true",
+                    "isParallel" => is_parallel = value == "true",
                     "isStandard" => is_standard = value == "true",
                     "isComposite" => is_composite = value == "true",
                     "body" => body = Some(value),
@@ -286,6 +294,10 @@ mod reader {
 
                 // Set boolean flags
                 element.is_abstract = is_abstract;
+                element.is_variation = is_variation;
+                element.is_derived = is_derived;
+                element.is_readonly = is_readonly;
+                element.is_parallel = is_parallel;
 
                 // Store isStandard in properties
                 if is_standard {
@@ -511,9 +523,21 @@ mod writer {
                 elem_start.push_attribute(("shortName", short_name.as_ref()));
             }
 
-            // Write boolean flags
+            // Write boolean flags (only if true, per XMI convention)
             if element.is_abstract {
                 elem_start.push_attribute(("isAbstract", "true"));
+            }
+            if element.is_variation {
+                elem_start.push_attribute(("isVariation", "true"));
+            }
+            if element.is_derived {
+                elem_start.push_attribute(("isDerived", "true"));
+            }
+            if element.is_readonly {
+                elem_start.push_attribute(("isReadOnly", "true"));
+            }
+            if element.is_parallel {
+                elem_start.push_attribute(("isParallel", "true"));
             }
             if let Some(super::super::model::PropertyValue::Boolean(true)) =
                 element.properties.get("isStandard")
@@ -884,6 +908,174 @@ mod tests {
             let pkg2 = model2.get(&ElementId::new("pkg1")).unwrap();
             assert_eq!(pkg2.name.as_deref(), Some("RoundtripTest"));
             assert_eq!(pkg2.owned_elements.len(), 1);
+        }
+
+        #[test]
+        fn test_xmi_read_is_abstract() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20230201">
+  <sysml:PartDefinition xmi:id="pd1" name="AbstractPart" isAbstract="true"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            assert!(elem.is_abstract, "isAbstract should be true");
+        }
+
+        #[test]
+        fn test_xmi_read_is_variation() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20230201">
+  <sysml:PartDefinition xmi:id="pd1" name="VariantPart" isVariation="true"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            assert!(elem.is_variation, "isVariation should be true");
+        }
+
+        #[test]
+        fn test_xmi_read_is_derived() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:kerml="http://www.omg.org/spec/KerML/20230201">
+  <kerml:Feature xmi:id="f1" name="derivedFeature" isDerived="true"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("f1")).expect("Element not found");
+            assert!(elem.is_derived, "isDerived should be true");
+        }
+
+        #[test]
+        fn test_xmi_read_is_readonly() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20230201">
+  <sysml:AttributeUsage xmi:id="a1" name="constantValue" isReadOnly="true"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("a1")).expect("Element not found");
+            assert!(elem.is_readonly, "isReadOnly should be true");
+        }
+
+        #[test]
+        fn test_xmi_read_is_parallel() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20230201">
+  <sysml:StateUsage xmi:id="s1" name="parallelState" isParallel="true"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("s1")).expect("Element not found");
+            assert!(elem.is_parallel, "isParallel should be true");
+        }
+
+        #[test]
+        fn test_xmi_write_modifiers() {
+            let mut model = Model::new();
+
+            let mut elem = Element::new("pd1", ElementKind::PartDefinition);
+            elem.name = Some("TestPart".into());
+            elem.is_abstract = true;
+            elem.is_variation = true;
+            model.add_element(elem);
+
+            let mut feat = Element::new("f1", ElementKind::Feature);
+            feat.name = Some("TestFeature".into());
+            feat.is_derived = true;
+            feat.is_readonly = true;
+            model.add_element(feat);
+
+            let mut state = Element::new("s1", ElementKind::StateUsage);
+            state.name = Some("TestState".into());
+            state.is_parallel = true;
+            model.add_element(state);
+
+            let output = Xmi.write(&model).expect("Failed to write XMI");
+            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
+
+            assert!(
+                output_str.contains(r#"isAbstract="true""#),
+                "Should contain isAbstract"
+            );
+            assert!(
+                output_str.contains(r#"isVariation="true""#),
+                "Should contain isVariation"
+            );
+            assert!(
+                output_str.contains(r#"isDerived="true""#),
+                "Should contain isDerived"
+            );
+            assert!(
+                output_str.contains(r#"isReadOnly="true""#),
+                "Should contain isReadOnly"
+            );
+            assert!(
+                output_str.contains(r#"isParallel="true""#),
+                "Should contain isParallel"
+            );
+        }
+
+        #[test]
+        fn test_xmi_roundtrip_modifiers() {
+            let mut model = Model::new();
+
+            let mut elem = Element::new("pd1", ElementKind::PartDefinition);
+            elem.name = Some("AbstractVariation".into());
+            elem.is_abstract = true;
+            elem.is_variation = true;
+            model.add_element(elem);
+
+            let mut feat = Element::new("f1", ElementKind::AttributeUsage);
+            feat.name = Some("DerivedReadonly".into());
+            feat.is_derived = true;
+            feat.is_readonly = true;
+            model.add_element(feat);
+
+            let mut state = Element::new("s1", ElementKind::StateUsage);
+            state.name = Some("ParallelState".into());
+            state.is_parallel = true;
+            model.add_element(state);
+
+            // Write and read back
+            let xmi_bytes = Xmi.write(&model).expect("Write failed");
+            let model2 = Xmi.read(&xmi_bytes).expect("Read failed");
+
+            // Verify all modifiers preserved
+            let elem2 = model2.get(&ElementId::new("pd1")).unwrap();
+            assert!(elem2.is_abstract, "isAbstract not preserved");
+            assert!(elem2.is_variation, "isVariation not preserved");
+
+            let feat2 = model2.get(&ElementId::new("f1")).unwrap();
+            assert!(feat2.is_derived, "isDerived not preserved");
+            assert!(feat2.is_readonly, "isReadOnly not preserved");
+
+            let state2 = model2.get(&ElementId::new("s1")).unwrap();
+            assert!(state2.is_parallel, "isParallel not preserved");
+        }
+
+        #[test]
+        fn test_xmi_modifiers_default_false() {
+            let xmi_content = br#"<?xml version="1.0" encoding="UTF-8"?>
+<xmi:XMI xmlns:xmi="http://www.omg.org/spec/XMI/20131001"
+         xmlns:sysml="http://www.omg.org/spec/SysML/20230201">
+  <sysml:PartDefinition xmi:id="pd1" name="NormalPart"/>
+</xmi:XMI>"#;
+
+            let model = Xmi.read(xmi_content).expect("Failed to read XMI");
+            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+
+            // All modifiers should default to false when not specified
+            assert!(!elem.is_abstract, "isAbstract should default to false");
+            assert!(!elem.is_variation, "isVariation should default to false");
+            assert!(!elem.is_derived, "isDerived should default to false");
+            assert!(!elem.is_readonly, "isReadOnly should default to false");
+            assert!(!elem.is_parallel, "isParallel should default to false");
         }
     }
 }

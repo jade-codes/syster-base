@@ -189,6 +189,26 @@ mod reader {
             element.is_abstract = *is_abstract;
         }
 
+        // Get isVariation
+        if let Some(Value::Bool(is_variation)) = obj.get("isVariation") {
+            element.is_variation = *is_variation;
+        }
+
+        // Get isDerived
+        if let Some(Value::Bool(is_derived)) = obj.get("isDerived") {
+            element.is_derived = *is_derived;
+        }
+
+        // Get isReadOnly
+        if let Some(Value::Bool(is_readonly)) = obj.get("isReadOnly") {
+            element.is_readonly = *is_readonly;
+        }
+
+        // Get isParallel
+        if let Some(Value::Bool(is_parallel)) = obj.get("isParallel") {
+            element.is_parallel = *is_parallel;
+        }
+
         // Get documentation (body text)
         if let Some(Value::String(doc)) = obj.get("documentation").or_else(|| obj.get("body")) {
             element.documentation = Some(Arc::from(doc.as_str()));
@@ -227,6 +247,10 @@ mod reader {
                     | "shortName"
                     | "declaredShortName"
                     | "isAbstract"
+                    | "isVariation"
+                    | "isDerived"
+                    | "isReadOnly"
+                    | "isParallel"
                     | "documentation"
                     | "body"
                     | "owner"
@@ -348,6 +372,26 @@ mod writer {
         // isAbstract (only if true)
         if element.is_abstract {
             obj.insert("isAbstract".to_string(), json!(true));
+        }
+
+        // isVariation (only if true)
+        if element.is_variation {
+            obj.insert("isVariation".to_string(), json!(true));
+        }
+
+        // isDerived (only if true)
+        if element.is_derived {
+            obj.insert("isDerived".to_string(), json!(true));
+        }
+
+        // isReadOnly (only if true)
+        if element.is_readonly {
+            obj.insert("isReadOnly".to_string(), json!(true));
+        }
+
+        // isParallel (only if true)
+        if element.is_parallel {
+            obj.insert("isParallel".to_string(), json!(true));
         }
 
         // documentation
@@ -671,6 +715,170 @@ mod tests {
                 Some(&PropertyValue::String(Arc::from("test"))),
                 "label property not preserved"
             );
+        }
+
+        #[test]
+        fn test_jsonld_read_is_variation() {
+            let json = r#"{
+                "@context": "https://www.omg.org/spec/SysML/20230201/sysml-context.jsonld",
+                "@type": "PartDefinition",
+                "@id": "pd1",
+                "name": "VariantPart",
+                "isVariation": true
+            }"#;
+
+            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            assert!(elem.is_variation, "isVariation should be true");
+        }
+
+        #[test]
+        fn test_jsonld_read_is_derived() {
+            let json = r#"{
+                "@context": "https://www.omg.org/spec/SysML/20230201/sysml-context.jsonld",
+                "@type": "Feature",
+                "@id": "f1",
+                "name": "derivedFeature",
+                "isDerived": true
+            }"#;
+
+            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let elem = model.get(&ElementId::new("f1")).expect("Element not found");
+            assert!(elem.is_derived, "isDerived should be true");
+        }
+
+        #[test]
+        fn test_jsonld_read_is_readonly() {
+            let json = r#"{
+                "@context": "https://www.omg.org/spec/SysML/20230201/sysml-context.jsonld",
+                "@type": "AttributeUsage",
+                "@id": "a1",
+                "name": "constantValue",
+                "isReadOnly": true
+            }"#;
+
+            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let elem = model.get(&ElementId::new("a1")).expect("Element not found");
+            assert!(elem.is_readonly, "isReadOnly should be true");
+        }
+
+        #[test]
+        fn test_jsonld_read_is_parallel() {
+            let json = r#"{
+                "@context": "https://www.omg.org/spec/SysML/20230201/sysml-context.jsonld",
+                "@type": "StateUsage",
+                "@id": "s1",
+                "name": "parallelState",
+                "isParallel": true
+            }"#;
+
+            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let elem = model.get(&ElementId::new("s1")).expect("Element not found");
+            assert!(elem.is_parallel, "isParallel should be true");
+        }
+
+        #[test]
+        fn test_jsonld_write_modifiers() {
+            let mut model = Model::new();
+
+            let mut elem = Element::new("pd1", ElementKind::PartDefinition);
+            elem.name = Some("TestPart".into());
+            elem.is_abstract = true;
+            elem.is_variation = true;
+            model.add_element(elem);
+
+            let mut feat = Element::new("f1", ElementKind::Feature);
+            feat.name = Some("TestFeature".into());
+            feat.is_derived = true;
+            feat.is_readonly = true;
+            model.add_element(feat);
+
+            let mut state = Element::new("s1", ElementKind::StateUsage);
+            state.name = Some("TestState".into());
+            state.is_parallel = true;
+            model.add_element(state);
+
+            let output = JsonLd.write(&model).expect("Failed to write JSON-LD");
+            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
+
+            assert!(
+                output_str.contains(r#""isAbstract": true"#),
+                "Should contain isAbstract"
+            );
+            assert!(
+                output_str.contains(r#""isVariation": true"#),
+                "Should contain isVariation"
+            );
+            assert!(
+                output_str.contains(r#""isDerived": true"#),
+                "Should contain isDerived"
+            );
+            assert!(
+                output_str.contains(r#""isReadOnly": true"#),
+                "Should contain isReadOnly"
+            );
+            assert!(
+                output_str.contains(r#""isParallel": true"#),
+                "Should contain isParallel"
+            );
+        }
+
+        #[test]
+        fn test_jsonld_roundtrip_modifiers() {
+            let mut model = Model::new();
+
+            let mut elem = Element::new("pd1", ElementKind::PartDefinition);
+            elem.name = Some("AbstractVariation".into());
+            elem.is_abstract = true;
+            elem.is_variation = true;
+            model.add_element(elem);
+
+            let mut feat = Element::new("f1", ElementKind::AttributeUsage);
+            feat.name = Some("DerivedReadonly".into());
+            feat.is_derived = true;
+            feat.is_readonly = true;
+            model.add_element(feat);
+
+            let mut state = Element::new("s1", ElementKind::StateUsage);
+            state.name = Some("ParallelState".into());
+            state.is_parallel = true;
+            model.add_element(state);
+
+            // Write and read back
+            let json_bytes = JsonLd.write(&model).expect("Write failed");
+            let model2 = JsonLd.read(&json_bytes).expect("Read failed");
+
+            // Verify all modifiers preserved
+            let elem2 = model2.get(&ElementId::new("pd1")).unwrap();
+            assert!(elem2.is_abstract, "isAbstract not preserved");
+            assert!(elem2.is_variation, "isVariation not preserved");
+
+            let feat2 = model2.get(&ElementId::new("f1")).unwrap();
+            assert!(feat2.is_derived, "isDerived not preserved");
+            assert!(feat2.is_readonly, "isReadOnly not preserved");
+
+            let state2 = model2.get(&ElementId::new("s1")).unwrap();
+            assert!(state2.is_parallel, "isParallel not preserved");
+        }
+
+        #[test]
+        fn test_jsonld_modifiers_default_false() {
+            let json = r#"{
+                "@context": "https://www.omg.org/spec/SysML/20230201/sysml-context.jsonld",
+                "@type": "PartDefinition",
+                "@id": "pd1",
+                "name": "NormalPart"
+            }"#;
+
+            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+
+            // All modifiers should default to false when not specified
+            assert!(!elem.is_abstract, "isAbstract should default to false");
+            assert!(!elem.is_variation, "isVariation should default to false");
+            assert!(!elem.is_derived, "isDerived should default to false");
+            assert!(!elem.is_readonly, "isReadOnly should default to false");
+            assert!(!elem.is_parallel, "isParallel should default to false");
         }
     }
 }

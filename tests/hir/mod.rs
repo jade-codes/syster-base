@@ -23,5 +23,6 @@ pub mod tests_kerml_extraction;
 pub mod tests_name_resolution;
 pub mod tests_spans;
 pub mod tests_stdlib;
+pub mod tests_stdlib_resolution;
 pub mod tests_symbol_extraction;
 pub mod tests_type_refs;

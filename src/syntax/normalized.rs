@@ -123,6 +123,11 @@ pub struct NormalizedDefinition {
     pub doc: Option<String>,
     pub relationships: Vec<NormalizedRelationship>,
     pub children: Vec<NormalizedElement>,
+    // Modifiers
+    /// Whether the definition has the `abstract` keyword
+    pub is_abstract: bool,
+    /// Whether the definition has the `variation` keyword
+    pub is_variation: bool,
 }
 
 /// A normalized usage (SysML usage or KerML feature).
@@ -139,6 +144,17 @@ pub struct NormalizedUsage {
     pub doc: Option<String>,
     pub relationships: Vec<NormalizedRelationship>,
     pub children: Vec<NormalizedElement>,
+    // Modifiers
+    /// Whether the usage has the `abstract` keyword
+    pub is_abstract: bool,
+    /// Whether the usage has the `variation` keyword  
+    pub is_variation: bool,
+    /// Whether the usage has the `readonly` keyword
+    pub is_readonly: bool,
+    /// Whether the usage has the `derived` keyword
+    pub is_derived: bool,
+    /// Whether the usage (for state) has the `parallel` keyword
+    pub is_parallel: bool,
 }
 
 /// A normalized import statement.
@@ -482,6 +498,11 @@ impl NormalizedElement {
                     short_name_range: None,
                     doc: None,
                     children,
+                    is_abstract: false,
+                    is_variation: false,
+                    is_readonly: false,
+                    is_derived: false,
+                    is_parallel: false,
                 })
             }
             NamespaceMember::Comment(comment) => {
@@ -730,6 +751,8 @@ impl NormalizedDefinition {
             doc: parser::extract_doc_comment(def.syntax()),
             relationships,
             children,
+            is_abstract: def.is_abstract(),
+            is_variation: def.is_variation(),
         }
     }
 }
@@ -1108,6 +1131,11 @@ impl NormalizedUsage {
                         short_name_range: None,
                         doc: None,
                         children: Vec::new(),
+                        is_abstract: false,
+                        is_variation: false,
+                        is_readonly: false,
+                        is_derived: false,
+                        is_parallel: false,
                     }));
                 } else if let Some(qn) = end.target() {
                     // No endpoint name, just a direct reference (e.g., `a.port to b.port`)
@@ -1308,6 +1336,11 @@ impl NormalizedUsage {
                     doc: None,
                     relationships: payload_rels,
                     children: Vec::new(),
+                    is_abstract: false,
+                    is_variation: false,
+                    is_readonly: false,
+                    is_derived: false,
+                    is_parallel: false,
                 }));
             }
         }
@@ -1426,6 +1459,11 @@ impl NormalizedUsage {
             doc: parser::extract_doc_comment(usage.syntax()),
             relationships,
             children,
+            is_abstract: usage.is_abstract(),
+            is_variation: usage.is_variation(),
+            is_readonly: usage.is_readonly(),
+            is_derived: usage.is_derived(),
+            is_parallel: usage.is_parallel(),
         }
     }
 
@@ -1462,6 +1500,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1570,6 +1613,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1675,6 +1723,11 @@ impl NormalizedUsage {
                 doc: None,
                 relationships: payload_rels,
                 children: Vec::new(),
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             }));
         }
 
@@ -1688,6 +1741,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1748,6 +1806,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1803,6 +1866,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children: Vec::new(), // ConnectUsage typically has no body children
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1852,6 +1920,11 @@ impl NormalizedUsage {
             doc: None,
             relationships: Vec::new(),
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -1938,6 +2011,11 @@ impl NormalizedUsage {
                 doc: None,
                 relationships: payload_rels,
                 children: Vec::new(),
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             }));
         }
 
@@ -1962,6 +2040,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -2012,6 +2095,11 @@ impl NormalizedUsage {
             doc: None,
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -2058,6 +2146,11 @@ impl NormalizedUsage {
             doc: parser::extract_doc_comment(node.syntax()),
             relationships: Vec::new(),
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -2093,6 +2186,11 @@ impl NormalizedUsage {
                 short_name_range: None,
                 doc: None,
                 children: Vec::new(),
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             }));
         }
 
@@ -2113,6 +2211,11 @@ impl NormalizedUsage {
             doc: parser::extract_doc_comment(for_loop.syntax()),
             relationships: Vec::new(),
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -2180,6 +2283,11 @@ impl NormalizedUsage {
             doc: parser::extract_doc_comment(if_action.syntax()),
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -2236,6 +2344,11 @@ impl NormalizedUsage {
             doc: parser::extract_doc_comment(while_loop.syntax()),
             relationships,
             children,
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 }

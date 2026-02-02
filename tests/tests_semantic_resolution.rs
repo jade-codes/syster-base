@@ -679,6 +679,11 @@ fn test_short_name_visibility_via_import() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             HirSymbol {
                 name: Arc::from("kilogram"),
@@ -702,6 +707,11 @@ fn test_short_name_visibility_via_import() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
         ],
     );
@@ -732,6 +742,11 @@ fn test_short_name_visibility_via_import() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             HirSymbol {
                 name: Arc::from("SI::*"),
@@ -755,6 +770,11 @@ fn test_short_name_visibility_via_import() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
         ],
     );
@@ -861,6 +881,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Definition: TransportPassenger
             HirSymbol {
@@ -885,6 +910,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Member of definition: getInVehicle_a
             HirSymbol {
@@ -909,6 +939,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Usage: transportPassenger : TransportPassenger
             HirSymbol {
@@ -933,6 +968,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Nested member: driverGetInVehicle (references getInVehicle_a)
             HirSymbol {
@@ -957,6 +997,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Nested action 'a' inside transportPassenger (no type annotation)
             HirSymbol {
@@ -981,6 +1026,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
             // Action inside 'a' that references getInVehicle_a
             HirSymbol {
@@ -1005,6 +1055,11 @@ fn test_usage_inherits_type_members() {
                 is_public: true,
                 view_data: None,
                 metadata_annotations: vec![],
+                is_abstract: false,
+                is_variation: false,
+                is_readonly: false,
+                is_derived: false,
+                is_parallel: false,
             },
         ],
     );

@@ -381,6 +381,11 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 
@@ -411,6 +416,11 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         };
 
         // Add a usage with type_ref
@@ -458,6 +468,11 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         };
 
         index.add_file(FileId::new(0), vec![symbol]);

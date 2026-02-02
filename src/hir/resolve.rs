@@ -298,6 +298,41 @@ impl SymbolIndex {
         self.by_file.insert(file, file_indices);
     }
 
+    /// Add a single symbol to the index (not associated with any file).
+    /// Useful for symbols imported from models (XMI/JSON-LD).
+    pub fn add_symbol(&mut self, symbol: HirSymbol) {
+        // Mark parent index as dirty
+        self.parent_index_dirty = true;
+
+        let idx = self.symbols.len();
+
+        // Index by qualified name
+        self.by_qualified_name
+            .insert(symbol.qualified_name.clone(), idx);
+
+        // Index by simple name
+        self.by_simple_name
+            .entry(symbol.name.clone())
+            .or_default()
+            .push(idx);
+
+        // Index by short name (e.g., <kg> for "kilogram")
+        if let Some(ref short) = symbol.short_name {
+            self.by_short_name
+                .entry(short.clone())
+                .or_default()
+                .push(idx);
+        }
+
+        // Track definitions separately
+        if symbol.kind.is_definition() {
+            self.definitions.insert(symbol.qualified_name.clone(), idx);
+        }
+
+        // Store the symbol
+        self.symbols.push(symbol);
+    }
+
     /// Add a filter for a scope. Elements imported into this scope must have
     /// the specified metadata to be visible.
     pub fn add_scope_filter(
@@ -482,6 +517,19 @@ impl SymbolIndex {
         self.by_qualified_name
             .values()
             .filter_map(|&idx| self.symbols.get(idx))
+    }
+
+    /// Update symbols in the index using a closure.
+    /// The closure is called for each symbol and can modify it in place.
+    pub fn update_symbols<F>(&mut self, mut f: F)
+    where
+        F: FnMut(&mut HirSymbol),
+    {
+        for &idx in self.by_qualified_name.values() {
+            if let Some(symbol) = self.symbols.get_mut(idx) {
+                f(symbol);
+            }
+        }
     }
 
     /// Get the total number of symbols.
@@ -2616,6 +2664,11 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         }
     }
 

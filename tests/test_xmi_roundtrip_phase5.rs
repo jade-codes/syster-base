@@ -13,7 +13,7 @@ mod roundtrip_tests {
     use syster::hir::{FileText, RootDatabase, file_symbols_from_text};
     use syster::ide::AnalysisHost;
     use syster::interchange::{
-        Model, ModelFormat, Xmi, apply_metadata_to_host, decompile, model_from_symbols,
+        ModelFormat, Xmi, apply_metadata_to_host, decompile, model_from_symbols,
         symbols_from_model,
     };
 
@@ -272,10 +272,9 @@ package ImportedModel {
 
         // Import into workspace
         let imported_model = Xmi.read(&xmi_bytes).expect("Should read XMI");
-        let imported_symbols = symbols_from_model(&imported_model);
 
         let mut host = AnalysisHost::new();
-        host.add_symbols_from_model(imported_symbols.clone());
+        host.add_model(&imported_model, "imported.sysml");
 
         // Add new SysML file with additional elements
         let new_sysml = r#"
@@ -294,32 +293,34 @@ package NewModel {
             .write(&combined_model)
             .expect("Should write combined XMI");
 
-        // Verify imported IDs are preserved
-        for imported in &imported_symbols {
-            let found = all_symbols
-                .iter()
-                .find(|s| s.qualified_name == imported.qualified_name);
+        // Verify imported IDs are preserved (check against original model's elements)
+        for element in imported_model.iter_elements() {
+            if let Some(ref name) = element.name {
+                let found = all_symbols
+                    .iter()
+                    .find(|s| s.name.as_ref() == name.as_ref());
 
-            assert!(
-                found.is_some(),
-                "Imported symbol {} should exist",
-                imported.qualified_name
-            );
-            assert_eq!(
-                found.unwrap().element_id,
-                imported.element_id,
-                "Imported element ID for {} should be preserved",
-                imported.qualified_name
-            );
+                assert!(
+                    found.is_some(),
+                    "Imported symbol {} should exist",
+                    name
+                );
+                assert_eq!(
+                    found.unwrap().element_id.as_ref(),
+                    element.id.as_str(),
+                    "Imported element ID for {} should be preserved",
+                    name
+                );
+            }
         }
 
         // New elements should have different IDs
         let new_part = all_symbols.iter().find(|s| s.name.as_ref() == "NewPart");
 
         if let Some(new_part) = new_part {
-            for imported in &imported_symbols {
+            for element in imported_model.iter_elements() {
                 assert_ne!(
-                    new_part.element_id, imported.element_id,
+                    new_part.element_id.as_ref(), element.id.as_str(),
                     "New element should have different ID from imported elements"
                 );
             }
@@ -327,11 +328,11 @@ package NewModel {
 
         // Combined XMI should contain all element IDs
         let combined_xmi_str = String::from_utf8_lossy(&combined_xmi);
-        for imported in &imported_symbols {
+        for element in imported_model.iter_elements() {
             assert!(
-                combined_xmi_str.contains(imported.element_id.as_ref()),
+                combined_xmi_str.contains(element.id.as_str()),
                 "Combined XMI should contain imported ID {}",
-                imported.element_id
+                element.id
             );
         }
     }

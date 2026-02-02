@@ -445,6 +445,14 @@ pub struct Element {
     pub documentation: Option<Arc<str>>,
     /// Whether this element is abstract.
     pub is_abstract: bool,
+    /// Whether this is a variation (SysML).
+    pub is_variation: bool,
+    /// Whether this feature is derived.
+    pub is_derived: bool,
+    /// Whether this feature is read-only.
+    pub is_readonly: bool,
+    /// Whether this state is parallel (SysML).
+    pub is_parallel: bool,
     /// Visibility (public, private, protected).
     pub visibility: Visibility,
     /// Additional properties as key-value pairs (IndexMap preserves order).
@@ -464,6 +472,10 @@ impl Element {
             owned_elements: Vec::new(),
             documentation: None,
             is_abstract: false,
+            is_variation: false,
+            is_derived: false,
+            is_readonly: false,
+            is_parallel: false,
             visibility: Visibility::Public,
             properties: IndexMap::new(),
         }

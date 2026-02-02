@@ -88,7 +88,7 @@ fn test_reparse_preserves_element_ids() {
 #[test]
 fn test_imported_symbols_preserve_ids_on_reparse() {
     use syster::ide::AnalysisHost;
-    use syster::interchange::{Element, ElementKind, Model, symbols_from_model};
+    use syster::interchange::{Element, ElementKind, Model};
 
     // 1. Import XMI with known IDs
     let mut model = Model::new();
@@ -99,9 +99,8 @@ fn test_imported_symbols_preserve_ids_on_reparse() {
         Element::new("xmi-imported-002", ElementKind::PartDefinition).with_name("ImportedPart"),
     );
 
-    let symbols = symbols_from_model(&model);
     let mut host = AnalysisHost::new();
-    host.add_symbols_from_model(symbols);
+    host.add_model(&model, "imported.sysml");
 
     // Verify imported IDs
     let analysis1 = host.analysis();

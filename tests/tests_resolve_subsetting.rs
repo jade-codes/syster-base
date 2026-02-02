@@ -45,6 +45,11 @@ fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&s
         is_public: false,
         view_data: None,
         metadata_annotations: Vec::new(),
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     }
 }
 
@@ -78,6 +83,11 @@ fn make_symbol_with_type_refs(
         is_public: false,
         view_data: None,
         metadata_annotations: Vec::new(),
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     }
 }
 

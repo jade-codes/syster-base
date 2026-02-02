@@ -401,6 +401,16 @@ pub struct HirSymbol {
     /// Metadata types applied to this symbol (e.g., ["Safety", "Approved"])
     /// Used for filter import evaluation (SysML v2 §7.5.4)
     pub metadata_annotations: Vec<Arc<str>>,
+    /// Whether this symbol is abstract (for definitions and usages)
+    pub is_abstract: bool,
+    /// Whether this symbol is a variation (for definitions and usages)
+    pub is_variation: bool,
+    /// Whether this symbol is readonly (for usages only)
+    pub is_readonly: bool,
+    /// Whether this symbol is derived (for usages only)
+    pub is_derived: bool,
+    /// Whether this symbol is parallel (for state usages)
+    pub is_parallel: bool,
 }
 
 /// The kind of a symbol.
@@ -876,6 +886,11 @@ fn extract_from_normalized(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: Vec::new(),
+                    is_abstract: false,
+                    is_variation: false,
+                    is_readonly: false,
+                    is_derived: false,
+                    is_parallel: false,
                 });
             }
         }
@@ -957,6 +972,11 @@ fn extract_from_normalized_package(
         is_public: false,
         view_data: None,
         metadata_annotations: Vec::new(),
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     });
 
     ctx.push_scope(&name);
@@ -1156,6 +1176,11 @@ fn extract_from_normalized_definition(
         is_public: false,
         view_data,
         metadata_annotations,
+        is_abstract: def.is_abstract,
+        is_variation: def.is_variation,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     });
 
     // Recurse into children
@@ -1349,6 +1374,11 @@ fn extract_from_normalized_usage(
                 is_public: false,
                 view_data: None,
                 metadata_annotations: metadata_annotations.clone(),
+                is_abstract: usage.is_abstract,
+                is_variation: usage.is_variation,
+                is_readonly: usage.is_readonly,
+                is_derived: usage.is_derived,
+                is_parallel: usage.is_parallel,
             };
             symbols.push(anon_symbol);
 
@@ -1473,6 +1503,11 @@ fn extract_from_normalized_usage(
         is_public: false,
         view_data,
         metadata_annotations,
+        is_abstract: usage.is_abstract,
+        is_variation: usage.is_variation,
+        is_readonly: usage.is_readonly,
+        is_derived: usage.is_derived,
+        is_parallel: usage.is_parallel,
     });
 
     // Recurse into children
@@ -1537,6 +1572,11 @@ fn extract_from_normalized_import(
         is_public: import.is_public,
         view_data: None,
         metadata_annotations: Vec::new(), // Imports don't have metadata
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     });
 }
 
@@ -1592,6 +1632,11 @@ fn extract_from_normalized_alias(
         is_public: false,
         view_data: None,
         metadata_annotations: Vec::new(), // Aliases don't have metadata
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     });
 }
 
@@ -1651,6 +1696,11 @@ fn extract_from_normalized_comment(
         is_public: false,
         view_data: None,
         metadata_annotations: Vec::new(), // Comments don't have metadata
+        is_abstract: false,
+        is_variation: false,
+        is_readonly: false,
+        is_derived: false,
+        is_parallel: false,
     });
 }
 
@@ -1841,6 +1891,11 @@ fn extract_from_normalized_dependency(
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         });
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
@@ -1869,6 +1924,11 @@ fn extract_from_normalized_dependency(
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_abstract: false,
+            is_variation: false,
+            is_readonly: false,
+            is_derived: false,
+            is_parallel: false,
         });
     }
 }

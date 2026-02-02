@@ -909,7 +909,7 @@ mod tests {
     #[test]
     fn test_decompile_xmi_roundtrip() {
         use crate::interchange::{ModelFormat, Xmi};
-        use crate::syntax::sysml::parser::parse_content;
+        use crate::syntax::parser::parse_content;
         use std::path::Path;
 
         // XMI representing a simple model

@@ -82,7 +82,7 @@ fn test_xmi_to_symbols_preserves_element_ids() {
 #[test]
 fn test_import_into_host_preserves_ids() {
     use syster::ide::AnalysisHost;
-    use syster::interchange::{Element, ElementKind, Model, symbols_from_model};
+    use syster::interchange::{Element, ElementKind, Model};
 
     // 1. Create test model with known IDs
     let mut model = Model::new();
@@ -91,14 +91,11 @@ fn test_import_into_host_preserves_ids() {
         Element::new("xmi-id-002", ElementKind::PartDefinition).with_name("Component"),
     );
 
-    // 2. Convert to symbols
-    let symbols = symbols_from_model(&model);
-
-    // 3. Add to analysis host
+    // 2. Add model to analysis host (decompiles to SysML and parses)
     let mut host = AnalysisHost::new();
-    host.add_symbols_from_model(symbols);
+    host.add_model(&model, "imported.sysml");
 
-    // 4. Verify symbols are queryable with preserved IDs
+    // 3. Verify symbols are queryable with preserved IDs
     let analysis = host.analysis();
     let all_symbols: Vec<_> = analysis.symbol_index().all_symbols().collect();
 
