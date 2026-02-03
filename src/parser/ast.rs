@@ -1156,6 +1156,47 @@ impl Usage {
             .any(|t| t.kind() == SyntaxKind::FLOW_KW)
     }
 
+    /// Get direct flow endpoints for flows without `from` keyword.
+    /// Pattern: `flow X.Y to A.B` returns (Some(X.Y), Some(A.B))
+    /// This is different from `flow name from X to Y` which uses from_to_clause().
+    pub fn direct_flow_endpoints(&self) -> (Option<QualifiedName>, Option<QualifiedName>) {
+        // Only applicable to flow usages
+        if !self.is_flow() {
+            return (None, None);
+        }
+
+        // If there's a from_to_clause, this isn't a direct flow
+        if self.from_to_clause().is_some() {
+            return (None, None);
+        }
+
+        // Look for pattern: FLOW_KW ... QUALIFIED_NAME TO_KW QUALIFIED_NAME
+        let mut found_flow = false;
+        let mut found_to = false;
+        let mut source: Option<QualifiedName> = None;
+        let mut target: Option<QualifiedName> = None;
+
+        for elem in self.0.children_with_tokens() {
+            if let Some(token) = elem.as_token() {
+                if token.kind() == SyntaxKind::FLOW_KW {
+                    found_flow = true;
+                } else if token.kind() == SyntaxKind::TO_KW && found_flow {
+                    found_to = true;
+                }
+            } else if let Some(node) = elem.as_node() {
+                if found_flow && node.kind() == SyntaxKind::QUALIFIED_NAME {
+                    if !found_to && source.is_none() {
+                        source = QualifiedName::cast(node.clone());
+                    } else if found_to && target.is_none() {
+                        target = QualifiedName::cast(node.clone());
+                    }
+                }
+            }
+        }
+
+        (source, target)
+    }
+
     /// Check if this usage has assert keyword
     pub fn is_assert(&self) -> bool {
         self.0

@@ -962,6 +962,27 @@ impl NormalizedUsage {
             }
         }
 
+        // Extract direct flow endpoints (e.g., `flow X.Y to A.B` without `from` keyword)
+        let (direct_source, direct_target) = usage.direct_flow_endpoints();
+        if let Some(qn) = direct_source {
+            let target_str = qn.to_string();
+            let rel_target = make_chain_or_simple(&target_str, &qn);
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::FlowSource,
+                target: rel_target,
+                range: Some(qn.syntax().text_range()),
+            });
+        }
+        if let Some(qn) = direct_target {
+            let target_str = qn.to_string();
+            let rel_target = make_chain_or_simple(&target_str, &qn);
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::FlowTarget,
+                target: rel_target,
+                range: Some(qn.syntax().text_range()),
+            });
+        }
+
         // Extract transition source/target (e.g., `transition initial then off`)
         if let Some(transition) = usage.transition_usage() {
             if let Some(source_spec) = transition.source() {

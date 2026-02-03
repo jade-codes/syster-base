@@ -473,4 +473,49 @@ part def SportsCar :> Vehicle {
             "Quoted name should be 17 chars (including quotes)"
         );
     }
+
+    #[test]
+    fn test_unnamed_flow_semantic_tokens() {
+        // Test that unnamed flows get semantic tokens for their endpoints
+        let source = r#"package Test {
+    action def A { out x; }
+    action def B { in y; }
+    action a : A;
+    action b : B;
+    flow a.x to b.y;
+}"#;
+        // Line 5: "    flow a.x to b.y;"
+        //          0123456789012345678901
+        //               ^a.x    ^b.y
+        //          col  5       14
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Unnamed flow tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Get tokens on line 5 (the flow line)
+        let line5_tokens: Vec<_> = tokens.iter().filter(|t| t.line == 5).collect();
+        println!("Line 5 tokens: {:?}", line5_tokens);
+
+        // Should have Type tokens for the flow source (a.x) and target (b.y)
+        // These are feature chains, so they should appear as Type refs
+        let type_tokens: Vec<_> = line5_tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Type)
+            .collect();
+        
+        // Should have at least 2 type tokens (source and target chains)
+        assert!(
+            type_tokens.len() >= 2,
+            "Should have at least 2 Type tokens for flow source/target, got {}",
+            type_tokens.len()
+        );
+    }
 }
