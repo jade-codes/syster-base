@@ -127,12 +127,12 @@ pub fn semantic_tokens(index: &SymbolIndex, file: FileId) -> Vec<SemanticToken> 
             //   This correctly handles quoted names like 'My Name' where the source
             //   includes quotes but symbol.name doesn't
             // - For multi-line symbols (shouldn't happen for names), fall back to name.len()
-            let length = if symbol.start_line == symbol.end_line && symbol.end_col > symbol.start_col
-            {
-                symbol.end_col - symbol.start_col
-            } else {
-                symbol.name.len() as u32
-            };
+            let length =
+                if symbol.start_line == symbol.end_line && symbol.end_col > symbol.start_col {
+                    symbol.end_col - symbol.start_col
+                } else {
+                    symbol.name.len() as u32
+                };
 
             // Skip symbols with invalid spans or at position (0,0) unless they're truly at the start
             let is_valid_span = symbol.start_col > 0
@@ -343,9 +343,7 @@ mod tests {
         assert!(!tokens.is_empty(), "Should have at least 1 token");
 
         // Find the Namespace token (imports are typed as Namespace)
-        let import_tok = tokens
-            .iter()
-            .find(|t| t.token_type == TokenType::Namespace);
+        let import_tok = tokens.iter().find(|t| t.token_type == TokenType::Namespace);
         assert!(import_tok.is_some(), "Should have import token");
 
         let tok = import_tok.unwrap();
@@ -408,7 +406,10 @@ part def SportsCar :> Vehicle {
             .filter(|t| t.token_type == TokenType::Type)
             .collect();
         assert_eq!(type_tokens.len(), 1, "Should have 1 Type token for `cyl`");
-        assert_eq!(type_tokens[0].length, 3, "Type token should be 3 chars for `cyl`");
+        assert_eq!(
+            type_tokens[0].length, 3,
+            "Type token should be 3 chars for `cyl`"
+        );
     }
 
     #[test]

@@ -343,7 +343,7 @@ fn parse_qualified_name_and_skip<P: SysMLParser>(p: &mut P) {
 
 /// SysML-specific identification parsing.
 /// Identification = '<' ShortName '>' Name? | Name
-/// 
+///
 /// This is separate from KerML's parse_identification to allow SysML-specific
 /// behavior if needed, though currently the grammar is the same.
 pub fn parse_identification<P: SysMLParser>(p: &mut P) {

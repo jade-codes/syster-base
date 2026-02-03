@@ -1521,7 +1521,7 @@ fn extract_from_normalized_import(
 ) {
     let path = &import.path;
     let qualified_name = ctx.qualified_name(&format!("import:{}", path));
-    
+
     // Use path_range for the symbol span since name is the path.
     // Fall back to full range if path_range is not available.
     let span = import

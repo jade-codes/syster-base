@@ -165,41 +165,49 @@ fn test_debug_vehicle_usages_semantic_tokens() {
 
     println!("\n=== SEMANTIC TOKENS DEBUG ===");
     println!("Total tokens: {}\n", tokens.len());
-    
+
     // Split source into lines for reference
     let lines: Vec<&str> = source.lines().collect();
-    
+
     for (i, tok) in tokens.iter().enumerate() {
         let line_text = lines.get(tok.line as usize).unwrap_or(&"<invalid line>");
-        let token_text = if (tok.col as usize) < line_text.len() && (tok.col as usize + tok.length as usize) <= line_text.len() {
+        let token_text = if (tok.col as usize) < line_text.len()
+            && (tok.col as usize + tok.length as usize) <= line_text.len()
+        {
             &line_text[tok.col as usize..(tok.col + tok.length) as usize]
         } else {
             "<span overflow>"
         };
-        
+
         println!(
             "Token {}: line={} col={} len={} type={:?} text='{}'",
             i, tok.line, tok.col, tok.length, tok.token_type, token_text
         );
     }
-    
+
     println!("\n=== SYMBOLS IN FILE ===");
     for sym in analysis.symbol_index().symbols_in_file(file_id) {
         println!(
             "Symbol: '{}' (qname='{}', kind={:?}) at line {} col {}-{}",
             sym.name, sym.qualified_name, sym.kind, sym.start_line, sym.start_col, sym.end_col
         );
-        
+
         // Print type refs
         for trk in &sym.type_refs {
             for tr in trk.as_refs() {
                 println!(
                     "  TypeRef: target='{}' kind={:?} at {}:{}-{}:{} resolved={:?}",
-                    tr.target, tr.kind, tr.start_line, tr.start_col, tr.end_line, tr.end_col, tr.resolved_target
+                    tr.target,
+                    tr.kind,
+                    tr.start_line,
+                    tr.start_col,
+                    tr.end_line,
+                    tr.end_col,
+                    tr.resolved_target
                 );
             }
         }
     }
-    
+
     println!("\n=== END DEBUG ===");
 }
