@@ -175,6 +175,7 @@ pub struct NormalizedAlias {
     pub short_name: Option<String>,
     pub target: String,
     pub target_range: Option<TextRange>,
+    pub name_range: Option<TextRange>,
     pub range: Option<TextRange>,
 }
 
@@ -2402,6 +2403,7 @@ impl NormalizedAlias {
                 .and_then(|sn| sn.text()),
             target: alias.target().map(|t| t.to_string()).unwrap_or_default(),
             target_range: alias.target().map(|t| t.syntax().text_range()),
+            name_range: alias.name().map(|n| n.syntax().text_range()),
             range: Some(alias.syntax().text_range()),
         }
     }

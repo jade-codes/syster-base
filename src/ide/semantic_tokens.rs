@@ -117,24 +117,35 @@ pub fn semantic_tokens(index: &SymbolIndex, file: FileId) -> Vec<SemanticToken> 
 
     // Add tokens for all symbols in this file
     for symbol in index.symbols_in_file(file) {
-        // Token for the symbol name itself
-        // Use name.len() for the token length since we only want to highlight the name,
-        // not extended spans that may include type refs or other constructs.
-        // Note: For quoted names, the source might be longer (e.g., 'My Name' vs "My Name")
-        // but name.len() is close enough for most cases.
-        let length = symbol.name.len() as u32;
+        // Skip anonymous/synthetic symbols (names like `<:>>cyl#8@L7>`)
+        // These are generated names for anonymous usages and shouldn't be highlighted
+        if symbol.name.starts_with('<') {
+            // Still process type_refs for anonymous symbols
+        } else {
+            // Calculate token length:
+            // - For single-line symbols, use the actual span (end_col - start_col)
+            //   This correctly handles quoted names like 'My Name' where the source
+            //   includes quotes but symbol.name doesn't
+            // - For multi-line symbols (shouldn't happen for names), fall back to name.len()
+            let length = if symbol.start_line == symbol.end_line && symbol.end_col > symbol.start_col
+            {
+                symbol.end_col - symbol.start_col
+            } else {
+                symbol.name.len() as u32
+            };
 
-        // Skip symbols with invalid spans or at position (0,0) unless they're truly at the start
-        let is_valid_span = symbol.start_col > 0
-            || (symbol.start_col == 0 && symbol.start_line == 0 && length > 0);
+            // Skip symbols with invalid spans or at position (0,0) unless they're truly at the start
+            let is_valid_span = symbol.start_col > 0
+                || (symbol.start_col == 0 && symbol.start_line == 0 && length > 0);
 
-        if is_valid_span {
-            tokens.push(SemanticToken {
-                line: symbol.start_line,
-                col: symbol.start_col,
-                length,
-                token_type: TokenType::from(symbol.kind),
-            });
+            if is_valid_span {
+                tokens.push(SemanticToken {
+                    line: symbol.start_line,
+                    col: symbol.start_col,
+                    length,
+                    token_type: TokenType::from(symbol.kind),
+                });
+            }
         }
 
         // Tokens for type references (the types in `:>` or `:` relationships)
@@ -274,5 +285,191 @@ mod tests {
         // "standard library package " = 25 chars, then "Requirements" = 12 chars
         assert_eq!(pkg_token.col, 25, "Requirements should start at col 25");
         assert_eq!(pkg_token.length, 12, "Requirements has 12 chars");
+    }
+
+    #[test]
+    fn test_quoted_name_span_starts_at_quote() {
+        // Test that quoted names like 'Chassis Assembly' have correct span
+        // The span should start at the opening quote, not before it
+        let source = "part def 'Chassis Assembly';";
+        //            0123456789...
+        //            "part def " = 9 chars, then 'Chassis Assembly' starts at col 9
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Quoted name tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Should have 1 token for the part def
+        assert_eq!(tokens.len(), 1, "Should have 1 token for part def");
+
+        let tok = &tokens[0];
+        assert_eq!(tok.line, 0);
+        // "part def " = 9 chars, quoted name starts at col 9
+        assert_eq!(
+            tok.col, 9,
+            "Quoted name 'Chassis Assembly' should start at col 9 (at the quote)"
+        );
+        // The name without quotes is "Chassis Assembly" = 16 chars
+        // But source includes quotes, so highlighting should cover the quoted portion
+        assert_eq!(tok.token_type, TokenType::Type);
+    }
+
+    #[test]
+    fn test_import_span_is_path_only() {
+        // Test that import symbols have span covering only the path, not the whole statement
+        let source = "public import KeyWord_MetadataDefinitions::*;";
+        //            0123456789...
+        //            "public import " = 14 chars, then path starts at col 14
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Import tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Should have 1 token for the import (plus possibly the type ref)
+        assert!(!tokens.is_empty(), "Should have at least 1 token");
+
+        // Find the Namespace token (imports are typed as Namespace)
+        let import_tok = tokens
+            .iter()
+            .find(|t| t.token_type == TokenType::Namespace);
+        assert!(import_tok.is_some(), "Should have import token");
+
+        let tok = import_tok.unwrap();
+        assert_eq!(tok.line, 0);
+        // "public import " = 14 chars, path starts at col 14
+        assert_eq!(
+            tok.col, 14,
+            "Import path should start at col 14, not at 'public'"
+        );
+    }
+
+    #[test]
+    fn test_redefines_multiplicity_not_highlighted() {
+        // Test that multiplicity like [6..8] is NOT highlighted when following a redefines target
+        // The issue: `part redefines cyl[6..8]` - only `cyl` should be highlighted, not `6..8`
+        // Root cause: anonymous usages get synthetic names like `<:>>cyl#8@L7>` which have
+        // length 13, and the span starts at `cyl`, so the token covered `cyl[6..8]`.
+        let source = r#"part def Vehicle {
+    part eng {
+        part cyl[6..8];
+    }
+}
+part def SportsCar :> Vehicle {
+    part redefines eng {
+        part redefines cyl[6..8];
+    }
+}"#;
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Redefines with multiplicity tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Find tokens on line 7 (the `part redefines cyl[6..8]` line, 0-indexed)
+        let line7_tokens: Vec<_> = tokens.iter().filter(|t| t.line == 7).collect();
+
+        println!("Line 7 tokens: {:?}", line7_tokens);
+
+        // There should NOT be a Property token for the anonymous usage
+        // (anonymous symbols with names like `<:>>cyl#8@L7>` should be skipped)
+        let property_tokens: Vec<_> = line7_tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Property)
+            .collect();
+        assert!(
+            property_tokens.is_empty(),
+            "Should NOT have Property token for anonymous usage, found: {:?}",
+            property_tokens
+        );
+
+        // There should be a Type token for `cyl` (the redefines target) with length 3
+        let type_tokens: Vec<_> = line7_tokens
+            .iter()
+            .filter(|t| t.token_type == TokenType::Type)
+            .collect();
+        assert_eq!(type_tokens.len(), 1, "Should have 1 Type token for `cyl`");
+        assert_eq!(type_tokens[0].length, 3, "Type token should be 3 chars for `cyl`");
+    }
+
+    #[test]
+    fn test_alias_span_is_name_only() {
+        // Test that alias symbols have span covering only the name, not the whole statement
+        let source = "alias QuantityValue for TensorQuantityValue;";
+        //            0123456789...
+        //            "alias " = 6 chars, then "QuantityValue" starts at col 6
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Alias tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Find the Variable token (aliases are typed as Variable)
+        let alias_tok = tokens.iter().find(|t| t.token_type == TokenType::Variable);
+        assert!(alias_tok.is_some(), "Should have alias token");
+
+        let tok = alias_tok.unwrap();
+        assert_eq!(tok.line, 0);
+        // "alias " = 6 chars, name starts at col 6
+        assert_eq!(tok.col, 6, "Alias name should start at col 6");
+        // "QuantityValue" = 13 chars
+        assert_eq!(tok.length, 13, "Alias name should be 13 chars");
+    }
+
+    #[test]
+    fn test_quoted_name_includes_quotes_in_span() {
+        // Test that quoted names like 'vehicle model 1' include quotes in the span
+        let source = "part 'vehicle model 1' :> vehicle;";
+        //            01234567890123456789012345
+        //            "part " = 5 chars, then 'vehicle model 1' starts at col 5
+
+        let index = build_index_from_source(source);
+        let tokens = semantic_tokens(&index, FileId(1));
+
+        println!("Quoted name tokens:");
+        for tok in &tokens {
+            println!(
+                "  line={} col={} len={} type={:?}",
+                tok.line, tok.col, tok.length, tok.token_type
+            );
+        }
+
+        // Find the Property token for the part usage
+        let part_tok = tokens.iter().find(|t| t.token_type == TokenType::Property);
+        assert!(part_tok.is_some(), "Should have part usage token");
+
+        let tok = part_tok.unwrap();
+        assert_eq!(tok.line, 0);
+        assert_eq!(tok.col, 5, "Quoted name should start at col 5");
+        // 'vehicle model 1' with quotes = 17 chars
+        assert_eq!(
+            tok.length, 17,
+            "Quoted name should be 17 chars (including quotes)"
+        );
     }
 }

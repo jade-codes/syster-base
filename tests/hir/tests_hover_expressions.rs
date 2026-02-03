@@ -131,11 +131,14 @@ package Test {
     let analysis = host.analysis();
     let file_id = analysis.get_file_id("test.sysml").unwrap();
 
-    // Line 9: `subject alternatives :> engine4cyl [2] = (engine4cyl, engine6cyl);`
-    let hover = analysis.hover(file_id, 9, 49);
+    // Line 9: `        subject alternatives :> engine4cyl [2] = (engine4cyl, engine6cyl);`
+    //          01234567890123456789012345678901234567890123456789012345678901234567890123
+    //          0         1         2         3         4         5         6         7
+    // engine4cyl in tuple: cols 50-59, engine6cyl in tuple: cols 62-71
+    let hover = analysis.hover(file_id, 9, 50);
     assert!(hover.is_some(), "Should hover on 'engine4cyl' in tuple");
 
-    let hover = analysis.hover(file_id, 9, 61);
+    let hover = analysis.hover(file_id, 9, 62);
     assert!(hover.is_some(), "Should hover on 'engine6cyl' in tuple");
 }
 

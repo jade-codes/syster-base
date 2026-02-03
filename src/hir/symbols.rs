@@ -1473,10 +1473,6 @@ fn extract_from_normalized_usage(
     // Extract doc comment
     let doc = usage.doc.as_ref().map(|s| Arc::from(s.trim()));
 
-    // Extend end position to include all type_refs (for multi-line constructs like message from/to)
-    let (extended_end_line, extended_end_col) =
-        max_end_position_from_type_refs(&type_refs, span.end_line, span.end_col);
-
     // Extract view-specific data if this is a view/viewpoint/rendering
     let typed_by = supertypes.first();
     let view_data = extract_view_data_from_usage(usage, usage.kind, typed_by);
@@ -1490,8 +1486,8 @@ fn extract_from_normalized_usage(
         file: ctx.file,
         start_line: span.start_line,
         start_col: span.start_col,
-        end_line: extended_end_line,
-        end_col: extended_end_col,
+        end_line: span.end_line,
+        end_col: span.end_col,
         short_name_start_line: sn_start_line,
         short_name_start_col: sn_start_col,
         short_name_end_line: sn_end_line,
@@ -1597,7 +1593,8 @@ fn extract_from_normalized_alias(
     };
 
     let qualified_name = ctx.qualified_name(&name);
-    let span = ctx.range_to_info(alias.range);
+    // Use name_range for precise position, fall back to full range
+    let span = ctx.range_to_info(alias.name_range.or(alias.range));
 
     // Create type_ref for the alias target so hover works on it
     let type_refs = if let Some(r) = alias.target_range {
@@ -1708,44 +1705,6 @@ fn extract_from_normalized_comment(
         is_derived: false,
         is_parallel: false,
     });
-}
-
-/// Compute the maximum end position (line, col) from a set of TypeRefs.
-/// This is used to extend a symbol's span to include all its type references,
-/// ensuring hover works for multi-line constructs like `message from X.Y to A.B`.
-///
-/// Returns (max_end_line, max_end_col) where:
-/// - If max_end_line > base_end_line, max_end_col is the column from the type_ref on that line
-/// - Otherwise returns (base_end_line, base_end_col)
-fn max_end_position_from_type_refs(
-    type_refs: &[TypeRefKind],
-    base_end_line: u32,
-    base_end_col: u32,
-) -> (u32, u32) {
-    let mut max_line = base_end_line;
-    let mut max_col = base_end_col;
-
-    for tr in type_refs {
-        match tr {
-            TypeRefKind::Simple(r) => {
-                if r.end_line > max_line || (r.end_line == max_line && r.end_col > max_col) {
-                    max_line = r.end_line;
-                    max_col = r.end_col;
-                }
-            }
-            TypeRefKind::Chain(chain) => {
-                for part in &chain.parts {
-                    if part.end_line > max_line
-                        || (part.end_line == max_line && part.end_col > max_col)
-                    {
-                        max_line = part.end_line;
-                        max_col = part.end_col;
-                    }
-                }
-            }
-        }
-    }
-    (max_line, max_col)
 }
 
 /// Extract type references from normalized relationships.

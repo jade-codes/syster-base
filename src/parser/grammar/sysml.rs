@@ -341,6 +341,40 @@ fn parse_qualified_name_and_skip<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 }
 
+/// SysML-specific identification parsing.
+/// Identification = '<' ShortName '>' Name? | Name
+/// 
+/// This is separate from KerML's parse_identification to allow SysML-specific
+/// behavior if needed, though currently the grammar is the same.
+pub fn parse_identification<P: SysMLParser>(p: &mut P) {
+    // Skip trivia BEFORE starting the NAME node so the node's range
+    // doesn't include leading whitespace
+    p.skip_trivia();
+    p.start_node(SyntaxKind::NAME);
+
+    // Short name: <shortname>
+    if p.at(SyntaxKind::LT) {
+        p.start_node(SyntaxKind::SHORT_NAME);
+        p.bump(); // <
+        p.skip_trivia();
+        // Accept any identifier-like token including keywords for short names
+        if p.at_name_token() || p.current_kind().is_keyword() {
+            p.bump();
+        }
+        p.skip_trivia();
+        p.expect(SyntaxKind::GT);
+        p.finish_node();
+        p.skip_trivia();
+    }
+
+    // Regular name
+    if p.at_name_token() {
+        p.bump();
+    }
+
+    p.finish_node();
+}
+
 /// Helper to parse body or semicolon (common pattern)
 fn parse_body_or_semicolon<P: SysMLParser>(p: &mut P) {
     if p.at(SyntaxKind::L_BRACE) {

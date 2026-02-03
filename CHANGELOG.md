@@ -5,6 +5,31 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.0-alpha] - 2026-02-03
+
+### Changed
+
+- **Parser Refactor**: Complete refactor to use Rowan-based Concrete Syntax Tree (CST)
+  - Replaced Pest-only parser with Rowan for lossless syntax tree representation
+  - Enables incremental parsing and better error recovery
+  - Preserves whitespace and comments in the syntax tree
+  - Foundation for future formatting and refactoring tools
+
+### Fixed
+
+- **Parsing**: All SysML v2 standard library files (114 files) now parse without errors
+- **Parsing**: All sample library files now parse without errors
+- **Semantic Tokens**: Fixed span calculation for symbols with type references
+  - Symbol spans now only cover the name, not extended to include type refs
+  - Quoted names like `'vehicle model 1'` now highlight correctly (17 chars instead of 28)
+  - Import spans now use `path_range` for precise highlighting
+  - Alias spans now use `name_range` for precise highlighting
+  - Anonymous/synthetic symbols (names starting with `<`) are now skipped in semantic tokens
+
+- **Parser**: Added `skip_trivia()` before NAME node in SysML `parse_identification` to exclude leading whitespace from name spans
+
+- **Tests**: Fixed incorrect column positions in `hover_ref_in_tuple_expression` test (49/61 → 50/62)
+
 ## [0.2.3-alpha] - 2026-01-29
 
 ### Fixed
