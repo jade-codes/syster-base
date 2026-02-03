@@ -481,6 +481,7 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         | SyntaxKind::TRUE_KW
         | SyntaxKind::FALSE_KW
         | SyntaxKind::NULL_KW
+        | SyntaxKind::IF_KW
         | SyntaxKind::INTEGER
         | SyntaxKind::DECIMAL
         | SyntaxKind::STRING
@@ -1723,6 +1724,10 @@ fn parse_calc_body_element<P: KerMLParser>(p: &mut P) -> bool {
         SyntaxKind::PRIVATE_KW,
         SyntaxKind::PUBLIC_KW,
         SyntaxKind::PROTECTED_KW,
+        SyntaxKind::FEATURE_KW,
+        SyntaxKind::STEP_KW,
+        SyntaxKind::EXPR_KW,
+        SyntaxKind::FUNCTION_KW,
     ]) {
         parse_namespace_element(p);
         true
@@ -1888,6 +1893,9 @@ fn parse_usage_details<P: KerMLParser>(p: &mut P) {
     parse_ordering_modifiers(p);
     parse_specializations(p);
     p.skip_trivia();
+    // Per SysML v2, multiplicity can also appear after specializations
+    // e.g., `feature x redefines y [*] nonunique;`
+    parse_optional_multiplicity(p);
     // Parse ordering modifiers again (can appear after specializations too)
     parse_ordering_modifiers(p);
     parse_feature_relationships(p);
@@ -1965,6 +1973,12 @@ pub fn parse_invariant<P: KerMLParser>(p: &mut P) {
         p.start_node(SyntaxKind::NAMESPACE_BODY);
         p.bump(); // {
         p.skip_trivia();
+
+        // Handle doc comment before expression (common in stdlib)
+        if p.at(SyntaxKind::DOC_KW) || p.at(SyntaxKind::COMMENT_KW) {
+            parse_annotation(p);
+            p.skip_trivia();
+        }
 
         // Parse the invariant expression
         if !p.at(SyntaxKind::R_BRACE) {
@@ -2188,7 +2202,30 @@ pub fn parse_end_feature_or_parameter<P: KerMLParser>(p: &mut P) {
     if p.at(SyntaxKind::FEATURE_KW) {
         parse_end_feature_with_keyword(p);
     } else if p.at_name_token() || p.at(SyntaxKind::LT) {
-        parse_end_feature_with_name(p);
+        // Check for "type name" shorthand pattern: `end bool constrainedGuard;`
+        // Two identifiers in a row means first is type, second is name
+        if p.at(SyntaxKind::IDENT) {
+            let peek1 = p.peek_kind(1);
+            if peek1 == SyntaxKind::IDENT || peek1 == SyntaxKind::LT {
+                // First identifier is the type, create typing node
+                p.start_node(SyntaxKind::TYPING);
+                p.bump(); // type name
+                p.skip_trivia();
+                p.finish_node();
+                // Second identifier is the feature name
+                p.parse_identification();
+                // Continue with end feature details
+                parse_multiplicity_with_ordering(p);
+                parse_specializations(p);
+                p.skip_trivia();
+                parse_feature_relationships(p);
+                p.skip_trivia();
+            } else {
+                parse_end_feature_with_name(p);
+            }
+        } else {
+            parse_end_feature_with_name(p);
+        }
     } else {
         parse_end_feature_minimal(p);
     }
@@ -2478,12 +2515,13 @@ fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
 
 /// Parse 'of' clause for binding connectors
 /// Per pest: (of_token ~ multiplicity_bounds? ~ owned_feature_chain)
+/// Extended pattern: of [mult] X = [mult] Y
 fn parse_binding_of_clause<P: KerMLParser>(p: &mut P) {
     if p.at(SyntaxKind::OF_KW) {
         p.bump();
         p.skip_trivia();
 
-        // Optional multiplicity before the endpoint
+        // Optional multiplicity before the first endpoint
         if p.at(SyntaxKind::L_BRACKET) {
             parse_multiplicity(p);
             p.skip_trivia();
@@ -2492,6 +2530,25 @@ fn parse_binding_of_clause<P: KerMLParser>(p: &mut P) {
         // Feature chain (can use . separator)
         if p.at_name_token() {
             parse_feature_chain_or_qualified_name(p);
+            p.skip_trivia();
+        }
+
+        // Handle second endpoint: = [mult] Y
+        if p.at(SyntaxKind::EQ) {
+            p.bump();
+            p.skip_trivia();
+
+            // Optional multiplicity before the second endpoint
+            if p.at(SyntaxKind::L_BRACKET) {
+                parse_multiplicity(p);
+                p.skip_trivia();
+            }
+
+            // Feature chain for second endpoint
+            if p.at_name_token() {
+                parse_feature_chain_or_qualified_name(p);
+                p.skip_trivia();
+            }
         }
     }
 }
@@ -2511,6 +2568,10 @@ fn parse_binding_or_succession_impl<P: KerMLParser>(p: &mut P) {
         bump_and_skip(p);
     }
 
+    // Handle 'all' keyword for sufficient successions (can appear after succession keyword)
+    // Per SysML v2 Spec: sufficient successions use 'all' to indicate all instances
+    consume_if(p, SyntaxKind::ALL_KW);
+
     let parsed_name = if should_parse_first_pattern(p, is_succession) {
         false // FIRST indicates direct endpoint syntax
     } else {
@@ -2518,6 +2579,12 @@ fn parse_binding_or_succession_impl<P: KerMLParser>(p: &mut P) {
             looks_like_qualified_name_before(p, &[SyntaxKind::EQ, SyntaxKind::THEN_KW]);
         parse_binding_succession_prefix(p, looks_like_direct)
     };
+
+    // Handle optional multiplicity after binding name (e.g., binding instant[1] of ...)
+    if p.at(SyntaxKind::L_BRACKET) {
+        parse_multiplicity(p);
+        p.skip_trivia();
+    }
 
     if !is_succession {
         parse_binding_of_clause(p);

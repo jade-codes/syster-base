@@ -352,6 +352,12 @@ impl<'a> ExpressionParser for Parser<'a> {
         // In SysML/KerML, certain keywords can be used as identifiers in context
         // (contextual keywords). This includes names like "start", "end", "done", "this" etc.
         // which are common member names in action definitions or self-references.
+        // Also includes "type" which is a very common feature/attribute name.
+        // And "entry", "exit", "accept", "frame", "do" which are used as step/parameter names.
+        // Also "step" and "feature" which are used as subset targets in metadata defs.
+        // And "behavior", "occurrence", "connection", "function" which appear as feature names
+        // being redefined/subsetted in the standard library (SysML.sysml).
+        // Also "predicate", "interaction", "metaclass", "member" which appear as feature names.
         matches!(
             self.current_kind(),
             SyntaxKind::IDENT
@@ -359,6 +365,22 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::END_KW
                 | SyntaxKind::DONE_KW
                 | SyntaxKind::THIS_KW
+                | SyntaxKind::TYPE_KW
+                | SyntaxKind::ENTRY_KW
+                | SyntaxKind::EXIT_KW
+                | SyntaxKind::ACCEPT_KW
+                | SyntaxKind::FRAME_KW
+                | SyntaxKind::DO_KW
+                | SyntaxKind::STEP_KW
+                | SyntaxKind::FEATURE_KW
+                | SyntaxKind::BEHAVIOR_KW
+                | SyntaxKind::OCCURRENCE_KW
+                | SyntaxKind::CONNECTION_KW
+                | SyntaxKind::FUNCTION_KW
+                | SyntaxKind::PREDICATE_KW
+                | SyntaxKind::INTERACTION_KW
+                | SyntaxKind::METACLASS_KW
+                | SyntaxKind::MEMBER_KW
         )
     }
 

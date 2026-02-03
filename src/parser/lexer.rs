@@ -86,7 +86,9 @@ pub enum LogosToken {
     #[regex(r"[0-9]+")]
     Integer,
 
-    #[regex(r"[0-9]*\.[0-9]+([eE][+-]?[0-9]+)?")]
+    // Decimal/real number: supports optional decimal point and optional exponent
+    // Examples: 1.0, .5, 1E-24, 1.5e+10, 3.14E6
+    #[regex(r"[0-9]*\.[0-9]+([eE][+-]?[0-9]+)?|[0-9]+[eE][+-]?[0-9]+")]
     Decimal,
 
     #[regex(r#""([^"\\]|\\.)*""#)]
@@ -395,6 +397,8 @@ pub enum LogosToken {
     LoopKw,
     #[token("merge")]
     MergeKw,
+    #[token("member")]
+    MemberKw,
     #[token("message")]
     MessageKw,
     #[token("meta")]
@@ -483,6 +487,8 @@ pub enum LogosToken {
     SnapshotKw,
     #[token("subject")]
     SubjectKw,
+    #[token("subset")]
+    SubsetKw,
     #[token("subsets")]
     SubsetsKw,
     #[token("succession")]
@@ -691,6 +697,7 @@ impl From<LogosToken> for SyntaxKind {
             LibraryKw => SyntaxKind::LIBRARY_KW,
             LocaleKw => SyntaxKind::LOCALE_KW,
             LoopKw => SyntaxKind::LOOP_KW,
+            MemberKw => SyntaxKind::MEMBER_KW,
             MergeKw => SyntaxKind::MERGE_KW,
             MessageKw => SyntaxKind::MESSAGE_KW,
             MetaKw => SyntaxKind::META_KW,
@@ -736,6 +743,7 @@ impl From<LogosToken> for SyntaxKind {
             StructKw => SyntaxKind::STRUCT_KW,
             SnapshotKw => SyntaxKind::SNAPSHOT_KW,
             SubjectKw => SyntaxKind::SUBJECT_KW,
+            SubsetKw => SyntaxKind::SUBSET_KW,
             SubsetsKw => SyntaxKind::SUBSETS_KW,
             SuccessionKw => SyntaxKind::SUCCESSION_KW,
             TerminateKw => SyntaxKind::TERMINATE_KW,

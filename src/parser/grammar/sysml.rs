@@ -1168,6 +1168,9 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         // Identifier - shorthand feature member
         SyntaxKind::IDENT => p.parse_shorthand_feature_member(),
 
+        // Contextual keywords used as names (e.g., enum variants like 'done', 'closed')
+        _ if p.at_name_token() => p.parse_shorthand_feature_member(),
+
         _ => {
             let got = if let Some(text) = p.current_token_text() {
                 format!("'{}'", text)

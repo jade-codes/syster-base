@@ -49,8 +49,17 @@ fn test_parse_stdlib_kerml_file(#[case] relative_path: &str) {
 
     assert!(
         result.is_ok(),
-        "Failed to parse {}: {}",
+        "Failed to load {}: {}",
         relative_path,
         result.err().unwrap()
+    );
+
+    let syntax_file = result.unwrap();
+    let errors = syntax_file.errors();
+    assert!(
+        errors.is_empty(),
+        "Parse errors in {}: {:?}",
+        relative_path,
+        errors
     );
 }
