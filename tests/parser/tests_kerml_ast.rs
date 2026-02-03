@@ -9,11 +9,11 @@ use syster::parser::ast::{
     AstNode, Definition, DefinitionKind, NamespaceMember, SourceFile, Specialization,
     SpecializationKind, Usage,
 };
-use syster::parser::parse;
+use syster::parser::parse_kerml;
 
 /// Helper to parse input and get SourceFile AST
 fn parse_source(input: &str) -> SourceFile {
-    let parsed = parse(input);
+    let parsed = parse_kerml(input);
     SourceFile::cast(parsed.syntax()).expect("Failed to cast to SourceFile")
 }
 
@@ -229,9 +229,9 @@ fn test_parse_datatype_ast() {
     match &members[0] {
         NamespaceMember::Definition(def) => {
             assert_eq!(def.name().and_then(|n| n.text()), Some("Real".to_string()));
-            assert_eq!(def.definition_kind(), Some(DefinitionKind::DataType));
+            assert_eq!(def.definition_kind(), Some(DefinitionKind::Datatype));
         }
-        _ => panic!("Expected Definition (DataType)"),
+        _ => panic!("Expected Definition (Datatype)"),
     }
 }
 
@@ -651,9 +651,344 @@ fn test_parse_dependency_ast() {
     match &members[0] {
         NamespaceMember::Dependency(dep) => {
             let sources = dep.sources();
-            let targets = dep.targets();
-            assert!(!sources.is_empty() || !targets.is_empty(), "Should have source or target");
+            let target = dep.target();
+            assert!(
+                !sources.is_empty() || target.is_some(),
+                "Should have source or target"
+            );
         }
         _ => panic!("Expected Dependency, got {:?}", members[0]),
+    }
+}
+
+// ============================================================================
+// STDLIB SYNTAX AST COVERAGE TESTS
+// ============================================================================
+// These tests verify that advanced KerML/SysML v2 syntax patterns found in
+// the standard library are correctly represented in the AST.
+//
+// Reference: SysML v2 Specification (OMG Document Number: formal/2023-06-01)
+//
+// IMPLEMENTATION PLAN:
+// Each test documents what AST method is needed. Tests are ignored until
+// the corresponding AST method is implemented.
+// ============================================================================
+
+/// Test `this` keyword as a feature name - AST extraction
+/// From Occurrences.kerml: `feature this : Occurrence[1] default self { ... }`
+/// Per SysML v2 Spec §7.3.4.3
+///
+/// IMPLEMENTATION: Name::text() should return "this" for THIS_KW token
+/// Also consider adding Name::is_this_keyword() -> bool
+#[test]
+fn test_this_keyword_as_feature_name_ast() {
+    let input = r#"classifier C { feature this : C[1]; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            // Use existing def.members() which goes through body()
+            let body_members: Vec<_> = def.members().collect();
+            assert!(!body_members.is_empty(), "Should have body members");
+
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    let name = usage.name().and_then(|n| n.text());
+                    assert_eq!(
+                        name,
+                        Some("this".to_string()),
+                        "Feature should be named 'this'"
+                    );
+                }
+                _ => panic!("Expected Usage for feature 'this'"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test `this` with default value - AST extraction of default
+/// From Occurrences.kerml: `feature this : Occurrence[1] default self { ... }`
+///
+/// IMPLEMENTATION NEEDED:
+/// - Usage::default_value() -> Option<Expression>
+/// - Usage::is_default_value() -> bool (distinguishes `default x` from `= x`)
+#[test]
+fn test_this_with_default_value_ast() {
+    let input = r#"classifier C { feature this : C[1] default self; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    assert_eq!(
+                        usage.name().and_then(|n| n.text()),
+                        Some("this".to_string())
+                    );
+                    // Check for default value - needs new method
+                    // IMPLEMENTATION: Look for DEFAULT_KW token, then get following Expression
+                    let has_default = usage.value_expression().is_some(); // Use existing for now
+                    assert!(has_default, "Should have default value 'self'");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test `chains` keyword - AST representation
+/// From Base.kerml: `feature self: Anything[1] subsets things chains things.that`
+/// Per SysML v2 Spec §7.3.4.5
+///
+/// IMPLEMENTATION NEEDED:
+/// - SpecializationKind::Chains variant
+/// - Usage::chains() -> impl Iterator<Item = Specialization>
+#[test]
+fn test_chains_keyword_ast() {
+    let input = r#"classifier C { feature self: C[1] subsets things chains things.that; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    assert_eq!(
+                        usage.name().and_then(|n| n.text()),
+                        Some("self".to_string())
+                    );
+                    // Check for chaining relationship
+                    // IMPLEMENTATION: Filter specializations() for kind == FeatureChain
+                    let specs: Vec<_> = usage.specializations().collect();
+                    let has_chains = specs
+                        .iter()
+                        .any(|s| s.kind() == Some(SpecializationKind::FeatureChain));
+                    assert!(has_chains, "Should have chaining relationship");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test feature path expressions with dot notation - AST qualified name
+/// From Base.kerml: `chains things.that`
+///
+/// IMPLEMENTATION: QualifiedName::segments() should handle dot-separated paths
+#[test]
+fn test_feature_path_expression_ast() {
+    let input = r#"classifier C { feature x subsets a.b.c; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    let specs: Vec<_> = usage.specializations().collect();
+                    let has_subsets = specs
+                        .iter()
+                        .any(|s| s.kind() == Some(SpecializationKind::Subsets));
+                    assert!(has_subsets, "Should have subsetting relationship");
+
+                    // Check that the target is a dotted path
+                    if let Some(spec) = specs.first() {
+                        if let Some(target) = spec.target() {
+                            let segments = target.segments();
+                            assert!(segments.len() >= 3, "Should have multi-segment path a.b.c");
+                        }
+                    }
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test `metaclass` definition - AST DefinitionKind
+/// From KerML.kerml: `metaclass AnnotatingElement specializes Element { ... }`
+/// Per SysML v2 Spec §7.2.3.2
+///
+/// IMPLEMENTATION: DefinitionKind::Metaclass already exists, test should pass
+#[test]
+fn test_metaclass_definition_ast() {
+    let input = r#"metaclass MyMeta specializes Element;"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            assert_eq!(
+                def.definition_kind(),
+                Some(DefinitionKind::Metaclass),
+                "Should be a Metaclass definition"
+            );
+            assert_eq!(
+                def.name().and_then(|n| n.text()),
+                Some("MyMeta".to_string())
+            );
+        }
+        _ => panic!("Expected Definition for metaclass"),
+    }
+}
+
+/// Test `var` feature modifier - AST modifier check
+/// From KerML.kerml: `var feature annotatedElement : Element[1..*] ordered`
+/// Per SysML v2 Spec §7.3.3.6: "var" indicates a mutable feature
+///
+/// IMPLEMENTATION NEEDED:
+/// - Usage::is_var() -> bool (check for VAR_KW token)
+#[test]
+fn test_var_feature_modifier_ast() {
+    let input = r#"classifier C { var feature x : Integer[1]; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    assert_eq!(usage.name().and_then(|n| n.text()), Some("x".to_string()));
+                    // IMPLEMENTATION: Check for VAR_KW in children_with_tokens()
+                    assert!(usage.is_var(), "Should be a var feature");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test `derived var` combined modifiers - AST combined modifier check
+/// From KerML.kerml: `derived var feature annotatedElement`
+///
+/// IMPLEMENTATION NEEDED: Usage::is_var() (is_derived() already exists)
+#[test]
+fn test_derived_var_modifier_ast() {
+    let input = r#"classifier C { derived var feature x : Integer[1]; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    assert!(usage.is_derived(), "Should be derived");
+                    assert!(usage.is_var(), "Should be var");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test `all` keyword for universal quantification - AST all check
+/// From Occurrences.kerml: `feature all x : T[*]`
+/// Per SysML v2 Spec §7.3.3.4: "all" means sufficient/complete coverage
+///
+/// IMPLEMENTATION NEEDED:
+/// - Usage::is_all() -> bool (check for ALL_KW token after feature keyword)
+#[test]
+fn test_all_keyword_in_feature_ast() {
+    let input = r#"classifier C { feature all instances : C[*]; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    assert_eq!(
+                        usage.name().and_then(|n| n.text()),
+                        Some("instances".to_string())
+                    );
+                    // IMPLEMENTATION: Check for ALL_KW after feature keyword
+                    assert!(usage.is_all(), "Should be an 'all' feature");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test combined redefines with assignment - AST value extraction
+/// From Parts.sysml: `:>> Action::this = that as Part`
+///
+/// IMPLEMENTATION: value_expression() already exists, should work
+#[test]
+fn test_redefines_with_assignment_ast() {
+    let input = r#"classifier C { feature x :>> parent::y = initialValue; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Usage(usage) => {
+                    // Check for redefines
+                    let specs: Vec<_> = usage.specializations().collect();
+                    let has_redef = specs
+                        .iter()
+                        .any(|s| s.kind() == Some(SpecializationKind::Redefines));
+                    assert!(has_redef, "Should have redefinition");
+
+                    // Check for value assignment - use existing method
+                    let has_value = usage.value_expression().is_some();
+                    assert!(has_value, "Should have value assignment");
+                }
+                _ => panic!("Expected Usage"),
+            }
+        }
+        _ => panic!("Expected Definition"),
+    }
+}
+
+/// Test anonymous connector with from/to clauses - AST connector extraction
+/// From Occurrences.kerml: `connector :HappensDuring from [1] self to [1] this;`
+///
+/// IMPLEMENTATION NEEDED:
+/// - ConnectionEnd AST struct with multiplicity() and target()
+/// - Connector::ends() -> impl Iterator<Item = ConnectionEnd>
+/// - Parser support for `from [mult] name to [mult] name` connector syntax
+#[test]
+#[ignore] // TODO: Parser doesn't fully support `from [mult] a to [mult] b` connector syntax yet
+fn test_anonymous_connector_with_multiplicity_ast() {
+    let input = r#"classifier C { connector :Link from [1] a to [1] b; }"#;
+    let file = parse_source(input);
+
+    let members: Vec<_> = file.members().collect();
+    match &members[0] {
+        NamespaceMember::Definition(def) => {
+            let body_members: Vec<_> = def.members().collect();
+            match &body_members[0] {
+                NamespaceMember::Connector(conn) => {
+                    // Should be anonymous (no name, just type)
+                    let typing = conn.typing();
+                    assert!(typing.is_some(), "Should have typing ':Link'");
+
+                    // Check endpoints - needs Connector::ends()
+                    // IMPLEMENTATION: Return iterator over CONNECTION_END children
+                    let ends: Vec<_> = conn.ends().collect();
+                    assert_eq!(ends.len(), 2, "Should have 2 endpoints (from/to)");
+                }
+                _ => panic!("Expected Connector, got {:?}", body_members[0]),
+            }
+        }
+        _ => panic!("Expected Definition"),
     }
 }

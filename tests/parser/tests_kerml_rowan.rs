@@ -3400,3 +3400,317 @@ fn test_locale_documentation() {
         result.err()
     );
 }
+
+// ============================================================================
+// STDLIB SYNTAX COVERAGE TESTS
+// ============================================================================
+// These tests cover advanced KerML/SysML v2 syntax patterns found in the
+// standard library (sysml.library). They document parser gaps that need
+// to be addressed for full stdlib support.
+//
+// Reference: SysML v2 Specification (OMG Document Number: formal/2023-06-01)
+// ============================================================================
+
+/// Test `this` keyword as a feature name
+/// From Occurrences.kerml: `feature this : Occurrence[1] default self { ... }`
+/// Per SysML v2 Spec §7.3.4.3: "The keyword this denotes a reference to the
+/// context object of the current feature."
+#[test]
+#[ignore] // Parser doesn't recognize 'this' as valid feature name
+fn test_this_keyword_as_feature_name() {
+    let input = r#"feature this : Occurrence[1];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'this' as feature name should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `this` with default value
+/// From Occurrences.kerml: `feature this : Occurrence[1] default self { ... }`
+#[test]
+#[ignore] // Parser doesn't handle 'default' keyword in feature declarations
+fn test_this_with_default_value() {
+    let input = r#"feature this : Occurrence[1] default self;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'this' with default value should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `chains` keyword in feature chaining
+/// From Base.kerml: `feature self: Anything[1] subsets things chains things.that`
+/// Per SysML v2 Spec §7.3.4.5: "Feature chaining provides a shorthand for
+/// expressing navigational paths through features."
+#[test]
+#[ignore] // Parser doesn't recognize 'chains' keyword
+fn test_chains_keyword() {
+    let input = r#"feature self: Anything[1] subsets things chains things.that;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'chains' keyword should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test feature path expressions with dot notation
+/// From Base.kerml: `chains things.that`
+#[test]
+#[ignore] // Parser doesn't handle dot-separated feature paths in chains
+fn test_feature_path_expression() {
+    let input = r#"feature x subsets a.b.c;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Feature path expression should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `metaclass` definition
+/// From KerML.kerml: `metaclass AnnotatingElement specializes Element { ... }`
+/// Per SysML v2 Spec §7.2.3.2: "A Metaclass is a Classifier whose instances
+/// are themselves Classifiers."
+#[test]
+#[ignore] // Parser doesn't recognize 'metaclass' as definition keyword
+fn test_metaclass_definition() {
+    let input = r#"metaclass MyMeta specializes Element;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'metaclass' definition should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `metaclass` with body
+/// From KerML.kerml
+#[test]
+#[ignore] // Parser doesn't recognize 'metaclass' keyword
+fn test_metaclass_with_body() {
+    let input = r#"metaclass Comment specializes AnnotatingElement {
+        var feature body : String[1..1];
+    }"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'metaclass' with body should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `var` feature modifier
+/// From KerML.kerml: `var feature annotatedElement : Element[1..*] ordered`
+/// Per SysML v2 Spec §7.3.3.6: "The keyword var indicates that a Feature
+/// is a variable, meaning its value can be changed during execution."
+#[test]
+#[ignore] // Parser doesn't recognize 'var' as feature modifier
+fn test_var_feature_modifier() {
+    let input = r#"var feature x : Integer[1];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'var' feature modifier should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `derived var` combined modifiers
+/// From KerML.kerml: `derived var feature annotatedElement`
+#[test]
+#[ignore] // Parser doesn't handle combined 'derived var' modifiers
+fn test_derived_var_modifier() {
+    let input = r#"derived var feature x : Integer[1];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'derived var' modifiers should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `inv` invariant block
+/// From TrigFunctions.kerml: `inv piPrecision { RealFunctions::round(pi * 1E20) == 314159265358979323846.0 }`
+/// Per SysML v2 Spec §7.3.5.2: "An InvariantMembership is a FeatureMembership
+/// for an invariant Expression."
+#[test]
+#[ignore] // Parser doesn't recognize 'inv' blocks
+fn test_inv_invariant_block() {
+    let input = r#"inv myInvariant { x > 0 }"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'inv' invariant block should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test named invariant with expression
+/// From TrigFunctions.kerml
+#[test]
+#[ignore] // Parser doesn't handle 'inv' keyword
+fn test_named_invariant() {
+    let input = r#"inv unitBound { -1.0 <= that & that <= 1.0 }"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Named invariant should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `all` keyword for universal quantification
+/// From Occurrences.kerml: `feature all x : T[*]`
+/// Per SysML v2 Spec §7.3.3.4: "The keyword all indicates that a Feature
+/// includes all instances of its type."
+#[test]
+#[ignore] // Parser doesn't recognize 'all' keyword in feature declarations
+fn test_all_keyword_in_feature() {
+    let input = r#"feature all instances : Thing[*];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'all' keyword in feature should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `entry` keyword in state definitions
+/// From StatePerformances.kerml: `step entry action entryAction`
+/// Per SysML v2 Spec §8.3.4.2: "An EntryAction is an Action that is performed
+/// when a State is entered."
+#[test]
+#[ignore] // Parser doesn't recognize 'entry' in feature context
+fn test_entry_keyword() {
+    let input = r#"entry action myEntry;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'entry' keyword should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `exit` keyword in state definitions
+/// From StatePerformances.kerml
+/// Per SysML v2 Spec §8.3.4.3: "An ExitAction is an Action that is performed
+/// when a State is exited."
+#[test]
+#[ignore] // Parser doesn't recognize 'exit' in feature context
+fn test_exit_keyword() {
+    let input = r#"exit action myExit;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'exit' keyword should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `accept` keyword in transitions
+/// From TransitionPerformances.kerml: `step accept action accepter`
+/// Per SysML v2 Spec §8.3.5.3: "An AcceptAction is a trigger Action that
+/// receives a transfer of values."
+#[test]
+#[ignore] // Parser doesn't recognize 'accept' in step context
+fn test_accept_keyword() {
+    let input = r#"accept action trigger;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'accept' keyword should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test filter expression with bracket notation
+/// From FeatureReferencingPerformances.kerml: `expr[1]`
+/// Per SysML v2 Spec §7.4.2.5: "Filter expressions select elements based
+/// on conditions."
+#[test]
+#[ignore] // Parser doesn't handle filter expressions in feature paths
+fn test_filter_expression() {
+    let input = r#"feature x : T redefines y[1];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Filter expression should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `= value` assignment in feature declaration
+/// From Parts.sysml: `ref part this : Part :>> Action::this = that as Part`
+/// Per SysML v2 Spec §7.3.3.8: "A FeatureValue specifies the value of a
+/// Feature in the context of its owning Type."
+#[test]
+#[ignore] // Parser doesn't handle '= value' assignment with 'as' cast
+fn test_feature_value_with_cast() {
+    let input = r#"ref feature x : T = y as T;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Feature value with cast should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test combined redefines with assignment
+/// From Parts.sysml: `:>> Action::this = that as Part`
+#[test]
+#[ignore] // Parser doesn't handle combined :>> with = assignment
+fn test_redefines_with_assignment() {
+    let input = r#"feature x :>> parent::y = initialValue;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Redefines with assignment should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test `frame` keyword for spatial references
+/// From SpatialFrames.kerml: `feature frame : SpatialFrame`
+/// Per SysML v2 Spec: Spatial modeling constructs for coordinate frames.
+#[test]
+#[ignore] // Parser doesn't recognize 'frame' as feature name (reserved keyword?)
+fn test_frame_feature() {
+    let input = r#"feature frame : SpatialFrame[1];"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "'frame' feature should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test namespace import with alias (KerML.kerml pattern)
+/// `public import Kernel::* ;`
+#[test]
+fn test_public_wildcard_import() {
+    let input = r#"public import Kernel::*;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Public wildcard import should parse: {:?}",
+        result.err()
+    );
+}
+
+/// Test negative exponents in numeric literals
+/// From SIPrefixes.sysml: `10^-1`
+#[test]
+#[ignore] // Parser may not handle negative exponents in this context
+fn test_negative_exponent_literal() {
+    let input = r#"attribute prefix : Real = 10^-1;"#;
+    let result = parse_rule(Rule::namespace_body_element, input);
+    assert!(
+        result.is_ok(),
+        "Negative exponent should parse: {:?}",
+        result.err()
+    );
+}

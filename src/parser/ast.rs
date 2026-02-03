@@ -813,6 +813,14 @@ impl Definition {
         self.0.children().find_map(ConstraintBody::cast)
     }
 
+    /// Get members from the definition's body.
+    /// This is a convenience method that calls `body()?.members()`.
+    pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
+        self.body()
+            .into_iter()
+            .flat_map(|body| body.members().collect::<Vec<_>>())
+    }
+
     /// Get prefix metadata references from preceding siblings.
     /// e.g., `#service port def ServiceDiscovery` -> returns [PrefixMetadata for "service"]
     pub fn prefix_metadata(&self) -> Vec<PrefixMetadata> {
@@ -941,6 +949,26 @@ impl Usage {
             .children_with_tokens()
             .filter_map(|e| e.into_token())
             .any(|t| t.kind() == SyntaxKind::VARIATION_KW)
+    }
+
+    /// Check if this feature has the `var` modifier indicating mutability.
+    /// Per SysML v2 Spec §7.3.3.6: "var" indicates a feature whose values can change.
+    /// e.g., `var feature annotatedElement : Element[1..*]`
+    pub fn is_var(&self) -> bool {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::VAR_KW)
+    }
+
+    /// Check if this feature has the `all` keyword for universal quantification.
+    /// Per SysML v2 Spec §7.3.3.4: "all" indicates sufficient/complete coverage.
+    /// e.g., `feature all instances : C[*]`
+    pub fn is_all(&self) -> bool {
+        self.0
+            .children_with_tokens()
+            .filter_map(|e| e.into_token())
+            .any(|t| t.kind() == SyntaxKind::ALL_KW)
     }
 
     pub fn is_parallel(&self) -> bool {
@@ -1238,6 +1266,7 @@ impl Name {
                         | SyntaxKind::START_KW
                         | SyntaxKind::END_KW
                         | SyntaxKind::DONE_KW
+                        | SyntaxKind::THIS_KW
                 )
             })
             .map(|t| t.text().to_string())
@@ -1260,7 +1289,16 @@ impl ShortName {
                         | SyntaxKind::DONE_KW
                 )
             })
-            .map(|t| t.text().to_string())
+            .map(|t| {
+                let text = t.text();
+                // Strip surrounding quotes from unrestricted names like '+'
+                // This matches the behavior of QualifiedName::segments()
+                if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
+                    text[1..text.len() - 1].to_string()
+                } else {
+                    text.to_string()
+                }
+            })
     }
 }
 
@@ -1373,6 +1411,7 @@ impl Specialization {
                 SyntaxKind::TILDE => return Some(SpecializationKind::Conjugates),
                 SyntaxKind::FROM_KW => return Some(SpecializationKind::FeatureChain),
                 SyntaxKind::TO_KW => return Some(SpecializationKind::FeatureChain),
+                SyntaxKind::CHAINS_KW => return Some(SpecializationKind::FeatureChain),
                 _ => {}
             }
         }
@@ -1400,6 +1439,9 @@ pub enum SpecializationKind {
     Redefines,
     References,
     Conjugates,
+    /// Feature chaining via `::>` shorthand or `chains` keyword.
+    /// Per SysML v2 Spec §7.3.4.5: indicates a feature chain relationship.
+    /// e.g., `feature x ::> a.b` or `feature self subsets things chains things.that`
     FeatureChain,
 }
 
@@ -1870,9 +1912,22 @@ impl Connector {
         self.0.children().find_map(Name::cast)
     }
 
+    /// Get the typing clause (e.g., `:Link` in `connector :Link`)
+    pub fn typing(&self) -> Option<Typing> {
+        self.0.children().find_map(Typing::cast)
+    }
+
     /// Get the connector part (contains ends)
     pub fn connector_part(&self) -> Option<ConnectorPart> {
         self.0.children().find_map(ConnectorPart::cast)
+    }
+
+    /// Get connector endpoints directly (convenience for `connector_part().ends()`)
+    /// Returns iterator over connector ends for `from ... to ...` or `connect ... to ...`
+    pub fn ends(&self) -> impl Iterator<Item = ConnectorEnd> + '_ {
+        self.connector_part()
+            .into_iter()
+            .flat_map(|cp| cp.ends().collect::<Vec<_>>())
     }
 
     /// Get the namespace body

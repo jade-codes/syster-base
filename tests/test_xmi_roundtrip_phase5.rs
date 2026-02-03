@@ -13,8 +13,7 @@ mod roundtrip_tests {
     use syster::hir::{FileText, RootDatabase, file_symbols_from_text};
     use syster::ide::AnalysisHost;
     use syster::interchange::{
-        ModelFormat, Xmi, apply_metadata_to_host, decompile, model_from_symbols,
-        symbols_from_model,
+        ModelFormat, Xmi, apply_metadata_to_host, decompile, model_from_symbols, symbols_from_model,
     };
 
     #[test]
@@ -300,11 +299,7 @@ package NewModel {
                     .iter()
                     .find(|s| s.name.as_ref() == name.as_ref());
 
-                assert!(
-                    found.is_some(),
-                    "Imported symbol {} should exist",
-                    name
-                );
+                assert!(found.is_some(), "Imported symbol {} should exist", name);
                 assert_eq!(
                     found.unwrap().element_id.as_ref(),
                     element.id.as_str(),
@@ -320,7 +315,8 @@ package NewModel {
         if let Some(new_part) = new_part {
             for element in imported_model.iter_elements() {
                 assert_ne!(
-                    new_part.element_id.as_ref(), element.id.as_str(),
+                    new_part.element_id.as_ref(),
+                    element.id.as_str(),
                     "New element should have different ID from imported elements"
                 );
             }

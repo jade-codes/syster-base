@@ -363,32 +363,33 @@ impl AnalysisHost {
     /// Add a model by decompiling it to SysML and adding as a synthetic file.
     /// The model is converted to SysML text, then parsed normally.
     /// Element IDs from the model are preserved via the element_id_cache.
-    /// 
+    ///
     /// # Arguments
     /// * `model` - The interchange model to import
     /// * `virtual_path` - A virtual path for the generated file (e.g., "imported.sysml")
     #[cfg(feature = "interchange")]
-    pub fn add_model(&mut self, model: &crate::interchange::Model, virtual_path: &str) -> Vec<crate::syntax::parser::ParseError> {
+    pub fn add_model(
+        &mut self,
+        model: &crate::interchange::Model,
+        virtual_path: &str,
+    ) -> Vec<crate::syntax::parser::ParseError> {
         use crate::interchange::decompile;
-        
+
         // Pre-populate element_id_cache with IDs from the model
         // This ensures the original XMI IDs are preserved after parsing
         for element in model.iter_elements() {
             // Prefer qualified_name if available, fall back to simple name
-            let key = element.qualified_name.as_ref()
-                .or(element.name.as_ref());
-            
+            let key = element.qualified_name.as_ref().or(element.name.as_ref());
+
             if let Some(name) = key {
-                self.element_id_cache.insert(
-                    name.clone(),
-                    Arc::from(element.id.as_str()),
-                );
+                self.element_id_cache
+                    .insert(name.clone(), Arc::from(element.id.as_str()));
             }
         }
-        
+
         // Decompile the model to SysML text
         let result = decompile(model);
-        
+
         // Add as a normal file - the parsing pipeline handles everything
         // The element_id_cache will restore the original IDs during rebuild
         self.set_file_content(virtual_path, &result.text)

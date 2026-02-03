@@ -727,8 +727,12 @@ mod tests {
                 "isVariation": true
             }"#;
 
-            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
-            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            let model = JsonLd
+                .read(json.as_bytes())
+                .expect("Failed to read JSON-LD");
+            let elem = model
+                .get(&ElementId::new("pd1"))
+                .expect("Element not found");
             assert!(elem.is_variation, "isVariation should be true");
         }
 
@@ -742,7 +746,9 @@ mod tests {
                 "isDerived": true
             }"#;
 
-            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let model = JsonLd
+                .read(json.as_bytes())
+                .expect("Failed to read JSON-LD");
             let elem = model.get(&ElementId::new("f1")).expect("Element not found");
             assert!(elem.is_derived, "isDerived should be true");
         }
@@ -757,7 +763,9 @@ mod tests {
                 "isReadOnly": true
             }"#;
 
-            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let model = JsonLd
+                .read(json.as_bytes())
+                .expect("Failed to read JSON-LD");
             let elem = model.get(&ElementId::new("a1")).expect("Element not found");
             assert!(elem.is_readonly, "isReadOnly should be true");
         }
@@ -772,7 +780,9 @@ mod tests {
                 "isParallel": true
             }"#;
 
-            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
+            let model = JsonLd
+                .read(json.as_bytes())
+                .expect("Failed to read JSON-LD");
             let elem = model.get(&ElementId::new("s1")).expect("Element not found");
             assert!(elem.is_parallel, "isParallel should be true");
         }
@@ -870,8 +880,12 @@ mod tests {
                 "name": "NormalPart"
             }"#;
 
-            let model = JsonLd.read(json.as_bytes()).expect("Failed to read JSON-LD");
-            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            let model = JsonLd
+                .read(json.as_bytes())
+                .expect("Failed to read JSON-LD");
+            let elem = model
+                .get(&ElementId::new("pd1"))
+                .expect("Element not found");
 
             // All modifiers should default to false when not specified
             assert!(!elem.is_abstract, "isAbstract should default to false");

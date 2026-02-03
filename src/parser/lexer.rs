@@ -72,11 +72,16 @@ pub enum LogosToken {
     // =========================================================================
     // LITERALS
     // =========================================================================
-    #[regex(r"[a-zA-Z_][a-zA-Z0-9_]*")]
+    // Unicode-aware identifier: starts with letter or underscore, followed by letters, numbers, or underscores
+    // \p{L} matches any Unicode letter (Latin, Greek, Cyrillic, etc.)
+    // \p{N} matches any Unicode numeric character
+    #[regex(r"[\p{L}_][\p{L}\p{N}_]*")]
     Ident,
 
+    // Unrestricted name: single-quoted string like 'My Name' or '+'
+    // Can contain any characters except single quotes
     #[regex(r"'[^']*'")]
-    UnrestrictedName, // Short name like '<name>' - actually uses < > in SysML
+    UnrestrictedName,
 
     #[regex(r"[0-9]+")]
     Integer,
@@ -256,6 +261,8 @@ pub enum LogosToken {
     CalcKw,
     #[token("case")]
     CaseKw,
+    #[token("chains")]
+    ChainsKw,
     #[token("class")]
     ClassKw,
     #[token("classifier")]
@@ -504,6 +511,8 @@ pub enum LogosToken {
     UntilKw,
     #[token("use")]
     UseKw,
+    #[token("var")]
+    VarKw,
     #[token("variant")]
     VariantKw,
     #[token("variation")]
@@ -616,6 +625,7 @@ impl From<LogosToken> for SyntaxKind {
             ByKw => SyntaxKind::BY_KW,
             CalcKw => SyntaxKind::CALC_KW,
             CaseKw => SyntaxKind::CASE_KW,
+            ChainsKw => SyntaxKind::CHAINS_KW,
             ClassKw => SyntaxKind::CLASS_KW,
             ClassifierKw => SyntaxKind::CLASSIFIER_KW,
             CommentKw => SyntaxKind::COMMENT_KW,
@@ -740,6 +750,7 @@ impl From<LogosToken> for SyntaxKind {
             UnionsKw => SyntaxKind::UNIONS_KW,
             UntilKw => SyntaxKind::UNTIL_KW,
             UseKw => SyntaxKind::USE_KW,
+            VarKw => SyntaxKind::VAR_KW,
             VariantKw => SyntaxKind::VARIANT_KW,
             VariationKw => SyntaxKind::VARIATION_KW,
             VerificationKw => SyntaxKind::VERIFICATION_KW,

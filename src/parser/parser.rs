@@ -350,11 +350,15 @@ impl<'a> ExpressionParser for Parser<'a> {
 
     fn at_name_token(&self) -> bool {
         // In SysML/KerML, certain keywords can be used as identifiers in context
-        // (contextual keywords). This includes names like "start", "end", "done" etc.
-        // which are common member names in action definitions.
+        // (contextual keywords). This includes names like "start", "end", "done", "this" etc.
+        // which are common member names in action definitions or self-references.
         matches!(
             self.current_kind(),
-            SyntaxKind::IDENT | SyntaxKind::START_KW | SyntaxKind::END_KW | SyntaxKind::DONE_KW
+            SyntaxKind::IDENT
+                | SyntaxKind::START_KW
+                | SyntaxKind::END_KW
+                | SyntaxKind::DONE_KW
+                | SyntaxKind::THIS_KW
         )
     }
 

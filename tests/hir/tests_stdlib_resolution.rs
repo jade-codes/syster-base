@@ -10,11 +10,6 @@
 //! 4. Cross-file reference resolution (E0001) - Library type references
 //! 5. Keyword references (E0001) - `self`, `that`, `participant`
 //! 6. Unicode names (E0001) - Unicode identifiers and short names
-//!
-//! Known issues (ignored tests):
-//! - `test_operator_short_names`: Qualified ref with short name `Pkg::'+'` doesn't resolve
-//! - `test_unicode_identifier`: Parser doesn't support unicode in identifiers
-//! - `test_unicode_unit_symbols`: Parser doesn't support unicode in short names
 
 use crate::helpers::hir_helpers::*;
 use syster::hir::{Diagnostic, Severity, check_file};
@@ -82,16 +77,16 @@ mod duplicate_definition_false_positives {
     }
 
     /// Implicit redefinitions (same name as inherited feature) should not be duplicates.
-    /// Pattern from KerML.kerml: many `var` declarations in nested scopes
+    /// Pattern from KerML.kerml: many attribute declarations in nested scopes
     #[test]
     fn test_same_name_in_nested_scopes_not_duplicate() {
         let source = r#"
             package Test {
                 part def A {
-                    attribute var : Integer;
+                    attribute value : Integer;
                 }
                 part def B {
-                    attribute var : Integer;
+                    attribute value : Integer;
                 }
             }
         "#;
@@ -413,13 +408,8 @@ mod unicode_names {
 
     /// Unicode identifiers should work (e.g., `Péclet`, `Alfvén`).
     /// Pattern from ISQCharacteristicNumbers.sysml
-    /// 
-    /// NOTE: This tests that unicode identifiers PARSE correctly.
-    /// Currently the parser does not support unicode characters in identifiers.
     #[test]
-    #[ignore = "Unicode identifiers not handled correctly - PARSER ISSUE"]
     fn test_unicode_identifier() {
-        // This currently fails at the PARSER level, not the semantic level
         let source = r#"
             package Test {
                 attribute def PecletNumber;
@@ -443,13 +433,8 @@ mod unicode_names {
 
     /// Special unit symbols like `′` (prime) and `″` (double prime).
     /// Pattern from SI.sysml for angle units
-    /// 
-    /// NOTE: This tests unicode symbols in short names.
-    /// Currently the parser does not support unicode in short names.
     #[test]
-    #[ignore = "Unicode symbols in short names not handled - PARSER ISSUE"]
     fn test_unicode_unit_symbols() {
-        // Fails at PARSER level due to unicode in short name
         let source = r#"
             package Test {
                 attribute def AngleUnit;
@@ -475,11 +460,7 @@ mod unicode_names {
 
     /// Operator-like short names like `'+'`, `'-'`, `'*'`.
     /// Pattern from function libraries: `'+' redefines ScalarFunctions::'+'`
-    ///
-    /// REAL FAILURE: Qualified reference using short name `ScalarFunctions::'+'`
-    /// doesn't resolve. The short name lookup in qualified paths isn't working.
     #[test]
-    #[ignore = "Operator short names not resolving - REAL SEMANTIC ISSUE"]
     fn test_operator_short_names() {
         let source = r#"
             package ScalarFunctions {

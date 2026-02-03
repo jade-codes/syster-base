@@ -465,6 +465,7 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         | SyntaxKind::COLON_GT => p.parse_usage(),
 
         SyntaxKind::VAR_KW
+        | SyntaxKind::REF_KW
         | SyntaxKind::COMPOSITE_KW
         | SyntaxKind::PORTION_KW
         | SyntaxKind::MEMBER_KW
@@ -1149,14 +1150,18 @@ pub fn is_name_kind(kind: SyntaxKind) -> bool {
 /// Per pest: identification = { (short_name ~ regular_name?) | regular_name }
 /// Per pest: short_name = { "<" ~ name ~ ">" }
 /// Per pest: regular_name = { name }
+/// Per pest: name_identifier allows keywords as identifiers (for short names like `<var>`)
 pub fn parse_identification<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAME);
 
     // Short name: <shortname>
+    // Per pest grammar, short names can contain keywords as identifiers
     if p.at(SyntaxKind::LT) {
         p.start_node(SyntaxKind::SHORT_NAME);
         bump_and_skip(p); // <
-        if p.at_name_token() {
+        // Accept any identifier-like token including keywords for short names
+        // This handles cases like `<var>` in SI.sysml
+        if p.at_name_token() || p.current_kind().is_keyword() {
             p.bump();
         }
         p.skip_trivia();
@@ -1786,6 +1791,8 @@ fn parse_feature_prefix_modifiers<P: KerMLParser>(p: &mut P) {
         SyntaxKind::CONST_KW,
         SyntaxKind::END_KW,
         SyntaxKind::VARIATION_KW,
+        SyntaxKind::READONLY_KW,
+        SyntaxKind::REF_KW,
     ]) {
         p.bump();
         p.skip_trivia();
@@ -1915,6 +1922,13 @@ pub fn parse_usage_impl<P: KerMLParser>(p: &mut P) {
 
     let _consumed_feature_keyword = parse_optional_feature_keyword(p);
     p.skip_trivia();
+
+    // Handle 'all' keyword after feature keyword (universal quantification)
+    // Per SysML v2 Spec §7.3.3.4: feature all x means x covers all instances
+    if p.at(SyntaxKind::ALL_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
 
     parse_usage_name_or_shorthand(p);
 

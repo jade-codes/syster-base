@@ -919,7 +919,9 @@ mod tests {
 </xmi:XMI>"#;
 
             let model = Xmi.read(xmi_content).expect("Failed to read XMI");
-            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            let elem = model
+                .get(&ElementId::new("pd1"))
+                .expect("Element not found");
             assert!(elem.is_abstract, "isAbstract should be true");
         }
 
@@ -932,7 +934,9 @@ mod tests {
 </xmi:XMI>"#;
 
             let model = Xmi.read(xmi_content).expect("Failed to read XMI");
-            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            let elem = model
+                .get(&ElementId::new("pd1"))
+                .expect("Element not found");
             assert!(elem.is_variation, "isVariation should be true");
         }
 
@@ -1068,7 +1072,9 @@ mod tests {
 </xmi:XMI>"#;
 
             let model = Xmi.read(xmi_content).expect("Failed to read XMI");
-            let elem = model.get(&ElementId::new("pd1")).expect("Element not found");
+            let elem = model
+                .get(&ElementId::new("pd1"))
+                .expect("Element not found");
 
             // All modifiers should default to false when not specified
             assert!(!elem.is_abstract, "isAbstract should default to false");
