@@ -282,7 +282,7 @@ mod tests {
 
     #[test]
     fn test_completion_item_from_symbol() {
-        let mut symbol = make_symbol("Engine", "Vehicle::Engine", SymbolKind::PartDef);
+        let mut symbol = make_symbol("Engine", "Vehicle::Engine", SymbolKind::PartDefinition);
         symbol.supertypes = vec![Arc::from("Component")];
         symbol.doc = Some(Arc::from("An engine component"));
 
@@ -308,8 +308,8 @@ mod tests {
         index.add_file(
             FileId::new(0),
             vec![
-                make_symbol("Car", "Car", SymbolKind::PartDef),
-                make_symbol("Engine", "Engine", SymbolKind::PartDef),
+                make_symbol("Car", "Car", SymbolKind::PartDefinition),
+                make_symbol("Engine", "Engine", SymbolKind::PartDefinition),
             ],
         );
 

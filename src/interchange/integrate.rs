@@ -170,25 +170,34 @@ fn relationship_kind_to_hir(kind: &RelationshipKind) -> Option<HirRelKind> {
 fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
     match kind {
         ElementKind::Package | ElementKind::LibraryPackage => SymbolKind::Package,
-        ElementKind::PartDefinition => SymbolKind::PartDef,
-        ElementKind::ItemDefinition => SymbolKind::ItemDef,
-        ElementKind::ActionDefinition => SymbolKind::ActionDef,
-        ElementKind::PortDefinition => SymbolKind::PortDef,
-        ElementKind::AttributeDefinition => SymbolKind::AttributeDef,
-        ElementKind::ConnectionDefinition => SymbolKind::ConnectionDef,
-        ElementKind::InterfaceDefinition => SymbolKind::InterfaceDef,
-        ElementKind::AllocationDefinition => SymbolKind::AllocationDef,
-        ElementKind::RequirementDefinition => SymbolKind::RequirementDef,
-        ElementKind::ConstraintDefinition => SymbolKind::ConstraintDef,
-        ElementKind::StateDefinition => SymbolKind::StateDef,
-        ElementKind::CalculationDefinition => SymbolKind::CalculationDef,
-        ElementKind::UseCaseDefinition => SymbolKind::UseCaseDef,
-        ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDef,
-        ElementKind::ConcernDefinition => SymbolKind::ConcernDef,
-        ElementKind::ViewDefinition => SymbolKind::ViewDef,
-        ElementKind::ViewpointDefinition => SymbolKind::ViewpointDef,
-        ElementKind::RenderingDefinition => SymbolKind::RenderingDef,
-        ElementKind::EnumerationDefinition => SymbolKind::EnumerationDef,
+        ElementKind::PartDefinition => SymbolKind::PartDefinition,
+        ElementKind::ItemDefinition => SymbolKind::ItemDefinition,
+        ElementKind::ActionDefinition => SymbolKind::ActionDefinition,
+        ElementKind::PortDefinition => SymbolKind::PortDefinition,
+        ElementKind::AttributeDefinition => SymbolKind::AttributeDefinition,
+        ElementKind::ConnectionDefinition => SymbolKind::ConnectionDefinition,
+        ElementKind::InterfaceDefinition => SymbolKind::InterfaceDefinition,
+        ElementKind::AllocationDefinition => SymbolKind::AllocationDefinition,
+        ElementKind::RequirementDefinition => SymbolKind::RequirementDefinition,
+        ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
+        ElementKind::StateDefinition => SymbolKind::StateDefinition,
+        ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
+        ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
+        ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
+        ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
+        ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
+        ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
+        ElementKind::RenderingDefinition => SymbolKind::RenderingDefinition,
+        ElementKind::EnumerationDefinition => SymbolKind::EnumerationDefinition,
+        ElementKind::MetadataDefinition => SymbolKind::MetadataDefinition,
+        // KerML definitions
+        ElementKind::DataType => SymbolKind::DataType,
+        ElementKind::Class => SymbolKind::Class,
+        ElementKind::Structure => SymbolKind::Structure,
+        ElementKind::Behavior => SymbolKind::Behavior,
+        ElementKind::Function => SymbolKind::Function,
+        ElementKind::Association | ElementKind::AssociationStructure => SymbolKind::Association,
+        ElementKind::Interaction => SymbolKind::Interaction,
         // Usages
         ElementKind::PartUsage => SymbolKind::PartUsage,
         ElementKind::ItemUsage => SymbolKind::ItemUsage,
@@ -205,7 +214,7 @@ fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
         ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
         ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
         ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
-        ElementKind::FlowConnectionUsage => SymbolKind::FlowUsage,
+        ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
         // Other
         ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
             SymbolKind::Import
@@ -334,25 +343,34 @@ fn symbol_kind_to_element_kind(kind: crate::hir::SymbolKind) -> ElementKind {
     use crate::hir::SymbolKind;
     match kind {
         SymbolKind::Package => ElementKind::Package,
-        SymbolKind::PartDef => ElementKind::PartDefinition,
-        SymbolKind::ItemDef => ElementKind::ItemDefinition,
-        SymbolKind::ActionDef => ElementKind::ActionDefinition,
-        SymbolKind::PortDef => ElementKind::PortDefinition,
-        SymbolKind::AttributeDef => ElementKind::AttributeDefinition,
-        SymbolKind::ConnectionDef => ElementKind::ConnectionDefinition,
-        SymbolKind::InterfaceDef => ElementKind::InterfaceDefinition,
-        SymbolKind::AllocationDef => ElementKind::AllocationDefinition,
-        SymbolKind::RequirementDef => ElementKind::RequirementDefinition,
-        SymbolKind::ConstraintDef => ElementKind::ConstraintDefinition,
-        SymbolKind::StateDef => ElementKind::StateDefinition,
-        SymbolKind::CalculationDef => ElementKind::CalculationDefinition,
-        SymbolKind::UseCaseDef => ElementKind::UseCaseDefinition,
-        SymbolKind::AnalysisCaseDef => ElementKind::AnalysisCaseDefinition,
-        SymbolKind::ConcernDef => ElementKind::ConcernDefinition,
-        SymbolKind::ViewDef => ElementKind::ViewDefinition,
-        SymbolKind::ViewpointDef => ElementKind::ViewpointDefinition,
-        SymbolKind::RenderingDef => ElementKind::RenderingDefinition,
-        SymbolKind::EnumerationDef => ElementKind::EnumerationDefinition,
+        SymbolKind::PartDefinition => ElementKind::PartDefinition,
+        SymbolKind::ItemDefinition => ElementKind::ItemDefinition,
+        SymbolKind::ActionDefinition => ElementKind::ActionDefinition,
+        SymbolKind::PortDefinition => ElementKind::PortDefinition,
+        SymbolKind::AttributeDefinition => ElementKind::AttributeDefinition,
+        SymbolKind::ConnectionDefinition => ElementKind::ConnectionDefinition,
+        SymbolKind::InterfaceDefinition => ElementKind::InterfaceDefinition,
+        SymbolKind::AllocationDefinition => ElementKind::AllocationDefinition,
+        SymbolKind::RequirementDefinition => ElementKind::RequirementDefinition,
+        SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
+        SymbolKind::StateDefinition => ElementKind::StateDefinition,
+        SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
+        SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
+        SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
+        SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
+        SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
+        SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
+        SymbolKind::RenderingDefinition => ElementKind::RenderingDefinition,
+        SymbolKind::EnumerationDefinition => ElementKind::EnumerationDefinition,
+        // KerML definitions
+        SymbolKind::DataType => ElementKind::DataType,
+        SymbolKind::Class => ElementKind::Class,
+        SymbolKind::Structure => ElementKind::Structure,
+        SymbolKind::Behavior => ElementKind::Behavior,
+        SymbolKind::Function => ElementKind::Function,
+        SymbolKind::Association => ElementKind::Association,
+        SymbolKind::MetadataDefinition => ElementKind::MetadataDefinition,
+        SymbolKind::Interaction => ElementKind::Interaction,
         // Usages
         SymbolKind::PartUsage => ElementKind::PartUsage,
         SymbolKind::ItemUsage => ElementKind::ItemUsage,
@@ -369,7 +387,7 @@ fn symbol_kind_to_element_kind(kind: crate::hir::SymbolKind) -> ElementKind {
         SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
         SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
         SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
-        SymbolKind::FlowUsage => ElementKind::FlowConnectionUsage,
+        SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
         // Other
         SymbolKind::Import => ElementKind::Import,
         SymbolKind::Comment => ElementKind::Comment,
@@ -658,7 +676,7 @@ mod tests {
             .iter()
             .find(|s| s.name.as_ref() == "Car")
             .expect("Should have Car");
-        assert_eq!(car_sym.kind, SymbolKind::PartDef);
+        assert_eq!(car_sym.kind, SymbolKind::PartDefinition);
         // Note: Without qualified_name set in the Element, this falls back to just the name
         assert_eq!(car_sym.qualified_name.as_ref(), "Car");
 
@@ -666,7 +684,7 @@ mod tests {
             .iter()
             .find(|s| s.name.as_ref() == "Engine")
             .expect("Should have Engine");
-        assert_eq!(engine_sym.kind, SymbolKind::PartDef);
+        assert_eq!(engine_sym.kind, SymbolKind::PartDefinition);
     }
 
     #[test]

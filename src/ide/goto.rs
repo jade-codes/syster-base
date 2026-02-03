@@ -380,7 +380,7 @@ mod tests {
     #[test]
     fn test_goto_definition_direct() {
         let mut index = SymbolIndex::new();
-        let def = make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 0, 5);
+        let def = make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0, 5);
         index.add_file(FileId::new(0), vec![def]);
 
         let result = goto_definition(&index, FileId::new(0), 5, 5);
@@ -395,7 +395,7 @@ mod tests {
         let mut index = SymbolIndex::new();
 
         // Definition
-        let def = make_symbol("Engine", "Engine", SymbolKind::PartDef, 0, 1);
+        let def = make_symbol("Engine", "Engine", SymbolKind::PartDefinition, 0, 1);
 
         // Usage with type reference
         let mut usage = make_symbol("engine", "Car::engine", SymbolKind::PartUsage, 0, 10);
@@ -418,7 +418,7 @@ mod tests {
         let mut index = SymbolIndex::new();
 
         // Definition at line 1
-        let def = make_symbol("Engine", "Engine", SymbolKind::PartDef, 0, 1);
+        let def = make_symbol("Engine", "Engine", SymbolKind::PartDefinition, 0, 1);
 
         // Usage at line 10, with type reference at columns 15-21 (where "Engine" appears)
         let mut usage = make_symbol("engine", "Car::engine", SymbolKind::PartUsage, 0, 10);

@@ -36,27 +36,34 @@ impl From<SymbolKind> for TokenType {
         match kind {
             SymbolKind::Package => TokenType::Namespace,
             // All definition types
-            SymbolKind::PartDef
-            | SymbolKind::ItemDef
-            | SymbolKind::ActionDef
-            | SymbolKind::PortDef
-            | SymbolKind::AttributeDef
-            | SymbolKind::ConnectionDef
-            | SymbolKind::InterfaceDef
-            | SymbolKind::AllocationDef
-            | SymbolKind::RequirementDef
-            | SymbolKind::ConstraintDef
-            | SymbolKind::StateDef
-            | SymbolKind::CalculationDef
-            | SymbolKind::UseCaseDef
-            | SymbolKind::AnalysisCaseDef
-            | SymbolKind::ConcernDef
-            | SymbolKind::ViewDef
-            | SymbolKind::ViewpointDef
-            | SymbolKind::RenderingDef
-            | SymbolKind::EnumerationDef
-            | SymbolKind::MetaclassDef
-            | SymbolKind::InteractionDef => TokenType::Type,
+            SymbolKind::PartDefinition
+            | SymbolKind::ItemDefinition
+            | SymbolKind::ActionDefinition
+            | SymbolKind::PortDefinition
+            | SymbolKind::AttributeDefinition
+            | SymbolKind::ConnectionDefinition
+            | SymbolKind::InterfaceDefinition
+            | SymbolKind::AllocationDefinition
+            | SymbolKind::RequirementDefinition
+            | SymbolKind::ConstraintDefinition
+            | SymbolKind::StateDefinition
+            | SymbolKind::CalculationDefinition
+            | SymbolKind::UseCaseDefinition
+            | SymbolKind::AnalysisCaseDefinition
+            | SymbolKind::ConcernDefinition
+            | SymbolKind::ViewDefinition
+            | SymbolKind::ViewpointDefinition
+            | SymbolKind::RenderingDefinition
+            | SymbolKind::EnumerationDefinition
+            | SymbolKind::MetadataDefinition
+            | SymbolKind::Interaction
+            // KerML definitions
+            | SymbolKind::DataType
+            | SymbolKind::Class
+            | SymbolKind::Structure
+            | SymbolKind::Behavior
+            | SymbolKind::Function
+            | SymbolKind::Association => TokenType::Type,
             // All usage types
             SymbolKind::PartUsage
             | SymbolKind::ItemUsage
@@ -73,7 +80,7 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::CalculationUsage
             | SymbolKind::ReferenceUsage
             | SymbolKind::OccurrenceUsage
-            | SymbolKind::FlowUsage
+            | SymbolKind::FlowConnectionUsage
             | SymbolKind::ViewUsage
             | SymbolKind::ViewpointUsage
             | SymbolKind::RenderingUsage => TokenType::Property,

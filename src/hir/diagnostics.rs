@@ -904,7 +904,7 @@ mod tests {
         let mut index = SymbolIndex::new();
 
         // Add the type definition
-        let wheel_def = make_symbol("Wheel", "Wheel", SymbolKind::PartDef, 0);
+        let wheel_def = make_symbol("Wheel", "Wheel", SymbolKind::PartDefinition, 0);
 
         // Add a symbol that references the type
         let mut wheel_usage = make_symbol("wheel", "Vehicle::wheel", SymbolKind::PartUsage, 0);

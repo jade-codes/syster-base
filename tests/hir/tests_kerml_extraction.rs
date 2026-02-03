@@ -56,7 +56,7 @@ fn test_kerml_class_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Pkg::MyClass");
     let sym = get_symbol(analysis.symbol_index(), "Pkg::MyClass");
     // KerML class maps to PartDef
-    assert_symbol_kind(sym, SymbolKind::PartDef);
+    assert_symbol_kind(sym, SymbolKind::PartDefinition);
 }
 
 #[test]
@@ -72,7 +72,7 @@ fn test_kerml_datatype_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Types::ScalarValue");
     let sym = get_symbol(analysis.symbol_index(), "Types::ScalarValue");
     // KerML datatype maps to AttributeDef
-    assert_symbol_kind(sym, SymbolKind::AttributeDef);
+    assert_symbol_kind(sym, SymbolKind::AttributeDefinition);
 }
 
 #[test]
@@ -88,7 +88,7 @@ fn test_kerml_struct_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Pkg::MyStruct");
     let sym = get_symbol(analysis.symbol_index(), "Pkg::MyStruct");
     // KerML struct maps to PartDef
-    assert_symbol_kind(sym, SymbolKind::PartDef);
+    assert_symbol_kind(sym, SymbolKind::PartDefinition);
 }
 
 #[test]
@@ -104,7 +104,7 @@ fn test_kerml_behavior_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Behaviors::Process");
     let sym = get_symbol(analysis.symbol_index(), "Behaviors::Process");
     // KerML behavior maps to ActionDef
-    assert_symbol_kind(sym, SymbolKind::ActionDef);
+    assert_symbol_kind(sym, SymbolKind::ActionDefinition);
 }
 
 #[test]
@@ -120,7 +120,7 @@ fn test_kerml_function_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Funcs::Calculate");
     let sym = get_symbol(analysis.symbol_index(), "Funcs::Calculate");
     // KerML function maps to CalculationDef
-    assert_symbol_kind(sym, SymbolKind::CalculationDef);
+    assert_symbol_kind(sym, SymbolKind::CalculationDefinition);
 }
 
 #[test]
@@ -136,7 +136,7 @@ fn test_kerml_association_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Pkg::Link");
     let sym = get_symbol(analysis.symbol_index(), "Pkg::Link");
     // KerML association maps to ConnectionDef
-    assert_symbol_kind(sym, SymbolKind::ConnectionDef);
+    assert_symbol_kind(sym, SymbolKind::ConnectionDefinition);
 }
 
 // =============================================================================

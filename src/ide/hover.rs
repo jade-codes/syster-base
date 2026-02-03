@@ -198,27 +198,34 @@ fn build_signature(symbol: &HirSymbol) -> String {
 
     match symbol.kind {
         // Definitions
-        SymbolKind::PartDef
-        | SymbolKind::ItemDef
-        | SymbolKind::ActionDef
-        | SymbolKind::PortDef
-        | SymbolKind::AttributeDef
-        | SymbolKind::ConnectionDef
-        | SymbolKind::InterfaceDef
-        | SymbolKind::AllocationDef
-        | SymbolKind::RequirementDef
-        | SymbolKind::ConstraintDef
-        | SymbolKind::StateDef
-        | SymbolKind::CalculationDef
-        | SymbolKind::UseCaseDef
-        | SymbolKind::AnalysisCaseDef
-        | SymbolKind::ConcernDef
-        | SymbolKind::ViewDef
-        | SymbolKind::ViewpointDef
-        | SymbolKind::RenderingDef
-        | SymbolKind::EnumerationDef
-        | SymbolKind::MetaclassDef
-        | SymbolKind::InteractionDef => {
+        SymbolKind::PartDefinition
+        | SymbolKind::ItemDefinition
+        | SymbolKind::ActionDefinition
+        | SymbolKind::PortDefinition
+        | SymbolKind::AttributeDefinition
+        | SymbolKind::ConnectionDefinition
+        | SymbolKind::InterfaceDefinition
+        | SymbolKind::AllocationDefinition
+        | SymbolKind::RequirementDefinition
+        | SymbolKind::ConstraintDefinition
+        | SymbolKind::StateDefinition
+        | SymbolKind::CalculationDefinition
+        | SymbolKind::UseCaseDefinition
+        | SymbolKind::AnalysisCaseDefinition
+        | SymbolKind::ConcernDefinition
+        | SymbolKind::ViewDefinition
+        | SymbolKind::ViewpointDefinition
+        | SymbolKind::RenderingDefinition
+        | SymbolKind::EnumerationDefinition
+        | SymbolKind::MetadataDefinition
+        | SymbolKind::Interaction
+        // KerML definitions
+        | SymbolKind::DataType
+        | SymbolKind::Class
+        | SymbolKind::Structure
+        | SymbolKind::Behavior
+        | SymbolKind::Function
+        | SymbolKind::Association => {
             let mut sig = format!("{} {}", kind_str, name_with_alias);
             if !symbol.supertypes.is_empty() {
                 sig.push_str(" :> ");
@@ -243,7 +250,7 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::CalculationUsage
         | SymbolKind::ReferenceUsage
         | SymbolKind::OccurrenceUsage
-        | SymbolKind::FlowUsage
+        | SymbolKind::FlowConnectionUsage
         | SymbolKind::ViewUsage
         | SymbolKind::ViewpointUsage
         | SymbolKind::RenderingUsage => {
@@ -375,7 +382,7 @@ mod tests {
     #[test]
     fn test_hover_part_def() {
         let mut index = SymbolIndex::new();
-        let mut def = make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 5);
+        let mut def = make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 5);
         def.doc = Some(Arc::from("A car is a vehicle."));
         def.supertypes = vec![Arc::from("Vehicle")];
         index.add_file(FileId::new(0), vec![def]);

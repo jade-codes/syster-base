@@ -154,8 +154,8 @@ mod tests {
         index.add_file(
             FileId::new(0),
             vec![
-                make_symbol("Vehicle", "Vehicle", SymbolKind::PartDef, 0),
-                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 5),
+                make_symbol("Vehicle", "Vehicle", SymbolKind::PartDefinition, 0),
+                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 5),
                 make_symbol("engine", "Vehicle::Car::engine", SymbolKind::PartUsage, 10),
             ],
         );
@@ -170,8 +170,8 @@ mod tests {
         index.add_file(
             FileId::new(0),
             vec![
-                make_symbol("Vehicle", "Vehicle", SymbolKind::PartDef, 0),
-                make_symbol("Truck", "Truck", SymbolKind::PartDef, 5),
+                make_symbol("Vehicle", "Vehicle", SymbolKind::PartDefinition, 0),
+                make_symbol("Truck", "Truck", SymbolKind::PartDefinition, 5),
                 make_symbol("engine", "Vehicle::engine", SymbolKind::PartUsage, 10),
             ],
         );
@@ -189,7 +189,7 @@ mod tests {
             FileId::new(0),
             vec![
                 make_symbol("Vehicle", "Vehicle", SymbolKind::Package, 0),
-                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 5),
+                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 5),
             ],
         );
         index.add_file(

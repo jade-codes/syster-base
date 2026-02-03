@@ -326,7 +326,7 @@ mod tests {
         let mut index = SymbolIndex::new();
 
         // Definition
-        let engine_def = make_symbol("Engine", "Engine", SymbolKind::PartDef, 0, 1);
+        let engine_def = make_symbol("Engine", "Engine", SymbolKind::PartDefinition, 0, 1);
 
         // Usages with type_refs (this is how references are found)
         let mut engine_usage1 = make_symbol("engine", "Car::engine", SymbolKind::PartUsage, 0, 10);
@@ -366,7 +366,7 @@ mod tests {
     fn test_find_references_from_usage() {
         let mut index = SymbolIndex::new();
 
-        let wheel_def = make_symbol("Wheel", "Wheel", SymbolKind::PartDef, 0, 1);
+        let wheel_def = make_symbol("Wheel", "Wheel", SymbolKind::PartDefinition, 0, 1);
 
         let mut wheel_usage = make_symbol(
             "frontWheel",
@@ -390,7 +390,7 @@ mod tests {
     fn test_find_references_exclude_declaration() {
         let mut index = SymbolIndex::new();
 
-        let part_def = make_symbol("Part", "Part", SymbolKind::PartDef, 0, 1);
+        let part_def = make_symbol("Part", "Part", SymbolKind::PartDefinition, 0, 1);
 
         let mut usage = make_symbol("myPart", "myPart", SymbolKind::PartUsage, 0, 10);
         usage.supertypes = vec![Arc::from("Part")];

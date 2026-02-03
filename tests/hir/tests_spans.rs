@@ -189,7 +189,7 @@ fn test_symbols_ordered_by_position() {
         .symbol_index()
         .symbols_in_file(file_id)
         .iter()
-        .filter(|s| matches!(s.kind, SymbolKind::PartDef))
+        .filter(|s| matches!(s.kind, SymbolKind::PartDefinition))
         .cloned()
         .collect();
 

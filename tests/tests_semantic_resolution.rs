@@ -892,7 +892,7 @@ fn test_usage_inherits_type_members() {
                 name: Arc::from("TransportPassenger"),
                 qualified_name: Arc::from("MissionContext::TransportPassenger"),
                 element_id: new_element_id(),
-                kind: SymbolKind::UseCaseDef,
+                kind: SymbolKind::UseCaseDefinition,
                 file: FileId::new(0),
                 start_line: 1,
                 start_col: 0,

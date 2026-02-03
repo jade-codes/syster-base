@@ -1383,9 +1383,9 @@ impl SymbolIndex {
             // Check if target is a requirement-like definition
             if matches!(
                 target_type.kind,
-                SymbolKind::RequirementDef
+                SymbolKind::RequirementDefinition
                     | SymbolKind::RequirementUsage
-                    | SymbolKind::ConstraintDef
+                    | SymbolKind::ConstraintDefinition
                     | SymbolKind::ConstraintUsage
             ) {
                 // Look for the member in the requirement's scope
@@ -2211,27 +2211,27 @@ impl SymbolKind {
         matches!(
             self,
             SymbolKind::Package
-                | SymbolKind::PartDef
-                | SymbolKind::ItemDef
-                | SymbolKind::ActionDef
-                | SymbolKind::PortDef
-                | SymbolKind::AttributeDef
-                | SymbolKind::ConnectionDef
-                | SymbolKind::InterfaceDef
-                | SymbolKind::AllocationDef
-                | SymbolKind::RequirementDef
-                | SymbolKind::ConstraintDef
-                | SymbolKind::StateDef
-                | SymbolKind::CalculationDef
-                | SymbolKind::UseCaseDef
-                | SymbolKind::AnalysisCaseDef
-                | SymbolKind::ConcernDef
-                | SymbolKind::ViewDef
-                | SymbolKind::ViewpointDef
-                | SymbolKind::RenderingDef
-                | SymbolKind::EnumerationDef
-                | SymbolKind::MetaclassDef
-                | SymbolKind::InteractionDef
+                | SymbolKind::PartDefinition
+                | SymbolKind::ItemDefinition
+                | SymbolKind::ActionDefinition
+                | SymbolKind::PortDefinition
+                | SymbolKind::AttributeDefinition
+                | SymbolKind::ConnectionDefinition
+                | SymbolKind::InterfaceDefinition
+                | SymbolKind::AllocationDefinition
+                | SymbolKind::RequirementDefinition
+                | SymbolKind::ConstraintDefinition
+                | SymbolKind::StateDefinition
+                | SymbolKind::CalculationDefinition
+                | SymbolKind::UseCaseDefinition
+                | SymbolKind::AnalysisCaseDefinition
+                | SymbolKind::ConcernDefinition
+                | SymbolKind::ViewDefinition
+                | SymbolKind::ViewpointDefinition
+                | SymbolKind::RenderingDefinition
+                | SymbolKind::EnumerationDefinition
+                | SymbolKind::MetadataDefinition
+                | SymbolKind::Interaction
         )
     }
 
@@ -2253,25 +2253,25 @@ impl SymbolKind {
                 | SymbolKind::CalculationUsage
                 | SymbolKind::ReferenceUsage
                 | SymbolKind::OccurrenceUsage
-                | SymbolKind::FlowUsage
+                | SymbolKind::FlowConnectionUsage
         )
     }
 
     /// Get the corresponding definition kind for a usage.
     pub fn to_definition_kind(&self) -> Option<SymbolKind> {
         match self {
-            SymbolKind::PartUsage => Some(SymbolKind::PartDef),
-            SymbolKind::ItemUsage => Some(SymbolKind::ItemDef),
-            SymbolKind::ActionUsage => Some(SymbolKind::ActionDef),
-            SymbolKind::PortUsage => Some(SymbolKind::PortDef),
-            SymbolKind::AttributeUsage => Some(SymbolKind::AttributeDef),
-            SymbolKind::ConnectionUsage => Some(SymbolKind::ConnectionDef),
-            SymbolKind::InterfaceUsage => Some(SymbolKind::InterfaceDef),
-            SymbolKind::AllocationUsage => Some(SymbolKind::AllocationDef),
-            SymbolKind::RequirementUsage => Some(SymbolKind::RequirementDef),
-            SymbolKind::ConstraintUsage => Some(SymbolKind::ConstraintDef),
-            SymbolKind::StateUsage => Some(SymbolKind::StateDef),
-            SymbolKind::CalculationUsage => Some(SymbolKind::CalculationDef),
+            SymbolKind::PartUsage => Some(SymbolKind::PartDefinition),
+            SymbolKind::ItemUsage => Some(SymbolKind::ItemDefinition),
+            SymbolKind::ActionUsage => Some(SymbolKind::ActionDefinition),
+            SymbolKind::PortUsage => Some(SymbolKind::PortDefinition),
+            SymbolKind::AttributeUsage => Some(SymbolKind::AttributeDefinition),
+            SymbolKind::ConnectionUsage => Some(SymbolKind::ConnectionDefinition),
+            SymbolKind::InterfaceUsage => Some(SymbolKind::InterfaceDefinition),
+            SymbolKind::AllocationUsage => Some(SymbolKind::AllocationDefinition),
+            SymbolKind::RequirementUsage => Some(SymbolKind::RequirementDefinition),
+            SymbolKind::ConstraintUsage => Some(SymbolKind::ConstraintDefinition),
+            SymbolKind::StateUsage => Some(SymbolKind::StateDefinition),
+            SymbolKind::CalculationUsage => Some(SymbolKind::CalculationDefinition),
             _ => None,
         }
     }
@@ -2678,7 +2678,7 @@ mod tests {
 
         let symbols = vec![
             make_symbol("Vehicle", "Vehicle", SymbolKind::Package, 0),
-            make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 0),
+            make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0),
             make_symbol("engine", "Vehicle::Car::engine", SymbolKind::PartUsage, 0),
         ];
 
@@ -2697,11 +2697,11 @@ mod tests {
 
         index.add_file(
             FileId::new(0),
-            vec![make_symbol("A", "A", SymbolKind::PartDef, 0)],
+            vec![make_symbol("A", "A", SymbolKind::PartDefinition, 0)],
         );
         index.add_file(
             FileId::new(1),
-            vec![make_symbol("B", "B", SymbolKind::PartDef, 1)],
+            vec![make_symbol("B", "B", SymbolKind::PartDefinition, 1)],
         );
 
         assert_eq!(index.len(), 2);
@@ -2718,7 +2718,7 @@ mod tests {
         let mut index = SymbolIndex::new();
         index.add_file(
             FileId::new(0),
-            vec![make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 0)],
+            vec![make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0)],
         );
 
         let resolver = Resolver::new(&index);
@@ -2734,7 +2734,7 @@ mod tests {
         index.add_file(
             FileId::new(0),
             vec![
-                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDef, 0),
+                make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0),
                 make_symbol("engine", "Vehicle::Car::engine", SymbolKind::PartUsage, 0),
             ],
         );
@@ -2754,7 +2754,7 @@ mod tests {
             FileId::new(0),
             vec![
                 make_symbol("ISQ", "ISQ", SymbolKind::Package, 0),
-                make_symbol("Real", "ISQ::Real", SymbolKind::AttributeDef, 0),
+                make_symbol("Real", "ISQ::Real", SymbolKind::AttributeDefinition, 0),
             ],
         );
         // Create an import from another scope
@@ -2782,8 +2782,8 @@ mod tests {
 
     #[test]
     fn test_symbol_kind_is_definition() {
-        assert!(SymbolKind::PartDef.is_definition());
-        assert!(SymbolKind::ActionDef.is_definition());
+        assert!(SymbolKind::PartDefinition.is_definition());
+        assert!(SymbolKind::ActionDefinition.is_definition());
         assert!(!SymbolKind::PartUsage.is_definition());
         assert!(!SymbolKind::Import.is_definition());
     }
@@ -2792,7 +2792,7 @@ mod tests {
     fn test_symbol_kind_is_usage() {
         assert!(SymbolKind::PartUsage.is_usage());
         assert!(SymbolKind::ActionUsage.is_usage());
-        assert!(!SymbolKind::PartDef.is_usage());
+        assert!(!SymbolKind::PartDefinition.is_usage());
         assert!(!SymbolKind::Package.is_usage());
     }
 

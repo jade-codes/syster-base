@@ -103,7 +103,7 @@ fn test_subsetting_inherits_nested_members() {
     index.add_file(
         FileId::new(0),
         vec![
-            make_symbol("Path", "Path", SymbolKind::ItemDef, vec![]),
+            make_symbol("Path", "Path", SymbolKind::ItemDefinition, vec![]),
             make_symbol("edges", "Path::edges", SymbolKind::ItemUsage, vec![]),
             make_symbol(
                 "vertices",
@@ -121,7 +121,7 @@ fn test_subsetting_inherits_nested_members() {
     index.add_file(
         FileId::new(1),
         vec![
-            make_symbol("Shape", "Shape", SymbolKind::ItemDef, vec!["Path"]),
+            make_symbol("Shape", "Shape", SymbolKind::ItemDefinition, vec!["Path"]),
             make_symbol("tfe", "Shape::tfe", SymbolKind::ItemUsage, vec!["edges"]), // subsets edges
         ],
     );
@@ -151,7 +151,7 @@ fn test_direct_member_takes_priority_over_subsetted() {
     index.add_file(
         FileId::new(0),
         vec![
-            make_symbol("Path", "Path", SymbolKind::ItemDef, vec![]),
+            make_symbol("Path", "Path", SymbolKind::ItemDefinition, vec![]),
             make_symbol("edges", "Path::edges", SymbolKind::ItemUsage, vec![]),
             make_symbol(
                 "vertices",
@@ -166,7 +166,7 @@ fn test_direct_member_takes_priority_over_subsetted() {
     index.add_file(
         FileId::new(1),
         vec![
-            make_symbol("Shape", "Shape", SymbolKind::ItemDef, vec!["Path"]),
+            make_symbol("Shape", "Shape", SymbolKind::ItemDefinition, vec!["Path"]),
             make_symbol("tfe", "Shape::tfe", SymbolKind::ItemUsage, vec!["edges"]),
             make_symbol(
                 "vertices",
@@ -199,7 +199,7 @@ fn test_feature_chain_with_subsetting() {
     index.add_file(
         FileId::new(0),
         vec![
-            make_symbol("Polyhedron", "Polyhedron", SymbolKind::ItemDef, vec![]),
+            make_symbol("Polyhedron", "Polyhedron", SymbolKind::ItemDefinition, vec![]),
             make_symbol("edges", "Polyhedron::edges", SymbolKind::ItemUsage, vec![]),
             make_symbol(
                 "vertices",
@@ -214,7 +214,7 @@ fn test_feature_chain_with_subsetting() {
     index.add_file(
         FileId::new(1),
         vec![
-            make_symbol("Shape", "Shape", SymbolKind::ItemDef, vec!["Polyhedron"]),
+            make_symbol("Shape", "Shape", SymbolKind::ItemDefinition, vec!["Polyhedron"]),
             make_symbol("tfe", "Shape::tfe", SymbolKind::ItemUsage, vec!["edges"]),
         ],
     );
@@ -258,7 +258,7 @@ fn test_typing_vs_subsetting_inheritance() {
     index.add_file(
         FileId::new(0),
         vec![
-            make_symbol("EdgeDef", "EdgeDef", SymbolKind::ItemDef, vec![]),
+            make_symbol("EdgeDef", "EdgeDef", SymbolKind::ItemDefinition, vec![]),
             make_symbol(
                 "vertices",
                 "EdgeDef::vertices",
@@ -272,7 +272,7 @@ fn test_typing_vs_subsetting_inheritance() {
     index.add_file(
         FileId::new(1),
         vec![
-            make_symbol("Base", "Base", SymbolKind::ItemDef, vec![]),
+            make_symbol("Base", "Base", SymbolKind::ItemDefinition, vec![]),
             make_symbol(
                 "edges",
                 "Base::edges",
@@ -288,7 +288,7 @@ fn test_typing_vs_subsetting_inheritance() {
     index.add_file(
         FileId::new(2),
         vec![
-            make_symbol("Test", "Test", SymbolKind::ItemDef, vec!["Base"]), // Test :> Base
+            make_symbol("Test", "Test", SymbolKind::ItemDefinition, vec!["Base"]), // Test :> Base
             make_symbol(
                 "typedEdge",
                 "Test::typedEdge",
@@ -343,7 +343,7 @@ fn test_shapeitems_pattern() {
             make_symbol(
                 "Polyhedron",
                 "ShapeItems::Polyhedron",
-                SymbolKind::ItemDef,
+                SymbolKind::ItemDefinition,
                 vec![],
             ),
             make_symbol(
@@ -367,7 +367,7 @@ fn test_shapeitems_pattern() {
             make_symbol(
                 "CuboidOrTriangularPrism",
                 "ShapeItems::CuboidOrTriangularPrism",
-                SymbolKind::ItemDef,
+                SymbolKind::ItemDefinition,
                 vec!["Polyhedron"],
             ),
             make_symbol(

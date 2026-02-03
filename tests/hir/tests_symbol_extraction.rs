@@ -71,7 +71,7 @@ fn test_part_def_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "Vehicle");
 
     let sym = get_symbol(analysis.symbol_index(), "Vehicle");
-    assert_symbol_kind(sym, SymbolKind::PartDef);
+    assert_symbol_kind(sym, SymbolKind::PartDefinition);
 }
 
 #[test]
@@ -86,15 +86,15 @@ fn test_multiple_part_defs() {
     // All should be PartDef
     assert_symbol_kind(
         get_symbol(analysis.symbol_index(), "Vehicle"),
-        SymbolKind::PartDef,
+        SymbolKind::PartDefinition,
     );
     assert_symbol_kind(
         get_symbol(analysis.symbol_index(), "Car"),
-        SymbolKind::PartDef,
+        SymbolKind::PartDefinition,
     );
     assert_symbol_kind(
         get_symbol(analysis.symbol_index(), "Truck"),
-        SymbolKind::PartDef,
+        SymbolKind::PartDefinition,
     );
 }
 
@@ -119,7 +119,7 @@ fn test_port_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "DataPort");
     let sym = get_symbol(analysis.symbol_index(), "DataPort");
-    assert_symbol_kind(sym, SymbolKind::PortDef);
+    assert_symbol_kind(sym, SymbolKind::PortDefinition);
 }
 
 #[test]
@@ -129,7 +129,7 @@ fn test_action_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "Move");
     let sym = get_symbol(analysis.symbol_index(), "Move");
-    assert_symbol_kind(sym, SymbolKind::ActionDef);
+    assert_symbol_kind(sym, SymbolKind::ActionDefinition);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn test_item_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "Payload");
     let sym = get_symbol(analysis.symbol_index(), "Payload");
-    assert_symbol_kind(sym, SymbolKind::ItemDef);
+    assert_symbol_kind(sym, SymbolKind::ItemDefinition);
 }
 
 #[test]
@@ -149,7 +149,7 @@ fn test_attribute_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "Mass");
     let sym = get_symbol(analysis.symbol_index(), "Mass");
-    assert_symbol_kind(sym, SymbolKind::AttributeDef);
+    assert_symbol_kind(sym, SymbolKind::AttributeDefinition);
 }
 
 #[test]
@@ -159,7 +159,7 @@ fn test_connection_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "Link");
     let sym = get_symbol(analysis.symbol_index(), "Link");
-    assert_symbol_kind(sym, SymbolKind::ConnectionDef);
+    assert_symbol_kind(sym, SymbolKind::ConnectionDefinition);
 }
 
 #[test]
@@ -169,7 +169,7 @@ fn test_interface_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "DataInterface");
     let sym = get_symbol(analysis.symbol_index(), "DataInterface");
-    assert_symbol_kind(sym, SymbolKind::InterfaceDef);
+    assert_symbol_kind(sym, SymbolKind::InterfaceDefinition);
 }
 
 #[test]
@@ -179,7 +179,7 @@ fn test_allocation_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "FunctionToComponent");
     let sym = get_symbol(analysis.symbol_index(), "FunctionToComponent");
-    assert_symbol_kind(sym, SymbolKind::AllocationDef);
+    assert_symbol_kind(sym, SymbolKind::AllocationDefinition);
 }
 
 #[test]
@@ -189,7 +189,7 @@ fn test_requirement_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "SafetyReq");
     let sym = get_symbol(analysis.symbol_index(), "SafetyReq");
-    assert_symbol_kind(sym, SymbolKind::RequirementDef);
+    assert_symbol_kind(sym, SymbolKind::RequirementDefinition);
 }
 
 #[test]
@@ -199,7 +199,7 @@ fn test_constraint_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "MassConstraint");
     let sym = get_symbol(analysis.symbol_index(), "MassConstraint");
-    assert_symbol_kind(sym, SymbolKind::ConstraintDef);
+    assert_symbol_kind(sym, SymbolKind::ConstraintDefinition);
 }
 
 #[test]
@@ -209,7 +209,7 @@ fn test_state_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "OperatingState");
     let sym = get_symbol(analysis.symbol_index(), "OperatingState");
-    assert_symbol_kind(sym, SymbolKind::StateDef);
+    assert_symbol_kind(sym, SymbolKind::StateDefinition);
 }
 
 #[test]
@@ -219,7 +219,7 @@ fn test_calc_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "TotalMass");
     let sym = get_symbol(analysis.symbol_index(), "TotalMass");
-    assert_symbol_kind(sym, SymbolKind::CalculationDef);
+    assert_symbol_kind(sym, SymbolKind::CalculationDefinition);
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn test_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "DriveScenario");
     let sym = get_symbol(analysis.symbol_index(), "DriveScenario");
-    assert_symbol_kind(sym, SymbolKind::UseCaseDef);
+    assert_symbol_kind(sym, SymbolKind::UseCaseDefinition);
 }
 
 #[test]
@@ -239,7 +239,7 @@ fn test_use_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "StartVehicle");
     let sym = get_symbol(analysis.symbol_index(), "StartVehicle");
-    assert_symbol_kind(sym, SymbolKind::UseCaseDef);
+    assert_symbol_kind(sym, SymbolKind::UseCaseDefinition);
 }
 
 #[test]
@@ -249,7 +249,7 @@ fn test_analysis_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "ThermalAnalysis");
     let sym = get_symbol(analysis.symbol_index(), "ThermalAnalysis");
-    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDef);
+    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDefinition);
 }
 
 #[test]
@@ -259,7 +259,7 @@ fn test_view_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "SystemDiagram");
     let sym = get_symbol(analysis.symbol_index(), "SystemDiagram");
-    assert_symbol_kind(sym, SymbolKind::ViewDef);
+    assert_symbol_kind(sym, SymbolKind::ViewDefinition);
 }
 
 #[test]
@@ -269,7 +269,7 @@ fn test_viewpoint_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "ArchitectViewpoint");
     let sym = get_symbol(analysis.symbol_index(), "ArchitectViewpoint");
-    assert_symbol_kind(sym, SymbolKind::ViewpointDef);
+    assert_symbol_kind(sym, SymbolKind::ViewpointDefinition);
 }
 
 #[test]
@@ -279,7 +279,7 @@ fn test_rendering_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "BoxRendering");
     let sym = get_symbol(analysis.symbol_index(), "BoxRendering");
-    assert_symbol_kind(sym, SymbolKind::RenderingDef);
+    assert_symbol_kind(sym, SymbolKind::RenderingDefinition);
 }
 
 #[test]
@@ -289,7 +289,7 @@ fn test_enumeration_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "Color");
     let sym = get_symbol(analysis.symbol_index(), "Color");
-    assert_symbol_kind(sym, SymbolKind::EnumerationDef);
+    assert_symbol_kind(sym, SymbolKind::EnumerationDefinition);
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn test_verification_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "VerificationPkg::TestVehicle");
     let sym = get_symbol(analysis.symbol_index(), "VerificationPkg::TestVehicle");
-    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDef);
+    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDefinition);
 }
 
 #[test]
@@ -564,7 +564,7 @@ fn test_top_level_definitions_exist() {
     let analysis = host.analysis();
 
     let sym = get_symbol(analysis.symbol_index(), "PublicPart");
-    assert_symbol_kind(sym, SymbolKind::PartDef);
+    assert_symbol_kind(sym, SymbolKind::PartDefinition);
 }
 
 // =============================================================================

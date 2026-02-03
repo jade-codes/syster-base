@@ -269,7 +269,7 @@ mod tests {
         assert!(!symbols.is_empty());
         let widget = symbols.iter().find(|s| s.name.as_ref() == "Widget");
         assert!(widget.is_some(), "Widget not found in symbols");
-        assert_eq!(widget.unwrap().kind, SymbolKind::PartDef);
+        assert_eq!(widget.unwrap().kind, SymbolKind::PartDefinition);
     }
 
     #[test]
