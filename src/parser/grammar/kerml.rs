@@ -1153,6 +1153,9 @@ pub fn is_name_kind(kind: SyntaxKind) -> bool {
 /// Per pest: regular_name = { name }
 /// Per pest: name_identifier allows keywords as identifiers (for short names like `<var>`)
 pub fn parse_identification<P: KerMLParser>(p: &mut P) {
+    // Skip trivia BEFORE starting the NAME node so the node's range
+    // doesn't include leading whitespace
+    p.skip_trivia();
     p.start_node(SyntaxKind::NAME);
 
     // Short name: <shortname>

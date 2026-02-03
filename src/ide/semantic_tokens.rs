@@ -118,20 +118,15 @@ pub fn semantic_tokens(index: &SymbolIndex, file: FileId) -> Vec<SemanticToken> 
     // Add tokens for all symbols in this file
     for symbol in index.symbols_in_file(file) {
         // Token for the symbol name itself
-        // Use the actual span width rather than name.len() since the name may differ
-        // from the source (e.g., stripped quotes) and the span is authoritative
-        let length = if symbol.end_col > symbol.start_col {
-            symbol.end_col - symbol.start_col
-        } else {
-            symbol.name.len() as u32
-        };
+        // Use name.len() for the token length since we only want to highlight the name,
+        // not extended spans that may include type refs or other constructs.
+        // Note: For quoted names, the source might be longer (e.g., 'My Name' vs "My Name")
+        // but name.len() is close enough for most cases.
+        let length = symbol.name.len() as u32;
 
-        // Skip symbols with invalid spans (start_col=0 but end_col > 0 suggests bad span data)
-        // Valid tokens at col 0 should have consistent span data where end_col = start_col + name_len
-        // Tokens at (0, 0) with varying end_cols are bogus - they're likely from symbols
-        // whose spans weren't properly set during parsing
-        let is_valid_span =
-            symbol.start_col > 0 || (symbol.start_col == 0 && symbol.end_col == length);
+        // Skip symbols with invalid spans or at position (0,0) unless they're truly at the start
+        let is_valid_span = symbol.start_col > 0
+            || (symbol.start_col == 0 && symbol.start_line == 0 && length > 0);
 
         if is_valid_span {
             tokens.push(SemanticToken {

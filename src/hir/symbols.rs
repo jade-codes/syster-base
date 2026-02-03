@@ -1525,7 +1525,13 @@ fn extract_from_normalized_import(
 ) {
     let path = &import.path;
     let qualified_name = ctx.qualified_name(&format!("import:{}", path));
-    let span = ctx.range_to_info(import.range);
+    
+    // Use path_range for the symbol span since name is the path.
+    // Fall back to full range if path_range is not available.
+    let span = import
+        .path_range
+        .map(|r| ctx.range_to_info(Some(r)))
+        .unwrap_or_else(|| ctx.range_to_info(import.range));
 
     // Create type_ref for the import target so hover/go-to-def works on it
     // Strip ::* or ::** suffix to get the actual package name

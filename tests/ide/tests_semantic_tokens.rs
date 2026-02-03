@@ -131,3 +131,75 @@ fn test_semantic_tokens_multiple_symbols() {
         tokens.len()
     );
 }
+
+#[test]
+fn test_debug_vehicle_usages_semantic_tokens() {
+    let source = r#"package VehicleUsages {
+	doc
+	/*
+	 * Example usages of elements from the vehicle definitions model.
+	 */
+
+	private import SI::N;
+	private import SI::m;
+	private import ScalarFunctions::*;
+
+	public import VehicleDefinitions::*;
+
+	/* VALUES */	 
+	T1 = 10.0 [N * m];
+	T2 = 20.0 [N * m];
+	
+	/* PARTS */	
+	part narrowRimWheel: Wheel {
+		doc /* Narrow-rim wheel configuration with 4 to 5 lugbolts. */
+
+		part lugbolt: Lugbolt[4..5];
+	}
+}"#;
+
+    let (mut host, file_id) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let tokens = semantic_tokens(analysis.symbol_index(), file_id);
+
+    println!("\n=== SEMANTIC TOKENS DEBUG ===");
+    println!("Total tokens: {}\n", tokens.len());
+    
+    // Split source into lines for reference
+    let lines: Vec<&str> = source.lines().collect();
+    
+    for (i, tok) in tokens.iter().enumerate() {
+        let line_text = lines.get(tok.line as usize).unwrap_or(&"<invalid line>");
+        let token_text = if (tok.col as usize) < line_text.len() && (tok.col as usize + tok.length as usize) <= line_text.len() {
+            &line_text[tok.col as usize..(tok.col + tok.length) as usize]
+        } else {
+            "<span overflow>"
+        };
+        
+        println!(
+            "Token {}: line={} col={} len={} type={:?} text='{}'",
+            i, tok.line, tok.col, tok.length, tok.token_type, token_text
+        );
+    }
+    
+    println!("\n=== SYMBOLS IN FILE ===");
+    for sym in analysis.symbol_index().symbols_in_file(file_id) {
+        println!(
+            "Symbol: '{}' (qname='{}', kind={:?}) at line {} col {}-{}",
+            sym.name, sym.qualified_name, sym.kind, sym.start_line, sym.start_col, sym.end_col
+        );
+        
+        // Print type refs
+        for trk in &sym.type_refs {
+            for tr in trk.as_refs() {
+                println!(
+                    "  TypeRef: target='{}' kind={:?} at {}:{}-{}:{} resolved={:?}",
+                    tr.target, tr.kind, tr.start_line, tr.start_col, tr.end_line, tr.end_col, tr.resolved_target
+                );
+            }
+        }
+    }
+    
+    println!("\n=== END DEBUG ===");
+}
