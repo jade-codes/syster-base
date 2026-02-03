@@ -1922,12 +1922,24 @@ impl Connector {
         self.0.children().find_map(ConnectorPart::cast)
     }
 
-    /// Get connector endpoints directly (convenience for `connector_part().ends()`)
+    /// Get connector endpoints directly
     /// Returns iterator over connector ends for `from ... to ...` or `connect ... to ...`
+    /// Looks in both CONNECTOR_PART (if present) and direct CONNECTION_END children
     pub fn ends(&self) -> impl Iterator<Item = ConnectorEnd> + '_ {
-        self.connector_part()
+        // First try CONNECTOR_PART, then direct CONNECTION_END children
+        let from_part: Vec<_> = self
+            .connector_part()
             .into_iter()
             .flat_map(|cp| cp.ends().collect::<Vec<_>>())
+            .collect();
+
+        let direct: Vec<_> = if from_part.is_empty() {
+            self.0.children().filter_map(ConnectorEnd::cast).collect()
+        } else {
+            Vec::new()
+        };
+
+        from_part.into_iter().chain(direct)
     }
 
     /// Get the namespace body
@@ -1968,7 +1980,27 @@ impl ConnectorPart {
     }
 }
 
-ast_node!(ConnectorEnd, CONNECTOR_END);
+// ConnectorEnd can be either CONNECTION_END (KerML) or CONNECTOR_END (SysML)
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ConnectorEnd(SyntaxNode);
+
+impl AstNode for ConnectorEnd {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        kind == SyntaxKind::CONNECTION_END || kind == SyntaxKind::CONNECTOR_END
+    }
+
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(node.kind()) {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.0
+    }
+}
 
 impl ConnectorEnd {
     /// Get the qualified name target reference.

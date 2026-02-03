@@ -6,8 +6,7 @@
 //! Adapted from tests_parser_kerml_pest.rs.disabled
 
 use syster::parser::ast::{
-    AstNode, Definition, DefinitionKind, NamespaceMember, SourceFile, Specialization,
-    SpecializationKind, Usage,
+    AstNode, DefinitionKind, NamespaceMember, SourceFile, SpecializationKind,
 };
 use syster::parser::parse_kerml;
 
@@ -966,7 +965,6 @@ fn test_redefines_with_assignment_ast() {
 /// - Connector::ends() -> impl Iterator<Item = ConnectionEnd>
 /// - Parser support for `from [mult] name to [mult] name` connector syntax
 #[test]
-#[ignore] // TODO: Parser doesn't fully support `from [mult] a to [mult] b` connector syntax yet
 fn test_anonymous_connector_with_multiplicity_ast() {
     let input = r#"classifier C { connector :Link from [1] a to [1] b; }"#;
     let file = parse_source(input);

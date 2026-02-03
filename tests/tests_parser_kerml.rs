@@ -507,7 +507,7 @@ fn test_subset_with_feature_chain_standalone() {
 }
 
 // =============================================================================
-// Comma-Separated Subsets (TODO Item #3)  
+// Comma-Separated Subsets (TODO Item #3)
 // =============================================================================
 
 /// Test multiple subset targets - from SysML.sysml
@@ -593,7 +593,7 @@ fn test_subsets_with_additional_feature_subsets() {
 }
 
 // =============================================================================
-// SysML vs KerML parsing tests  
+// SysML vs KerML parsing tests
 // =============================================================================
 
 use syster::parser::parse_sysml;
@@ -609,7 +609,11 @@ fn test_sysml_metadata_def_with_subsets_pattern() {
     let input = r#"metadata def ActionDefinition specializes Behavior, OccurrenceDefinition {
         derived ref item 'action' : ActionUsage[0..*] ordered subsets step, usage subsets Metadata::metadataItems;
     }"#;
-    assert!(parses_sysml(input), "Failed to parse with SysML parser: {}", input);
+    assert!(
+        parses_sysml(input),
+        "Failed to parse with SysML parser: {}",
+        input
+    );
 }
 
 /// Simpler test - just metadata def with specialization, no body items
@@ -620,7 +624,11 @@ fn test_sysml_metadata_def_simple() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse with SysML parser: {}", input);
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse with SysML parser: {}",
+        input
+    );
 }
 
 /// Test metadata def with multiple specializations
@@ -631,7 +639,11 @@ fn test_sysml_metadata_def_multiple_specializes() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse with SysML parser: {}", input);
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse with SysML parser: {}",
+        input
+    );
 }
 
 /// Test metadata def with derived ref item in body
@@ -644,7 +656,11 @@ fn test_sysml_metadata_def_with_derived_ref_item() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse with SysML parser: {}", input);
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse with SysML parser: {}",
+        input
+    );
 }
 
 /// Test with ordered and subsets
@@ -861,7 +877,10 @@ fn test_sysml_redefines_comma_list() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse redefines comma list");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse redefines comma list"
+    );
 }
 
 /// Test redefines A, B subsets C (the full pattern)
@@ -874,7 +893,10 @@ fn test_sysml_redefines_comma_then_subsets() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse redefines a, b subsets c");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse redefines a, b subsets c"
+    );
 }
 
 /// Test with ordered before redefines
@@ -887,7 +909,10 @@ fn test_sysml_ordered_redefines_comma() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse ordered redefines a, b subsets c");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse ordered redefines a, b subsets c"
+    );
 }
 
 /// Test with full ref item pattern
@@ -900,7 +925,10 @@ fn test_sysml_derived_ref_item_pattern() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse derived ref item pattern");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse derived ref item pattern"
+    );
 }
 
 /// Test exact line from SysML.sysml line 24
@@ -914,7 +942,10 @@ fn test_sysml_exact_line_24() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse exact line 24 pattern");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse exact line 24 pattern"
+    );
 }
 
 /// Test specializes with comma-separated types
@@ -926,7 +957,10 @@ fn test_sysml_specializes_comma_list() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse specializes comma list");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse specializes comma list"
+    );
 }
 
 /// Test simpler comma-separated relationship - just the comma part
@@ -985,7 +1019,10 @@ fn test_inv_inside_struct() {
     } else {
         eprintln!("combined OK");
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse var feature + inv combined");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse var feature + inv combined"
+    );
 
     // With private member using :>> self and var feature
     let input = r#"abstract struct Clock {
@@ -1008,7 +1045,10 @@ fn test_inv_inside_struct() {
     if !parsed.errors.is_empty() {
         eprintln!("Full input errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse inv inside struct");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse inv inside struct"
+    );
 }
 
 /// Test the actual SysML.sysml file from stdlib
@@ -1021,9 +1061,17 @@ fn test_sysml_sysml_file() {
     let content = std::fs::read_to_string(path).expect("Failed to read SysML.sysml");
     let parsed = parse_sysml(&content);
     if !parsed.errors.is_empty() {
-        eprintln!("Errors ({} total): {:?}", parsed.errors.len(), &parsed.errors[..std::cmp::min(5, parsed.errors.len())]);
+        eprintln!(
+            "Errors ({} total): {:?}",
+            parsed.errors.len(),
+            &parsed.errors[..std::cmp::min(5, parsed.errors.len())]
+        );
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse SysML.sysml with {} errors", parsed.errors.len());
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse SysML.sysml with {} errors",
+        parsed.errors.len()
+    );
 }
 
 /// Test full Clocks.kerml content inline
@@ -1186,22 +1234,26 @@ fn test_clocks_kerml_inline() {
 
 }"#;
     eprintln!("Input length: {} bytes", input.len());
-    
+
     // Log context around first error position (1276)
     if input.len() > 1300 {
         eprintln!("--- Context around position 1276 ---");
         eprintln!("Bytes 1250-1300: {:?}", &input[1250..1300]);
         eprintln!("Text 1250-1300: {}", &input[1250..1300]);
-        eprintln!("Bytes 1270-1285: {:?}", input[1270..1285].as_bytes());
+        eprintln!("Bytes 1270-1285: {:?}", &input.as_bytes()[1270..1285]);
     }
-    
+
     // Find all occurrences of "inv" in the input
     for (i, _) in input.match_indices("inv") {
         let start = i.saturating_sub(30);
         let end = (i + 50).min(input.len());
-        eprintln!("Found 'inv' at position {}: ...{}...", i, &input[start..end]);
+        eprintln!(
+            "Found 'inv' at position {}: ...{}...",
+            i,
+            &input[start..end]
+        );
     }
-    
+
     let parsed = parse_kerml(input);
     if !parsed.errors.is_empty() {
         eprintln!("Errors ({} total):", parsed.errors.len());
@@ -1214,7 +1266,11 @@ fn test_clocks_kerml_inline() {
             eprintln!("  Context: ...{}...", &input[start..end]);
         }
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse Clocks.kerml inline with {} errors", parsed.errors.len());
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse Clocks.kerml inline with {} errors",
+        parsed.errors.len()
+    );
 }
 
 // =============================================================================
@@ -1240,7 +1296,10 @@ fn test_feature_chain_subsetting() {
     if !parsed.errors.is_empty() {
         eprintln!("Subset with chain errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse subset with feature chain");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse subset with feature chain"
+    );
 
     // Full example from Occurrences.kerml
     let input = r#"assoc HappensBefore {
@@ -1252,7 +1311,10 @@ fn test_feature_chain_subsetting() {
     if !parsed.errors.is_empty() {
         eprintln!("Full example errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse feature chain subsetting");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse feature chain subsetting"
+    );
 }
 
 /// Test member feature (KerML.kerml pattern)
@@ -1266,7 +1328,10 @@ fn test_member_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("Simple member feature errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse simple member feature");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse simple member feature"
+    );
 
     // Test member feature with unrestricted name
     let with_name = r#"struct A { member feature 'private'; }"#;
@@ -1274,7 +1339,10 @@ fn test_member_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("Member feature with name errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse member feature with unrestricted name");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse member feature with unrestricted name"
+    );
 
     // Full example from KerML.kerml
     let input = r#"datatype VisibilityKind {
@@ -1308,7 +1376,10 @@ fn test_end_with_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("End with mult errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse end with multiplicity");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse end with multiplicity"
+    );
 
     // Test end with feature keyword
     let with_feature = r#"assoc A { end myEnd feature nested; }"#;
@@ -1316,7 +1387,10 @@ fn test_end_with_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("End with feature errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse end with feature keyword");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse end with feature keyword"
+    );
 
     // Test end with multiplicity and feature keyword
     let full = r#"assoc A { end myEnd [0..1] feature nested: Type; }"#;
@@ -1324,7 +1398,10 @@ fn test_end_with_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("Full pattern errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse end with mult and feature");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse end with mult and feature"
+    );
 
     // Test end with type shorthand (e.g., `end bool x`)
     let end_with_type = r#"assoc A { end bool x; }"#;
@@ -1332,7 +1409,10 @@ fn test_end_with_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("End with type shorthand errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse end with type shorthand (end bool x)");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse end with type shorthand (end bool x)"
+    );
 
     // Test original pattern from TransitionPerformances.kerml
     let input = r#"assoc struct TPCGuardConstraint {
@@ -1343,7 +1423,10 @@ fn test_end_with_feature() {
     if !parsed.errors.is_empty() {
         eprintln!("Original pattern errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse original TransitionPerformances pattern");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse original TransitionPerformances pattern"
+    );
 }
 
 /// Test binding of pattern (Transfers.kerml pattern)
@@ -1359,7 +1442,10 @@ fn test_binding_of_pattern() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse binding of pattern");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse binding of pattern"
+    );
 }
 
 /// Test anonymous feature redefines with default (StatePerformances.kerml pattern)
@@ -1375,7 +1461,10 @@ fn test_anonymous_feature_redefines_default() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse anonymous feature redefines with default");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse anonymous feature redefines with default"
+    );
 }
 
 /// Test anonymous feature redefines (FeatureReferencingPerformances.kerml pattern)
@@ -1393,7 +1482,10 @@ fn test_anonymous_feature_redefines() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse anonymous feature redefines");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse anonymous feature redefines"
+    );
 }
 
 /// Test naked if expression in function body (CollectionFunctions.kerml pattern)
@@ -1407,7 +1499,10 @@ fn test_naked_if_expression_in_function() {
     if !parsed.errors.is_empty() {
         eprintln!("Simple if errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse simple if in function");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse simple if in function"
+    );
 
     // Test if with parameter
     let with_param = r#"function f { in x: Boolean; if x? 1 else 2 }"#;
@@ -1415,7 +1510,10 @@ fn test_naked_if_expression_in_function() {
     if !parsed.errors.is_empty() {
         eprintln!("If with param errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse if with parameter");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse if with parameter"
+    );
 
     // Full example from CollectionFunctions.kerml
     let input = r#"function arrayElement {
@@ -1427,7 +1525,10 @@ fn test_naked_if_expression_in_function() {
     if !parsed.errors.is_empty() {
         eprintln!("Full example errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse naked if expression in function");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse naked if expression in function"
+    );
 }
 
 /// Test private function with if expression (CollectionFunctions.kerml pattern)
@@ -1443,7 +1544,10 @@ fn test_private_function_with_if() {
     if !parsed.errors.is_empty() {
         eprintln!("Errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse private function with if expression");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse private function with if expression"
+    );
 }
 
 /// Test inv with allTrue (TransitionPerformances.kerml pattern)
@@ -1486,7 +1590,10 @@ fn test_multiplicity_after_redefines() {
     if !parsed.errors.is_empty() {
         eprintln!("Simple errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse simple multiplicity after redefines");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse simple multiplicity after redefines"
+    );
 
     // With nonunique
     let with_nonunique = r#"struct A { feature x redefines y [*] nonunique; }"#;
@@ -1494,7 +1601,10 @@ fn test_multiplicity_after_redefines() {
     if !parsed.errors.is_empty() {
         eprintln!("With nonunique errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse multiplicity after redefines with nonunique");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse multiplicity after redefines with nonunique"
+    );
 }
 
 /// Test feature inside function body (StatePerformances.kerml pattern)
@@ -1507,7 +1617,10 @@ fn test_feature_in_function_body() {
     if !parsed.errors.is_empty() {
         eprintln!("Simple feature errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse simple feature in function body");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse simple feature in function body"
+    );
     eprintln!("Simple feature OK");
 
     // Feature with typing - THIS IS FAILING
@@ -1516,7 +1629,10 @@ fn test_feature_in_function_body() {
     if !parsed.errors.is_empty() {
         eprintln!("Feature with typing errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse feature with typing in function body");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse feature with typing in function body"
+    );
 
     // Full pattern from StatePerformances.kerml
     let full = r#"function allSubstatePerformances {
@@ -1528,7 +1644,10 @@ fn test_feature_in_function_body() {
     if !parsed.errors.is_empty() {
         eprintln!("Full function errors: {:?}", parsed.errors);
     }
-    assert!(parsed.errors.is_empty(), "Failed to parse full function pattern");
+    assert!(
+        parsed.errors.is_empty(),
+        "Failed to parse full function pattern"
+    );
 }
 
 /// Test then private action (Actions.sysml pattern)
@@ -1536,31 +1655,31 @@ fn test_feature_in_function_body() {
 #[test]
 fn test_then_private_action() {
     // Bottom-up triage: start simple, build up
-    
+
     // 1. Basic assign
     let t1 = r#"action def A { assign x := 1; }"#;
     let p1 = parse_sysml(t1);
     eprintln!("T1 (basic assign): {:?}", p1.errors);
     assert!(p1.errors.is_empty(), "T1 failed");
-    
+
     // 2. assign var (var is a keyword!)
     let t2 = r#"action def A { assign var := 1; }"#;
     let p2 = parse_sysml(t2);
     eprintln!("T2 (assign var): {:?}", p2.errors);
     assert!(p2.errors.is_empty(), "T2 failed - assign var");
-    
+
     // 3. while with assign inside
     let t3 = r#"action def A { while true { assign x := 1; } }"#;
     let p3 = parse_sysml(t3);
     eprintln!("T3 (while with assign): {:?}", p3.errors);
     assert!(p3.errors.is_empty(), "T3 failed");
-    
+
     // 4. while with assign var inside
     let t4 = r#"action def A { while true { assign var := 1; } }"#;
     let p4 = parse_sysml(t4);
     eprintln!("T4 (while with assign var): {:?}", p4.errors);
     assert!(p4.errors.is_empty(), "T4 failed - while with assign var");
-    
+
     // Full pattern once basics pass
     let input = r#"action def ForLoop {
         private action initialization
@@ -1572,7 +1691,7 @@ fn test_then_private_action() {
                 then assign index := index + 1;
             }
     }"#;
-    
+
     let parsed = parse_sysml(input);
     if !parsed.errors.is_empty() {
         for err in &parsed.errors {
