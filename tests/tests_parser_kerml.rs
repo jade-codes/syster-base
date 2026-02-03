@@ -1530,3 +1530,60 @@ fn test_feature_in_function_body() {
     }
     assert!(parsed.errors.is_empty(), "Failed to parse full function pattern");
 }
+
+/// Test then private action (Actions.sysml pattern)
+/// Pattern: `then private action whileLoop ...`
+#[test]
+fn test_then_private_action() {
+    // Bottom-up triage: start simple, build up
+    
+    // 1. Basic assign
+    let t1 = r#"action def A { assign x := 1; }"#;
+    let p1 = parse_sysml(t1);
+    eprintln!("T1 (basic assign): {:?}", p1.errors);
+    assert!(p1.errors.is_empty(), "T1 failed");
+    
+    // 2. assign var (var is a keyword!)
+    let t2 = r#"action def A { assign var := 1; }"#;
+    let p2 = parse_sysml(t2);
+    eprintln!("T2 (assign var): {:?}", p2.errors);
+    assert!(p2.errors.is_empty(), "T2 failed - assign var");
+    
+    // 3. while with assign inside
+    let t3 = r#"action def A { while true { assign x := 1; } }"#;
+    let p3 = parse_sysml(t3);
+    eprintln!("T3 (while with assign): {:?}", p3.errors);
+    assert!(p3.errors.is_empty(), "T3 failed");
+    
+    // 4. while with assign var inside
+    let t4 = r#"action def A { while true { assign var := 1; } }"#;
+    let p4 = parse_sysml(t4);
+    eprintln!("T4 (while with assign var): {:?}", p4.errors);
+    assert!(p4.errors.is_empty(), "T4 failed - while with assign var");
+    
+    // Full pattern once basics pass
+    let input = r#"action def ForLoop {
+        private action initialization
+            assign index := 1;
+        then private action whileLoop
+            while index <= size(seq) {
+                assign var := seq#(index);
+                then perform body;
+                then assign index := index + 1;
+            }
+    }"#;
+    
+    let parsed = parse_sysml(input);
+    if !parsed.errors.is_empty() {
+        for err in &parsed.errors {
+            let start: usize = err.range.start().into();
+            let end: usize = err.range.end().into();
+            let ctx_start = start.saturating_sub(20);
+            let ctx_end = (end + 20).min(input.len());
+            eprintln!("Error: {:?}", err);
+            eprintln!("  At chars {}-{}: [{}]", start, end, &input[start..end]);
+            eprintln!("  Context: [{}]", &input[ctx_start..ctx_end]);
+        }
+    }
+    assert!(parsed.errors.is_empty(), "Failed to parse full pattern");
+}

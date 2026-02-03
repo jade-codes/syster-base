@@ -358,6 +358,7 @@ impl<'a> ExpressionParser for Parser<'a> {
         // And "behavior", "occurrence", "connection", "function" which appear as feature names
         // being redefined/subsetted in the standard library (SysML.sysml).
         // Also "predicate", "interaction", "metaclass", "member" which appear as feature names.
+        // Also "var" which is used as a feature name in Actions.sysml (assign var := ...)
         matches!(
             self.current_kind(),
             SyntaxKind::IDENT
@@ -381,6 +382,7 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::INTERACTION_KW
                 | SyntaxKind::METACLASS_KW
                 | SyntaxKind::MEMBER_KW
+                | SyntaxKind::VAR_KW
         )
     }
 
