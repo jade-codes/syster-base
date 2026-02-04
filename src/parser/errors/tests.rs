@@ -21,11 +21,11 @@ fn test_error_module_exports() {
 #[test]
 fn test_complete_error_workflow() {
     // Simulate a complete error creation workflow
-    
+
     // 1. Detect unclosed brace at position 50
     let opening_brace_pos = TextRange::new(TextSize::new(10), TextSize::new(11));
     let error_pos = TextRange::empty(TextSize::new(50));
-    
+
     // 2. Create error with context
     let err = SyntaxError::builder(ErrorCode::E0202)
         .message("unclosed '{' in package body")
@@ -33,7 +33,7 @@ fn test_complete_error_workflow() {
         .hint("add '}' to close the package body")
         .related("opening brace here", opening_brace_pos)
         .build();
-    
+
     // 3. Verify error properties
     assert_eq!(err.code, ErrorCode::E0202);
     assert!(err.message.contains("unclosed"));
@@ -89,22 +89,26 @@ fn test_error_code_exhaustiveness() {
 
     for code in codes {
         // Every code must have a string representation
-        assert!(!code.as_str().is_empty(), "code {:?} has empty as_str()", code);
-        
+        assert!(
+            !code.as_str().is_empty(),
+            "code {:?} has empty as_str()",
+            code
+        );
+
         // Every code must have a default message
         assert!(
             !code.default_message().is_empty(),
             "code {:?} has empty default_message()",
             code
         );
-        
+
         // Every code must have a category
         assert!(
             !code.category_description().is_empty(),
             "code {:?} has empty category_description()",
             code
         );
-        
+
         // String representation should match pattern E####
         let s = code.as_str();
         assert!(s.starts_with('E'), "code {:?} doesn't start with E", code);
@@ -133,7 +137,7 @@ fn test_context_recovery_tokens_validity() {
             "context {:?} has no recovery tokens",
             ctx
         );
-        
+
         // Recovery tokens should include some kind of closing/terminating token
         let has_terminator = tokens.iter().any(|t| {
             matches!(
@@ -158,7 +162,7 @@ fn test_related_info_creation() {
         "opened here",
         TextRange::new(TextSize::new(5), TextSize::new(6)),
     );
-    
+
     assert_eq!(info.message, "opened here");
     assert_eq!(info.range.start(), TextSize::new(5));
     assert_eq!(info.range.end(), TextSize::new(6));
@@ -166,12 +170,8 @@ fn test_related_info_creation() {
 
 #[test]
 fn test_error_severity_default() {
-    let err = SyntaxError::new(
-        "test",
-        TextRange::empty(TextSize::new(0)),
-        ErrorCode::E0901,
-    );
-    
+    let err = SyntaxError::new("test", TextRange::empty(TextSize::new(0)), ErrorCode::E0901);
+
     // Default severity should be Error
     assert_eq!(err.severity, Severity::Error);
     assert!(err.severity.is_error());
@@ -180,7 +180,7 @@ fn test_error_severity_default() {
 #[test]
 fn test_error_at_offset() {
     let err = SyntaxError::at_offset("test", TextSize::new(42), ErrorCode::E0901);
-    
+
     assert_eq!(err.range.start(), TextSize::new(42));
     assert_eq!(err.range.end(), TextSize::new(42)); // Empty range
 }

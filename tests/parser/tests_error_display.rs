@@ -1,6 +1,6 @@
 //! Tests for error display and kind_to_name coverage
 
-use syster::parser::{kind_to_name, SyntaxKind};
+use syster::parser::{SyntaxKind, kind_to_name};
 
 #[test]
 fn test_all_keywords_have_specific_names() {

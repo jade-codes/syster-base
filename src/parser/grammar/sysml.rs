@@ -604,7 +604,10 @@ pub fn parse_body<P: SysMLParser>(p: &mut P) {
                 } else {
                     kind_to_name(p.current_kind()).to_string()
                 };
-                p.error(format!("unexpected {} in definition body—expected a member declaration", got));
+                p.error(format!(
+                    "unexpected {} in definition body—expected a member declaration",
+                    got
+                ));
                 p.bump();
             }
         }

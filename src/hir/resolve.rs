@@ -2720,7 +2720,12 @@ mod tests {
         let mut index = SymbolIndex::new();
         index.add_file(
             FileId::new(0),
-            vec![make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0)],
+            vec![make_symbol(
+                "Car",
+                "Vehicle::Car",
+                SymbolKind::PartDefinition,
+                0,
+            )],
         );
 
         let resolver = Resolver::new(&index);

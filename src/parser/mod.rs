@@ -43,7 +43,7 @@ mod syntax_kind;
 pub use ast::*;
 pub use errors::{ErrorCode, ParseContext, Severity};
 pub use lexer::{Lexer, Token};
-pub use parser::{kind_to_name, Parse, SyntaxError, parse_kerml, parse_sysml};
+pub use parser::{Parse, SyntaxError, kind_to_name, parse_kerml, parse_sysml};
 pub use syntax_kind::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, SysMLLanguage};
 
 /// Re-export rowan types for convenience

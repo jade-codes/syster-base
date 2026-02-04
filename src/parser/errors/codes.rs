@@ -190,13 +190,23 @@ impl ErrorCode {
     pub fn category_description(&self) -> &'static str {
         match self {
             Self::E0101 | Self::E0102 | Self::E0103 | Self::E0104 => "lexical error",
-            Self::E0201 | Self::E0202 | Self::E0203 | Self::E0204 | Self::E0205 | Self::E0206 | Self::E0207 => {
-                "structural error"
+            Self::E0201
+            | Self::E0202
+            | Self::E0203
+            | Self::E0204
+            | Self::E0205
+            | Self::E0206
+            | Self::E0207 => "structural error",
+            Self::E0301
+            | Self::E0302
+            | Self::E0303
+            | Self::E0304
+            | Self::E0305
+            | Self::E0306
+            | Self::E0307 => "declaration error",
+            Self::E0401 | Self::E0402 | Self::E0403 | Self::E0404 | Self::E0405 | Self::E0406 => {
+                "expression error"
             }
-            Self::E0301 | Self::E0302 | Self::E0303 | Self::E0304 | Self::E0305 | Self::E0306 | Self::E0307 => {
-                "declaration error"
-            }
-            Self::E0401 | Self::E0402 | Self::E0403 | Self::E0404 | Self::E0405 | Self::E0406 => "expression error",
             Self::E0501 | Self::E0502 | Self::E0503 | Self::E0504 => "import error",
             Self::E0601 | Self::E0602 => "relationship error",
             Self::E0701 | Self::E0702 | Self::E0703 | Self::E0704 => "action/state error",

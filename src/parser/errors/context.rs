@@ -9,9 +9,10 @@ use crate::parser::SyntaxKind;
 ///
 /// Used to generate context-aware error messages and determine
 /// appropriate recovery strategies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ParseContext {
     /// At the top level of a file
+    #[default]
     TopLevel,
     /// Inside a package body
     PackageBody,
@@ -249,12 +250,6 @@ impl ParseContext {
     }
 }
 
-impl Default for ParseContext {
-    fn default() -> Self {
-        Self::TopLevel
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,12 +263,16 @@ mod tests {
 
     #[test]
     fn test_context_expected_description() {
-        assert!(ParseContext::PackageBody
-            .expected_description()
-            .contains("definition"));
-        assert!(ParseContext::ActionBody
-            .expected_description()
-            .contains("accept"));
+        assert!(
+            ParseContext::PackageBody
+                .expected_description()
+                .contains("definition")
+        );
+        assert!(
+            ParseContext::ActionBody
+                .expected_description()
+                .contains("accept")
+        );
     }
 
     #[test]

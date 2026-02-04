@@ -212,8 +212,12 @@ impl SyntaxErrorBuilder {
     /// Panics if message or range are not set
     pub fn build(self) -> SyntaxError {
         SyntaxError {
-            message: self.message.unwrap_or_else(|| self.code.default_message().to_string()),
-            range: self.range.unwrap_or_else(|| TextRange::empty(TextSize::new(0))),
+            message: self
+                .message
+                .unwrap_or_else(|| self.code.default_message().to_string()),
+            range: self
+                .range
+                .unwrap_or_else(|| TextRange::empty(TextSize::new(0))),
             code: self.code,
             severity: self.severity,
             hint: self.hint,
@@ -223,11 +227,8 @@ impl SyntaxErrorBuilder {
 }
 
 /// Helper function to create a context-aware error message
-pub fn format_context_error(
-    found: &str,
-    context: ParseContext,
-    code: ErrorCode,
-) -> SyntaxError {
+#[allow(dead_code)] // Will be used when context stack is integrated
+pub fn format_context_error(found: &str, context: ParseContext, code: ErrorCode) -> SyntaxError {
     let message = format!(
         "unexpected {} {}—expected {}",
         found,
@@ -235,9 +236,7 @@ pub fn format_context_error(
         context.expected_description()
     );
 
-    SyntaxError::builder(code)
-        .message(message)
-        .build()
+    SyntaxError::builder(code).message(message).build()
 }
 
 #[cfg(test)]
@@ -299,7 +298,10 @@ mod tests {
             .range(TextRange::new(TextSize::new(10), TextSize::new(15)))
             .hint("add ';' at the end")
             .severity(Severity::Error)
-            .related("definition started here", TextRange::empty(TextSize::new(0)))
+            .related(
+                "definition started here",
+                TextRange::empty(TextSize::new(0)),
+            )
             .build();
 
         assert_eq!(err.message, "expected ';' after part definition");
