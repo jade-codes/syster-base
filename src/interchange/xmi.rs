@@ -21,14 +21,16 @@ use std::sync::Arc;
 use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
 use super::{FormatCapability, InterchangeError, ModelFormat};
 
-/// XMI namespace URIs.
+/// XMI namespace URIs - using 2025 spec versions.
 pub mod namespace {
-    /// XMI 2.5.1 namespace.
-    pub const XMI: &str = "http://www.omg.org/spec/XMI/20131001";
-    /// KerML namespace.
-    pub const KERML: &str = "http://www.omg.org/spec/KerML/20230201";
-    /// SysML v2 namespace.
-    pub const SYSML: &str = "http://www.omg.org/spec/SysML/20230201";
+    /// XMI 2.0 namespace (used in xmi:version).
+    pub const XMI: &str = "http://www.omg.org/XMI";
+    /// XSI namespace for xsi:type.
+    pub const XSI: &str = "http://www.w3.org/2001/XMLSchema-instance";
+    /// KerML 2025 namespace.
+    pub const KERML: &str = "https://www.omg.org/spec/KerML/20250201";
+    /// SysML v2 2025 namespace.
+    pub const SYSML: &str = "https://www.omg.org/spec/SysML/20250201";
 }
 
 /// XMI format handler.
@@ -136,6 +138,9 @@ mod reader {
         base_path: Option<std::path::PathBuf>,
         /// Cache of resolved href element names.
         href_name_cache: std::collections::HashMap<String, String>,
+        /// Pending relationship sources - when we have source but not target yet.
+        /// Maps element_id -> (source_ref, element_kind)
+        pending_rel_sources: std::collections::HashMap<String, (String, ElementKind)>,
     }
 
     /// Stack entry type for tracking nested elements.
@@ -160,6 +165,7 @@ mod reader {
                 children_in_order: IndexMap::new(),
                 base_path: None,
                 href_name_cache: std::collections::HashMap::new(),
+                pending_rel_sources: std::collections::HashMap::new(),
             }
         }
 
@@ -275,11 +281,20 @@ mod reader {
                     "isComposite" => is_composite = value == "true",
                     "body" => body = Some(value),
                     "href" => href = Some(value),
-                    // Relationship source/target references
+                    // Relationship source references - store as property AND use for relationship
                     "source" | "relatedElement" | "subclassifier" | "typedFeature"
-                    | "redefiningFeature" | "subsettingFeature" => source_ref = Some(value),
+                    | "redefiningFeature" | "subsettingFeature" | "typeDisjoined" => {
+                        source_ref = Some(value.clone());
+                        extra_attrs.push((key.to_string(), value));
+                    }
+                    // Relationship target references - store as property AND use for relationship
                     "target" | "superclassifier" | "redefinedFeature" | "subsettedFeature"
-                    | "general" | "specific" | "type" | "chainingFeature" => target_ref = Some(value),
+                    | "general" | "specific" | "type" | "chainingFeature" 
+                    | "importedMembership" | "importedNamespace" | "disjoiningType"
+                    | "originalType" | "memberElement" | "referencedFeature" => {
+                        target_ref = Some(value.clone());
+                        extra_attrs.push((key.to_string(), value));
+                    }
                     _ => {
                         // Store other attributes for roundtrip
                         if !key.starts_with("xmlns") && !key.starts_with("xmi:version") {
@@ -362,15 +377,18 @@ mod reader {
                         .push(id.clone());
                 }
 
-                // If this is a relationship kind, also create a Relationship
+                // If this is a relationship kind, try to create a Relationship
                 if kind.is_relationship() {
                     if let (Some(src), Some(tgt)) = (
-                        source_ref.or_else(|| self.parent_stack.last().cloned()),
+                        source_ref.clone().or_else(|| self.parent_stack.last().cloned()),
                         target_ref,
                     ) {
                         let rel_kind = element_kind_to_relationship_kind(kind);
                         let relationship = Relationship::new(id.clone(), rel_kind, src, tgt);
                         self.relationships.push(relationship);
+                    } else if let Some(src) = source_ref {
+                        // Store source_ref for later use when we encounter the target href child
+                        self.pending_rel_sources.insert(id.clone(), (src, kind));
                     }
                 }
 
@@ -379,8 +397,11 @@ mod reader {
                 self.depth_stack.push(StackEntry::Element(id));
             } else if let Some(h) = href {
                 // Element without ID but with href - this is a reference element like <type href="..."/>
-                // Just store it for decompilation reference
+                // or <superclassifier href="..."/> or <importedMembership href="..."/>
                 if let Some(parent_id) = self.parent_stack.last().cloned() {
+                    // Extract the target element ID from the href (after the #)
+                    let target_id = h.rsplit('#').next().map(|s| s.to_string());
+                    
                     // Try to resolve the full qualified name from the referenced file
                     let resolved_name = self.resolve_href_name(&h);
                     let fallback_name = if resolved_name.is_none() {
@@ -407,6 +428,20 @@ mod reader {
                             Arc::from("href"),
                             PropertyValue::String(Arc::from(h.as_str())),
                         );
+                    }
+                    
+                    // Check if we have a pending relationship source for this parent
+                    if let Some(target) = target_id {
+                        if let Some((src, kind)) = self.pending_rel_sources.remove(&parent_id) {
+                            let rel_kind = element_kind_to_relationship_kind(kind);
+                            let relationship = Relationship::new(
+                                parent_id.clone(),
+                                rel_kind,
+                                src,
+                                target,
+                            );
+                            self.relationships.push(relationship);
+                        }
                     }
                 }
                 self.depth_stack.push(StackEntry::Containment);
@@ -592,6 +627,7 @@ mod reader {
             ElementKind::FeatureMembership => RelationshipKind::FeatureMembership,
             ElementKind::Conjugation => RelationshipKind::Conjugation,
             ElementKind::FeatureChaining => RelationshipKind::FeatureChaining,
+            ElementKind::Disjoining => RelationshipKind::Disjoining,
             _ => RelationshipKind::Dependency, // Default fallback
         }
     }
@@ -611,7 +647,7 @@ mod writer {
     use quick_xml::events::{BytesDecl, BytesEnd, BytesStart, Event};
     use std::io::Cursor;
 
-    /// XMI document writer.
+    /// XMI document writer - produces OMG-compliant format.
     pub struct XmiWriter;
 
     impl XmiWriter {
@@ -623,14 +659,84 @@ mod writer {
             let mut buffer = Cursor::new(Vec::new());
             let mut writer = Writer::new_with_indent(&mut buffer, b' ', 2);
 
-            // Write XML declaration
+            // Write XML declaration with ASCII encoding (per OMG format)
             writer
-                .write_event(Event::Decl(BytesDecl::new("1.0", Some("UTF-8"), None)))
+                .write_event(Event::Decl(BytesDecl::new("1.0", Some("ASCII"), None)))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
 
-            // Write XMI root element
+            // Get roots
+            let roots: Vec<_> = model.iter_roots().collect();
+            
+            if roots.len() == 1 {
+                // Single root - use element as document root (OMG format)
+                let root = roots[0];
+                self.write_root_element(&mut writer, model, root)?;
+            } else if roots.is_empty() {
+                return Err(InterchangeError::xml("Model has no root elements"));
+            } else {
+                // Multiple roots - wrap in xmi:XMI
+                self.write_xmi_wrapper(&mut writer, model, &roots)?;
+            }
+
+            Ok(buffer.into_inner())
+        }
+
+        /// Write a single root element as the document root.
+        fn write_root_element<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            element: &Element,
+        ) -> Result<(), InterchangeError> {
+            let type_name = element.kind.xmi_type();
+            let mut elem_start = BytesStart::new(type_name);
+            
+            // Add XMI version and all namespaces
+            elem_start.push_attribute(("xmi:version", "2.0"));
+            elem_start.push_attribute(("xmlns:xmi", namespace::XMI));
+            elem_start.push_attribute(("xmlns:xsi", namespace::XSI));
+            elem_start.push_attribute(("xmlns:kerml", namespace::KERML));
+            elem_start.push_attribute(("xmlns:sysml", namespace::SYSML));
+            
+            // Write element attributes
+            self.write_element_attrs(&mut elem_start, element, model);
+            
+            // Write element with children
+            let has_children = !element.owned_elements.is_empty();
+            if has_children {
+                writer
+                    .write_event(Event::Start(elem_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+
+                for child_id in &element.owned_elements {
+                    if let Some(child) = model.get(child_id) {
+                        self.write_owned_relationship(writer, model, child)?;
+                    }
+                }
+
+                writer
+                    .write_event(Event::End(BytesEnd::new(type_name)))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            } else {
+                writer
+                    .write_event(Event::Empty(elem_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            }
+
+            Ok(())
+        }
+
+        /// Write multiple roots wrapped in xmi:XMI.
+        fn write_xmi_wrapper<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            roots: &[&Element],
+        ) -> Result<(), InterchangeError> {
             let mut xmi_start = BytesStart::new("xmi:XMI");
+            xmi_start.push_attribute(("xmi:version", "2.0"));
             xmi_start.push_attribute(("xmlns:xmi", namespace::XMI));
+            xmi_start.push_attribute(("xmlns:xsi", namespace::XSI));
             xmi_start.push_attribute(("xmlns:kerml", namespace::KERML));
             xmi_start.push_attribute(("xmlns:sysml", namespace::SYSML));
 
@@ -638,77 +744,49 @@ mod writer {
                 .write_event(Event::Start(xmi_start))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
 
-            // Write root elements
-            for root in model.iter_roots() {
-                self.write_element(&mut writer, model, root)?;
+            for root in roots {
+                self.write_element_nested(writer, model, root)?;
             }
 
-            // Close XMI root
             writer
                 .write_event(Event::End(BytesEnd::new("xmi:XMI")))
                 .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
 
-            Ok(buffer.into_inner())
+            Ok(())
         }
 
-        fn write_element<W: std::io::Write>(
-            &self,
-            writer: &mut Writer<W>,
-            model: &Model,
-            element: &Element,
-        ) -> Result<(), InterchangeError> {
-            let type_name = element.kind.xmi_type();
-
-            let mut elem_start = BytesStart::new(type_name);
+        /// Write element attributes (id, name, flags, etc.)
+        fn write_element_attrs(&self, elem_start: &mut BytesStart, element: &Element, model: &Model) {
+            // xmi:id and elementId (same value, per OMG spec)
             elem_start.push_attribute(("xmi:id", element.id.as_str()));
+            elem_start.push_attribute(("elementId", element.id.as_str()));
 
+            // Name - use declaredName for SysML elements
             if let Some(ref name) = element.name {
-                elem_start.push_attribute(("name", name.as_ref()));
-            }
-            if let Some(ref qualified_name) = element.qualified_name {
-                elem_start.push_attribute(("qualifiedName", qualified_name.as_ref()));
-            }
-            if let Some(ref short_name) = element.short_name {
-                elem_start.push_attribute(("shortName", short_name.as_ref()));
-            }
-            
-            // For relationship elements, add source/target attributes
-            // Look up the corresponding Relationship struct by element ID
-            if element.kind.is_relationship() {
-                if let Some(rel) = model.relationships.iter().find(|r| r.id == element.id) {
-                    match rel.kind {
-                        RelationshipKind::Specialization => {
-                            elem_start.push_attribute(("subclassifier", rel.source.as_str()));
-                            elem_start.push_attribute(("superclassifier", rel.target.as_str()));
-                        }
-                        RelationshipKind::FeatureTyping => {
-                            elem_start.push_attribute(("typedFeature", rel.source.as_str()));
-                            elem_start.push_attribute(("type", rel.target.as_str()));
-                        }
-                        RelationshipKind::Redefinition => {
-                            elem_start.push_attribute(("redefiningFeature", rel.source.as_str()));
-                            elem_start.push_attribute(("redefinedFeature", rel.target.as_str()));
-                        }
-                        RelationshipKind::Subsetting => {
-                            elem_start.push_attribute(("subsettingFeature", rel.source.as_str()));
-                            elem_start.push_attribute(("subsettedFeature", rel.target.as_str()));
-                        }
-                        RelationshipKind::MembershipImport => {
-                            elem_start.push_attribute(("importedMembership", rel.target.as_str()));
-                        }
-                        RelationshipKind::NamespaceImport => {
-                            elem_start.push_attribute(("importedNamespace", rel.target.as_str()));
-                        }
-                        _ => {
-                            // Generic relationship - use source/target
-                            elem_start.push_attribute(("source", rel.source.as_str()));
-                            elem_start.push_attribute(("target", rel.target.as_str()));
-                        }
-                    }
+                if element.kind.is_sysml() {
+                    elem_start.push_attribute(("declaredName", name.as_ref()));
+                } else {
+                    elem_start.push_attribute(("name", name.as_ref()));
                 }
             }
+            
+            // Short name
+            if let Some(ref short_name) = element.short_name {
+                if element.kind.is_sysml() {
+                    elem_start.push_attribute(("declaredShortName", short_name.as_ref()));
+                } else {
+                    elem_start.push_attribute(("shortName", short_name.as_ref()));
+                }
+            }
+            
+            // Qualified name (if present)
+            if let Some(ref qn) = element.qualified_name {
+                elem_start.push_attribute(("qualifiedName", qn.as_ref()));
+            }
+            
+            // Relationship attributes are now stored as properties and written below
 
-            // Write boolean flags (only if true, per XMI convention)
+            // Boolean flags
             if element.is_abstract {
                 elem_start.push_attribute(("isAbstract", "true"));
             }
@@ -724,78 +802,151 @@ mod writer {
             if element.is_parallel {
                 elem_start.push_attribute(("isParallel", "true"));
             }
+            
+            // isStandard
             if let Some(super::super::model::PropertyValue::Boolean(true)) =
                 element.properties.get("isStandard")
             {
                 elem_start.push_attribute(("isStandard", "true"));
             }
-            if let Some(super::super::model::PropertyValue::Boolean(true)) =
+            
+            // isComposite - write even when false (per OMG format)
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
                 element.properties.get("isComposite")
             {
-                elem_start.push_attribute(("isComposite", "true"));
+                elem_start.push_attribute(("isComposite", if *v { "true" } else { "false" }));
             }
 
-            // Write documentation body if present
+            // Documentation body
             if let Some(ref doc) = element.documentation {
                 elem_start.push_attribute(("body", doc.as_ref()));
             }
 
-            // Write href if present (for cross-file references)
-            if let Some(super::super::model::PropertyValue::String(href)) =
-                element.properties.get("href")
-            {
-                elem_start.push_attribute(("href", href.as_ref()));
-            }
-
-            // Write other stored attributes
+            // Other properties
             for (key, value) in &element.properties {
-                // Skip ones we've already handled
-                if key.as_ref() == "isStandard"
-                    || key.as_ref() == "isComposite"
-                    || key.as_ref() == "href"
-                {
+                let k = key.as_ref();
+                // Skip internal/special properties
+                if k == "isStandard" || k == "isComposite" || k == "href" || k == "href_target_name" 
+                    || k.starts_with("_") {
                     continue;
                 }
                 if let super::super::model::PropertyValue::String(s) = value {
-                    elem_start.push_attribute((key.as_ref(), s.as_ref()));
+                    elem_start.push_attribute((k, s.as_ref()));
                 }
             }
+        }
 
-            // Check if we have children
-            let has_children = !element.owned_elements.is_empty();
+        /// Get the href child element name for a given element kind.
+        fn href_element_name(kind: ElementKind) -> &'static str {
+            match kind {
+                ElementKind::NamespaceImport => "importedNamespace",
+                ElementKind::MembershipImport => "importedMembership",
+                ElementKind::Specialization => "superclassifier",
+                ElementKind::FeatureTyping => "type",
+                ElementKind::Subsetting | ElementKind::ReferenceSubsetting | ElementKind::CrossSubsetting => "subsettedFeature",
+                ElementKind::Redefinition => "redefinedFeature",
+                ElementKind::Disjoining => "disjoiningType",
+                ElementKind::Conjugation => "originalType",
+                ElementKind::FeatureChaining => "chainingFeature",
+                _ => "target",
+            }
+        }
 
-            if has_children {
+        /// Write an href child element if the element has an href property.
+        fn write_href_child<W: std::io::Write>(
+            writer: &mut Writer<W>,
+            element: &Element,
+        ) -> Result<(), InterchangeError> {
+            if let Some(super::super::model::PropertyValue::String(href)) = element.properties.get("href") {
+                let href_elem_name = Self::href_element_name(element.kind);
+                let mut href_elem = BytesStart::new(href_elem_name);
+                href_elem.push_attribute(("href", href.as_ref()));
                 writer
-                    .write_event(Event::Start(elem_start))
+                    .write_event(Event::Empty(href_elem))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            }
+            Ok(())
+        }
+
+        /// Write an ownedRelationship element with xsi:type.
+        fn write_owned_relationship<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            child: &Element,
+        ) -> Result<(), InterchangeError> {
+            let type_name = child.kind.xmi_type();
+            let mut rel_start = BytesStart::new("ownedRelationship");
+            rel_start.push_attribute(("xsi:type", type_name));
+            
+            // Write element attributes
+            self.write_element_attrs(&mut rel_start, child, model);
+            
+            // Check for href or children
+            let has_href = child.properties.get("href").is_some();
+            let has_children = !child.owned_elements.is_empty();
+
+            if has_href || has_children {
+                writer
+                    .write_event(Event::Start(rel_start))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
 
-                // Write all owned children in order, choosing wrapper based on kind
-                for child_id in &element.owned_elements {
-                    if let Some(child) = model.get(child_id) {
-                        // Use ownedRelationship for relationship kinds, ownedMember for others
-                        let wrapper = if child.kind.is_relationship() {
-                            "ownedRelationship"
-                        } else {
-                            "ownedMember"
-                        };
+                Self::write_href_child(writer, child)?;
 
-                        writer
-                            .write_event(Event::Start(BytesStart::new(wrapper)))
-                            .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-
-                        self.write_element(writer, model, child)?;
-
-                        writer
-                            .write_event(Event::End(BytesEnd::new(wrapper)))
-                            .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+                // Write nested children as ownedRelatedElement
+                for grandchild_id in &child.owned_elements {
+                    if let Some(grandchild) = model.get(grandchild_id) {
+                        self.write_owned_related_element(writer, model, grandchild)?;
                     }
                 }
 
                 writer
-                    .write_event(Event::End(BytesEnd::new(type_name)))
+                    .write_event(Event::End(BytesEnd::new("ownedRelationship")))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
             } else {
-                // Self-closing element
+                writer
+                    .write_event(Event::Empty(rel_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            }
+
+            Ok(())
+        }
+
+        /// Write an ownedRelatedElement with xsi:type.
+        fn write_owned_related_element<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            element: &Element,
+        ) -> Result<(), InterchangeError> {
+            let type_name = element.kind.xmi_type();
+            let mut elem_start = BytesStart::new("ownedRelatedElement");
+            elem_start.push_attribute(("xsi:type", type_name));
+            
+            // Write element attributes
+            self.write_element_attrs(&mut elem_start, element, model);
+
+            // Check for href or children
+            let has_href = element.properties.get("href").is_some();
+            let has_children = !element.owned_elements.is_empty();
+            
+            if has_href || has_children {
+                writer
+                    .write_event(Event::Start(elem_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+
+                Self::write_href_child(writer, element)?;
+
+                for child_id in &element.owned_elements {
+                    if let Some(child) = model.get(child_id) {
+                        self.write_owned_relationship(writer, model, child)?;
+                    }
+                }
+
+                writer
+                    .write_event(Event::End(BytesEnd::new("ownedRelatedElement")))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            } else {
                 writer
                     .write_event(Event::Empty(elem_start))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
@@ -804,75 +955,40 @@ mod writer {
             Ok(())
         }
 
-        #[allow(dead_code)]
-        fn write_relationship<W: std::io::Write>(
+        /// Write a nested element (used in xmi:XMI wrapper case).
+        fn write_element_nested<W: std::io::Write>(
             &self,
             writer: &mut Writer<W>,
-            _model: &Model,
-            rel: &Relationship,
+            model: &Model,
+            element: &Element,
         ) -> Result<(), InterchangeError> {
-            // Start ownedRelationship wrapper
-            writer
-                .write_event(Event::Start(BytesStart::new("ownedRelationship")))
-                .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            let type_name = element.kind.xmi_type();
+            let mut elem_start = BytesStart::new(type_name);
+            
+            self.write_element_attrs(&mut elem_start, element, model);
+            
+            let has_children = !element.owned_elements.is_empty();
+            if has_children {
+                writer
+                    .write_event(Event::Start(elem_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
 
-            // Write the relationship element
-            let rel_type = relationship_kind_to_xmi_type(rel.kind);
-            let mut rel_start = BytesStart::new(rel_type);
-            rel_start.push_attribute(("xmi:id", rel.id.as_str()));
+                for child_id in &element.owned_elements {
+                    if let Some(child) = model.get(child_id) {
+                        self.write_owned_relationship(writer, model, child)?;
+                    }
+                }
 
-            // Add source and target based on relationship kind
-            match rel.kind {
-                RelationshipKind::Specialization => {
-                    rel_start.push_attribute(("subclassifier", rel.source.as_str()));
-                    rel_start.push_attribute(("superclassifier", rel.target.as_str()));
-                }
-                RelationshipKind::FeatureTyping => {
-                    rel_start.push_attribute(("typedFeature", rel.source.as_str()));
-                    rel_start.push_attribute(("type", rel.target.as_str()));
-                }
-                RelationshipKind::Redefinition => {
-                    rel_start.push_attribute(("redefiningFeature", rel.source.as_str()));
-                    rel_start.push_attribute(("redefinedFeature", rel.target.as_str()));
-                }
-                RelationshipKind::Subsetting => {
-                    rel_start.push_attribute(("subsettingFeature", rel.source.as_str()));
-                    rel_start.push_attribute(("subsettedFeature", rel.target.as_str()));
-                }
-                _ => {
-                    rel_start.push_attribute(("source", rel.source.as_str()));
-                    rel_start.push_attribute(("target", rel.target.as_str()));
-                }
+                writer
+                    .write_event(Event::End(BytesEnd::new(type_name)))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+            } else {
+                writer
+                    .write_event(Event::Empty(elem_start))
+                    .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
             }
 
-            writer
-                .write_event(Event::Empty(rel_start))
-                .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-
-            // End ownedRelationship wrapper
-            writer
-                .write_event(Event::End(BytesEnd::new("ownedRelationship")))
-                .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
-
             Ok(())
-        }
-    }
-
-    /// Convert RelationshipKind to XMI type name.
-    fn relationship_kind_to_xmi_type(kind: RelationshipKind) -> &'static str {
-        match kind {
-            RelationshipKind::Specialization => "kerml:Specialization",
-            RelationshipKind::FeatureTyping => "kerml:FeatureTyping",
-            RelationshipKind::Subsetting => "kerml:Subsetting",
-            RelationshipKind::Redefinition => "kerml:Redefinition",
-            RelationshipKind::NamespaceImport => "kerml:NamespaceImport",
-            RelationshipKind::MembershipImport => "kerml:MembershipImport",
-            RelationshipKind::Membership => "kerml:Membership",
-            RelationshipKind::OwningMembership => "kerml:OwningMembership",
-            RelationshipKind::FeatureMembership => "kerml:FeatureMembership",
-            RelationshipKind::Conjugation => "kerml:Conjugation",
-            RelationshipKind::Dependency => "kerml:Dependency",
-            _ => "kerml:Relationship", // Fallback for other kinds
         }
     }
 }

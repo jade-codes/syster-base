@@ -105,7 +105,7 @@ impl ModelFormat for JsonLd {
 #[cfg(feature = "interchange")]
 mod reader {
     use super::*;
-    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue};
+    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind};
     use serde_json::Value;
     use std::sync::Arc;
 
@@ -125,16 +125,21 @@ mod reader {
 
             match value {
                 Value::Object(obj) => {
-                    // Single element
-                    if let Some(element) = parse_element(&obj)? {
+                    // Single element - could be element or relationship
+                    if let Some(rel) = parse_relationship(&obj) {
+                        model.relationships.push(rel);
+                    } else if let Some(element) = parse_element(&obj)? {
                         model.add_element(element);
                     }
                 }
                 Value::Array(arr) => {
-                    // Array of elements
+                    // Array of elements/relationships
                     for item in arr {
                         if let Value::Object(obj) = item {
-                            if let Some(element) = parse_element(&obj)? {
+                            // Try parsing as relationship first
+                            if let Some(rel) = parse_relationship(&obj) {
+                                model.relationships.push(rel);
+                            } else if let Some(element) = parse_element(&obj)? {
                                 model.add_element(element);
                             }
                         }
@@ -150,6 +155,72 @@ mod reader {
 
             Ok(model)
         }
+    }
+    
+    /// Parse a JSON object as a Relationship if it has source/target fields.
+    fn parse_relationship(obj: &serde_json::Map<String, Value>) -> Option<Relationship> {
+        // Must have @id, @type, source, and target
+        let id = match obj.get("@id") {
+            Some(Value::String(s)) => s.clone(),
+            _ => return None,
+        };
+        
+        let type_str = match obj.get("@type") {
+            Some(Value::String(s)) => s.as_str(),
+            _ => return None,
+        };
+        
+        // Check if this is a relationship type
+        let kind = match type_str {
+            "Specialization" | "Subclassification" => RelationshipKind::Specialization,
+            "FeatureTyping" => RelationshipKind::FeatureTyping,
+            "Subsetting" => RelationshipKind::Subsetting,
+            "Redefinition" => RelationshipKind::Redefinition,
+            "Conjugation" => RelationshipKind::Conjugation,
+            "Membership" => RelationshipKind::Membership,
+            "OwningMembership" => RelationshipKind::OwningMembership,
+            "FeatureMembership" => RelationshipKind::FeatureMembership,
+            "NamespaceImport" => RelationshipKind::NamespaceImport,
+            "MembershipImport" => RelationshipKind::MembershipImport,
+            "Dependency" => RelationshipKind::Dependency,
+            "SatisfyRequirementUsage" => RelationshipKind::Satisfaction,
+            "RequirementVerificationMembership" => RelationshipKind::Verification,
+            "AllocationUsage" => RelationshipKind::Allocation,
+            "ConnectionUsage" => RelationshipKind::Connection,
+            "FlowConnectionUsage" => RelationshipKind::FlowConnection,
+            "Succession" => RelationshipKind::Succession,
+            "FeatureChaining" => RelationshipKind::FeatureChaining,
+            _ => return None, // Not a relationship type
+        };
+        
+        // Get source
+        let source = match obj.get("source") {
+            Some(Value::Object(src_obj)) => match src_obj.get("@id") {
+                Some(Value::String(s)) => s.clone(),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        
+        // Get target
+        let target = match obj.get("target") {
+            Some(Value::Object(tgt_obj)) => match tgt_obj.get("@id") {
+                Some(Value::String(s)) => s.clone(),
+                _ => return None,
+            },
+            _ => return None,
+        };
+        
+        let mut rel = Relationship::new(id, kind, source, target);
+        
+        // Get owner if present
+        if let Some(Value::Object(owner_obj)) = obj.get("owner") {
+            if let Some(Value::String(owner_id)) = owner_obj.get("@id") {
+                rel.owner = Some(ElementId::new(owner_id.clone()));
+            }
+        }
+        
+        Some(rel)
     }
 
     /// Parse a JSON object into an Element.
@@ -317,7 +388,7 @@ use reader::JsonLdReader;
 #[cfg(feature = "interchange")]
 mod writer {
     use super::*;
-    use crate::interchange::model::{Element, PropertyValue};
+    use crate::interchange::model::{Element, PropertyValue, Relationship, RelationshipKind};
     use serde_json::{Map, Value, json};
 
     /// JSON-LD writer.
@@ -329,19 +400,68 @@ mod writer {
         }
 
         pub fn write(&self, model: &Model) -> Result<Vec<u8>, InterchangeError> {
-            let elements: Vec<Value> = model.iter_elements().map(element_to_json).collect();
+            let mut all_items: Vec<Value> = Vec::new();
+            
+            // Add all elements
+            for element in model.iter_elements() {
+                all_items.push(element_to_json(element));
+            }
+            
+            // Add all relationships as separate objects
+            for relationship in &model.relationships {
+                all_items.push(relationship_to_json(relationship));
+            }
 
-            let output = if elements.len() == 1 {
+            let output = if all_items.len() == 1 {
                 // Single element - return object directly
-                elements.into_iter().next().unwrap()
+                all_items.into_iter().next().unwrap()
             } else {
-                // Multiple elements - return array
-                Value::Array(elements)
+                // Multiple items - return array
+                Value::Array(all_items)
             };
 
             serde_json::to_vec_pretty(&output)
                 .map_err(|e| InterchangeError::json(format!("Serialization error: {e}")))
         }
+    }
+    
+    /// Convert a Relationship to JSON-LD Value.
+    fn relationship_to_json(rel: &Relationship) -> Value {
+        let mut obj = Map::new();
+        
+        // @type based on relationship kind
+        let rel_type = match rel.kind {
+            RelationshipKind::Specialization => "Specialization",
+            RelationshipKind::FeatureTyping => "FeatureTyping",
+            RelationshipKind::Subsetting => "Subsetting",
+            RelationshipKind::Redefinition => "Redefinition",
+            RelationshipKind::Conjugation => "Conjugation",
+            RelationshipKind::Membership => "Membership",
+            RelationshipKind::OwningMembership => "OwningMembership",
+            RelationshipKind::FeatureMembership => "FeatureMembership",
+            RelationshipKind::NamespaceImport => "NamespaceImport",
+            RelationshipKind::MembershipImport => "MembershipImport",
+            RelationshipKind::Dependency => "Dependency",
+            RelationshipKind::Satisfaction => "SatisfyRequirementUsage",
+            RelationshipKind::Verification => "RequirementVerificationMembership",
+            RelationshipKind::Allocation => "AllocationUsage",
+            RelationshipKind::Connection => "ConnectionUsage",
+            RelationshipKind::FlowConnection => "FlowConnectionUsage",
+            RelationshipKind::Succession => "Succession",
+            RelationshipKind::FeatureChaining => "FeatureChaining",
+            RelationshipKind::Disjoining => "Disjoining",
+        };
+        
+        obj.insert("@type".to_string(), json!(rel_type));
+        obj.insert("@id".to_string(), json!(rel.id.as_str()));
+        obj.insert("source".to_string(), json!({"@id": rel.source.as_str()}));
+        obj.insert("target".to_string(), json!({"@id": rel.target.as_str()}));
+        
+        if let Some(ref owner_id) = rel.owner {
+            obj.insert("owner".to_string(), json!({"@id": owner_id.as_str()}));
+        }
+        
+        Value::Object(obj)
     }
 
     /// Convert an Element to JSON-LD Value.

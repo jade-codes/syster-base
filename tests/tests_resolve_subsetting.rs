@@ -50,6 +50,8 @@ fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&s
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
+            direction: None,
+            multiplicity: None,
     }
 }
 
@@ -88,6 +90,8 @@ fn make_symbol_with_type_refs(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
+            direction: None,
+            multiplicity: None,
     }
 }
 

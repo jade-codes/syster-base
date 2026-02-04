@@ -2,6 +2,7 @@
 //!
 //! This test clones the SysML-v2-Release repository and verifies that all
 //! .sysmlx files can be imported and exported without losing information.
+#![cfg(feature = "interchange")]
 
 use std::path::PathBuf;
 use std::process::Command;

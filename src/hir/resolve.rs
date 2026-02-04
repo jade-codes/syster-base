@@ -2669,6 +2669,8 @@ mod tests {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 

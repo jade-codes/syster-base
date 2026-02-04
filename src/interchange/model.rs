@@ -307,6 +307,55 @@ impl ElementKind {
                 | Self::Annotation
         )
     }
+    
+    /// Returns true if this is a SysML (not KerML) element kind.
+    /// SysML elements use `declaredName` instead of `name`.
+    pub fn is_sysml(&self) -> bool {
+        matches!(
+            self,
+            Self::Namespace
+                | Self::Package
+                | Self::LibraryPackage
+                | Self::PartDefinition
+                | Self::ItemDefinition
+                | Self::ActionDefinition
+                | Self::PortDefinition
+                | Self::AttributeDefinition
+                | Self::ConnectionDefinition
+                | Self::InterfaceDefinition
+                | Self::AllocationDefinition
+                | Self::RequirementDefinition
+                | Self::ConstraintDefinition
+                | Self::UseCaseDefinition
+                | Self::ConcernDefinition
+                | Self::ViewDefinition
+                | Self::ViewpointDefinition
+                | Self::RenderingDefinition
+                | Self::StateDefinition
+                | Self::TransitionUsage
+                | Self::CalculationDefinition
+                | Self::AnalysisCaseDefinition
+                | Self::EnumerationDefinition
+                | Self::MetadataDefinition
+                | Self::PartUsage
+                | Self::ItemUsage
+                | Self::ActionUsage
+                | Self::PortUsage
+                | Self::AttributeUsage
+                | Self::ConnectionUsage
+                | Self::InterfaceUsage
+                | Self::AllocationUsage
+                | Self::RequirementUsage
+                | Self::ConstraintUsage
+                | Self::StateUsage
+                | Self::CalculationUsage
+                | Self::ReferenceUsage
+                | Self::OccurrenceUsage
+                | Self::FlowConnectionUsage
+                | Self::SuccessionFlowConnectionUsage
+                | Self::MetadataUsage
+        )
+    }
 
     /// Get the XMI type name for this kind.
     pub fn xmi_type(&self) -> &'static str {
@@ -878,6 +927,8 @@ pub enum RelationshipKind {
     Succession,
     /// Feature chaining.
     FeatureChaining,
+    /// Disjoining (type disjoint from another type).
+    Disjoining,
 }
 
 impl RelationshipKind {
@@ -902,6 +953,7 @@ impl RelationshipKind {
             Self::FlowConnection => "sysml:FlowConnectionUsage",
             Self::Succession => "sysml:SuccessionAsUsage",
             Self::FeatureChaining => "kerml:FeatureChaining",
+            Self::Disjoining => "kerml:Disjoining",
         }
     }
 }

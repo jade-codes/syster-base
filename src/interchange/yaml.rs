@@ -92,7 +92,7 @@ impl ModelFormat for Yaml {
 #[cfg(feature = "interchange")]
 mod reader {
     use super::*;
-    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue};
+    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind};
     use serde_yaml::Value;
     use std::sync::Arc;
 
@@ -113,17 +113,21 @@ mod reader {
             match value {
                 Value::Mapping(map) => {
                     // Single element
-                    if let Some(element) = parse_element(&map)? {
-                        model.add_element(element);
+                    let (element, relationships) = parse_element(&map)?;
+                    if let Some(el) = element {
+                        model.add_element(el);
                     }
+                    model.relationships.extend(relationships);
                 }
                 Value::Sequence(seq) => {
                     // Array of elements
                     for item in seq {
                         if let Value::Mapping(map) = item {
-                            if let Some(element) = parse_element(&map)? {
-                                model.add_element(element);
+                            let (element, relationships) = parse_element(&map)?;
+                            if let Some(el) = element {
+                                model.add_element(el);
                             }
+                            model.relationships.extend(relationships);
                         }
                     }
                 }
@@ -139,10 +143,10 @@ mod reader {
         }
     }
 
-    /// Parse a YAML mapping into an Element.
+    /// Parse a YAML mapping into an Element and its relationships.
     fn parse_element(
         map: &serde_yaml::Mapping,
-    ) -> Result<Option<Element>, InterchangeError> {
+    ) -> Result<(Option<Element>, Vec<Relationship>), InterchangeError> {
         // Get type (required)
         let kind = if let Some(type_val) = map.get("type").or_else(|| map.get("@type")) {
             let type_str = type_val
@@ -150,7 +154,7 @@ mod reader {
                 .ok_or_else(|| InterchangeError::yaml("'type' must be a string"))?;
             ElementKind::from_xmi_type(type_str)
         } else {
-            return Ok(None); // Skip elements without type
+            return Ok((None, Vec::new())); // Skip elements without type
         };
 
         // Get id (required)
@@ -163,7 +167,8 @@ mod reader {
             ElementId::generate()
         };
 
-        let mut element = Element::new(id, kind);
+        let mut element = Element::new(id.clone(), kind);
+        let mut relationships = Vec::new();
 
         // Parse name
         if let Some(name_val) = map.get("name") {
@@ -241,6 +246,23 @@ mod reader {
             }
         }
 
+        // Parse relationships (specializes, typedBy, subsets, redefines, and more)
+        parse_relationship_list(map, "specializes", RelationshipKind::Specialization, &id, &mut relationships);
+        parse_relationship_list(map, "typedBy", RelationshipKind::FeatureTyping, &id, &mut relationships);
+        parse_relationship_list(map, "subsets", RelationshipKind::Subsetting, &id, &mut relationships);
+        parse_relationship_list(map, "redefines", RelationshipKind::Redefinition, &id, &mut relationships);
+        parse_relationship_list(map, "conjugates", RelationshipKind::Conjugation, &id, &mut relationships);
+        parse_relationship_list(map, "featureChaining", RelationshipKind::FeatureChaining, &id, &mut relationships);
+        parse_relationship_list(map, "successionTo", RelationshipKind::Succession, &id, &mut relationships);
+        parse_relationship_list(map, "connectsTo", RelationshipKind::Connection, &id, &mut relationships);
+        parse_relationship_list(map, "flowsTo", RelationshipKind::FlowConnection, &id, &mut relationships);
+        parse_relationship_list(map, "allocatedTo", RelationshipKind::Allocation, &id, &mut relationships);
+        parse_relationship_list(map, "satisfies", RelationshipKind::Satisfaction, &id, &mut relationships);
+        parse_relationship_list(map, "verifies", RelationshipKind::Verification, &id, &mut relationships);
+        parse_relationship_list(map, "dependsOn", RelationshipKind::Dependency, &id, &mut relationships);
+        // Note: "imports" handles both NamespaceImport and MembershipImport - we default to NamespaceImport
+        parse_relationship_list(map, "imports", RelationshipKind::NamespaceImport, &id, &mut relationships);
+
         // Parse additional properties
         let reserved_keys = [
             "type",
@@ -258,6 +280,20 @@ mod reader {
             "isParallel",
             "owner",
             "ownedMember",
+            "specializes",
+            "typedBy",
+            "subsets",
+            "redefines",
+            "conjugates",
+            "featureChaining",
+            "successionTo",
+            "connectsTo",
+            "flowsTo",
+            "allocatedTo",
+            "satisfies",
+            "verifies",
+            "dependsOn",
+            "imports",
         ];
 
         for (key, value) in map {
@@ -270,7 +306,51 @@ mod reader {
             }
         }
 
-        Ok(Some(element))
+        Ok((Some(element), relationships))
+    }
+    
+    /// Parse a relationship list field (e.g., specializes, typedBy).
+    fn parse_relationship_list(
+        map: &serde_yaml::Mapping,
+        key: &str,
+        kind: RelationshipKind,
+        source_id: &ElementId,
+        relationships: &mut Vec<Relationship>,
+    ) {
+        if let Some(val) = map.get(key) {
+            if let Some(seq) = val.as_sequence() {
+                for item in seq {
+                    // Can be string (ID or qualified name) or mapping with id field
+                    let target_id = if let Some(s) = item.as_str() {
+                        s.to_string()
+                    } else if let Some(m) = item.as_mapping() {
+                        if let Some(id_val) = m.get("id").or_else(|| m.get("@id")) {
+                            if let Some(id_str) = id_val.as_str() {
+                                id_str.to_string()
+                            } else {
+                                continue;
+                            }
+                        } else {
+                            continue;
+                        }
+                    } else {
+                        continue;
+                    };
+                    
+                    // Generate a relationship ID
+                    let rel_id = format!("{}-{}-{}", source_id.as_str(), kind.xmi_type().split(':').last().unwrap_or("rel"), target_id);
+                    let mut rel = Relationship::new(rel_id, kind, source_id.clone(), target_id);
+                    rel.owner = Some(source_id.clone());
+                    relationships.push(rel);
+                }
+            } else if let Some(s) = val.as_str() {
+                // Single value, not array
+                let rel_id = format!("{}-{}-{}", source_id.as_str(), kind.xmi_type().split(':').last().unwrap_or("rel"), s);
+                let mut rel = Relationship::new(rel_id, kind, source_id.clone(), s);
+                rel.owner = Some(source_id.clone());
+                relationships.push(rel);
+            }
+        }
     }
 
     /// Parse a YAML value into a PropertyValue.
@@ -500,70 +580,64 @@ mod writer {
         // Relationships from this element (specialization, typing, etc.)
         let relationships: Vec<&Relationship> = model.relationships_from(&element.id).collect();
         if !relationships.is_empty() {
+            use crate::interchange::model::RelationshipKind;
+            
+            // Helper to add relationship array if not empty
+            fn add_rel_array(
+                map: &mut Mapping, 
+                key: &str, 
+                rels: Vec<&&Relationship>, 
+                model: &Model
+            ) {
+                if !rels.is_empty() {
+                    let refs: Vec<Value> = rels.iter()
+                        .map(|r| relationship_target_to_yaml(r, model))
+                        .collect();
+                    map.insert(
+                        Value::String(key.to_string()),
+                        Value::Sequence(refs),
+                    );
+                }
+            }
+            
             // Group relationships by kind for cleaner output
-            let specializations: Vec<_> = relationships.iter()
-                .filter(|r| matches!(r.kind, crate::interchange::model::RelationshipKind::Specialization))
-                .collect();
-            let typings: Vec<_> = relationships.iter()
-                .filter(|r| matches!(r.kind, crate::interchange::model::RelationshipKind::FeatureTyping))
-                .collect();
-            let subsets: Vec<_> = relationships.iter()
-                .filter(|r| matches!(r.kind, crate::interchange::model::RelationshipKind::Subsetting))
-                .collect();
-            let redefines: Vec<_> = relationships.iter()
-                .filter(|r| matches!(r.kind, crate::interchange::model::RelationshipKind::Redefinition))
-                .collect();
-
-            if !specializations.is_empty() {
-                let refs: Vec<Value> = specializations.iter()
-                    .map(|r| relationship_target_to_yaml(r, model))
-                    .collect();
-                map.insert(
-                    Value::String("specializes".to_string()),
-                    Value::Sequence(refs),
-                );
-            }
-            if !typings.is_empty() {
-                let refs: Vec<Value> = typings.iter()
-                    .map(|r| relationship_target_to_yaml(r, model))
-                    .collect();
-                map.insert(
-                    Value::String("typedBy".to_string()),
-                    Value::Sequence(refs),
-                );
-            }
-            if !subsets.is_empty() {
-                let refs: Vec<Value> = subsets.iter()
-                    .map(|r| relationship_target_to_yaml(r, model))
-                    .collect();
-                map.insert(
-                    Value::String("subsets".to_string()),
-                    Value::Sequence(refs),
-                );
-            }
-            if !redefines.is_empty() {
-                let refs: Vec<Value> = redefines.iter()
-                    .map(|r| relationship_target_to_yaml(r, model))
-                    .collect();
-                map.insert(
-                    Value::String("redefines".to_string()),
-                    Value::Sequence(refs),
-                );
-            }
+            add_rel_array(&mut map, "specializes", 
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Specialization)).collect(), model);
+            add_rel_array(&mut map, "typedBy",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::FeatureTyping)).collect(), model);
+            add_rel_array(&mut map, "subsets",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Subsetting)).collect(), model);
+            add_rel_array(&mut map, "redefines",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Redefinition)).collect(), model);
+            add_rel_array(&mut map, "conjugates",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Conjugation)).collect(), model);
+            add_rel_array(&mut map, "featureChaining",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::FeatureChaining)).collect(), model);
+            add_rel_array(&mut map, "successionTo",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Succession)).collect(), model);
+            add_rel_array(&mut map, "connectsTo",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Connection)).collect(), model);
+            add_rel_array(&mut map, "flowsTo",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::FlowConnection)).collect(), model);
+            add_rel_array(&mut map, "allocatedTo",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Allocation)).collect(), model);
+            add_rel_array(&mut map, "satisfies",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Satisfaction)).collect(), model);
+            add_rel_array(&mut map, "verifies",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Verification)).collect(), model);
+            add_rel_array(&mut map, "dependsOn",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::Dependency)).collect(), model);
+            add_rel_array(&mut map, "imports",
+                relationships.iter().filter(|r| matches!(r.kind, RelationshipKind::NamespaceImport | RelationshipKind::MembershipImport)).collect(), model);
         }
 
         Value::Mapping(map)
     }
 
-    /// Convert a relationship target to YAML Value, using qualified name if available.
-    fn relationship_target_to_yaml(rel: &Relationship, model: &Model) -> Value {
-        // Try to get target's qualified name for readability
-        if let Some(target_element) = model.get(&rel.target) {
-            if let Some(ref qn) = target_element.qualified_name {
-                return Value::String(qn.to_string());
-            }
-        }
-        // Fall back to ID if no element found or no qualified name
+    /// Convert a relationship target to YAML Value.
+    /// We always use the target ID to ensure lossless roundtrip.
+    fn relationship_target_to_yaml(rel: &Relationship, _model: &Model) -> Value {
+        // Always use ID for lossless roundtrip
         Value::String(rel.target.as_str().to_string())
     }
 
