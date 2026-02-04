@@ -69,7 +69,6 @@ pub use integrate::{
 };
 pub use jsonld::JsonLd;
 pub use kpar::{Kpar, KparManifest};
-pub use yaml::Yaml;
 pub use metadata::{
     Dependency, ElementMeta, ImportMetadata, PackageMetadata, ProjectMetadata, SourceInfo,
 };
@@ -78,6 +77,7 @@ pub use model::{
 };
 pub use recompile::{restore_element_ids, restore_ids_from_symbols};
 pub use xmi::Xmi;
+pub use yaml::Yaml;
 
 /// Supported file extensions for interchange formats.
 pub fn supported_extensions() -> &'static [&'static str] {

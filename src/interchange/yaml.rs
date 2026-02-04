@@ -94,7 +94,9 @@ impl ModelFormat for Yaml {
 #[cfg(feature = "interchange")]
 mod reader {
     use super::*;
-    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind};
+    use crate::interchange::model::{
+        Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind,
+    };
     use serde_yaml::Value;
     use std::sync::Arc;
 
@@ -150,7 +152,7 @@ mod reader {
         // Must have @id, @type, source, and target
         let id = get_string(map, "@id")?;
         let type_str = get_string(map, "@type")?;
-        
+
         // Check if this is a relationship type
         let kind = match type_str.as_str() {
             "Specialization" | "Subclassification" => RelationshipKind::Specialization,
@@ -174,20 +176,20 @@ mod reader {
             "Disjoining" => RelationshipKind::Disjoining,
             _ => return None, // Not a relationship type
         };
-        
+
         // Get source
         let source = get_ref_id(map, "source")?;
-        
+
         // Get target
         let target = get_ref_id(map, "target")?;
-        
+
         let mut rel = Relationship::new(id, kind, source, target);
-        
+
         // Get owner if present
         if let Some(owner_id) = get_ref_id(map, "owner") {
             rel.owner = Some(ElementId::new(owner_id));
         }
-        
+
         Some(rel)
     }
 
@@ -198,7 +200,7 @@ mod reader {
             Some(s) => s,
             None => return Ok(None),
         };
-        
+
         let kind = ElementKind::from_xmi_type(&type_str);
 
         // Get @id (required)
@@ -268,9 +270,21 @@ mod reader {
 
         // Parse additional properties
         let reserved_keys = [
-            "@type", "@id", "name", "shortName", "qualifiedName", "documentation",
-            "isAbstract", "isVariation", "isDerived", "isReadOnly", "isParallel",
-            "owner", "ownedMember", "source", "target",
+            "@type",
+            "@id",
+            "name",
+            "shortName",
+            "qualifiedName",
+            "documentation",
+            "isAbstract",
+            "isVariation",
+            "isDerived",
+            "isReadOnly",
+            "isParallel",
+            "owner",
+            "ownedMember",
+            "source",
+            "target",
         ];
 
         for (key, value) in map {
@@ -309,10 +323,8 @@ mod reader {
             Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Some(PropertyValue::Integer(i))
-                } else if let Some(f) = n.as_f64() {
-                    Some(PropertyValue::Real(f))
                 } else {
-                    None
+                    n.as_f64().map(PropertyValue::Real)
                 }
             }
             Value::Bool(b) => Some(PropertyValue::Boolean(*b)),
@@ -323,8 +335,13 @@ mod reader {
                 None
             }
             Value::Sequence(seq) => {
-                let items: Vec<PropertyValue> = seq.iter().filter_map(parse_property_value).collect();
-                if items.is_empty() { None } else { Some(PropertyValue::List(items)) }
+                let items: Vec<PropertyValue> =
+                    seq.iter().filter_map(parse_property_value).collect();
+                if items.is_empty() {
+                    None
+                } else {
+                    Some(PropertyValue::List(items))
+                }
             }
             _ => None,
         }
@@ -371,12 +388,12 @@ mod writer {
 
         pub fn write(&self, model: &Model) -> Result<Vec<u8>, InterchangeError> {
             let mut all_items: Vec<Value> = Vec::new();
-            
+
             // Add all elements
             for element in model.iter_elements() {
                 all_items.push(element_to_yaml(element));
             }
-            
+
             // Add all relationships as separate objects
             for relationship in &model.relationships {
                 all_items.push(relationship_to_yaml(relationship));
@@ -397,7 +414,7 @@ mod writer {
     /// Convert a Relationship to YAML Value.
     fn relationship_to_yaml(rel: &Relationship) -> Value {
         let mut map = Mapping::new();
-        
+
         // @type based on relationship kind
         let rel_type = match rel.kind {
             RelationshipKind::Specialization => "Specialization",
@@ -420,27 +437,51 @@ mod writer {
             RelationshipKind::FeatureChaining => "FeatureChaining",
             RelationshipKind::Disjoining => "Disjoining",
         };
-        
-        map.insert(Value::String("@type".to_string()), Value::String(rel_type.to_string()));
-        map.insert(Value::String("@id".to_string()), Value::String(rel.id.as_str().to_string()));
-        
+
+        map.insert(
+            Value::String("@type".to_string()),
+            Value::String(rel_type.to_string()),
+        );
+        map.insert(
+            Value::String("@id".to_string()),
+            Value::String(rel.id.as_str().to_string()),
+        );
+
         // source as reference
         let mut source_map = Mapping::new();
-        source_map.insert(Value::String("@id".to_string()), Value::String(rel.source.as_str().to_string()));
-        map.insert(Value::String("source".to_string()), Value::Mapping(source_map));
-        
+        source_map.insert(
+            Value::String("@id".to_string()),
+            Value::String(rel.source.as_str().to_string()),
+        );
+        map.insert(
+            Value::String("source".to_string()),
+            Value::Mapping(source_map),
+        );
+
         // target as reference
         let mut target_map = Mapping::new();
-        target_map.insert(Value::String("@id".to_string()), Value::String(rel.target.as_str().to_string()));
-        map.insert(Value::String("target".to_string()), Value::Mapping(target_map));
-        
+        target_map.insert(
+            Value::String("@id".to_string()),
+            Value::String(rel.target.as_str().to_string()),
+        );
+        map.insert(
+            Value::String("target".to_string()),
+            Value::Mapping(target_map),
+        );
+
         // owner if present
         if let Some(ref owner_id) = rel.owner {
             let mut owner_map = Mapping::new();
-            owner_map.insert(Value::String("@id".to_string()), Value::String(owner_id.as_str().to_string()));
-            map.insert(Value::String("owner".to_string()), Value::Mapping(owner_map));
+            owner_map.insert(
+                Value::String("@id".to_string()),
+                Value::String(owner_id.as_str().to_string()),
+            );
+            map.insert(
+                Value::String("owner".to_string()),
+                Value::Mapping(owner_map),
+            );
         }
-        
+
         Value::Mapping(map)
     }
 
@@ -462,17 +503,26 @@ mod writer {
 
         // name
         if let Some(ref name) = element.name {
-            map.insert(Value::String("name".to_string()), Value::String(name.to_string()));
+            map.insert(
+                Value::String("name".to_string()),
+                Value::String(name.to_string()),
+            );
         }
 
         // shortName
         if let Some(ref short_name) = element.short_name {
-            map.insert(Value::String("shortName".to_string()), Value::String(short_name.to_string()));
+            map.insert(
+                Value::String("shortName".to_string()),
+                Value::String(short_name.to_string()),
+            );
         }
 
         // qualifiedName
         if let Some(ref qn) = element.qualified_name {
-            map.insert(Value::String("qualifiedName".to_string()), Value::String(qn.to_string()));
+            map.insert(
+                Value::String("qualifiedName".to_string()),
+                Value::String(qn.to_string()),
+            );
         }
 
         // Boolean flags (only if true)
@@ -494,7 +544,10 @@ mod writer {
 
         // documentation
         if let Some(ref doc) = element.documentation {
-            map.insert(Value::String("documentation".to_string()), Value::String(doc.to_string()));
+            map.insert(
+                Value::String("documentation".to_string()),
+                Value::String(doc.to_string()),
+            );
         }
 
         // Additional properties
@@ -506,20 +559,34 @@ mod writer {
         // owner (as reference)
         if let Some(ref owner_id) = element.owner {
             let mut owner_map = Mapping::new();
-            owner_map.insert(Value::String("@id".to_string()), Value::String(owner_id.as_str().to_string()));
-            map.insert(Value::String("owner".to_string()), Value::Mapping(owner_map));
+            owner_map.insert(
+                Value::String("@id".to_string()),
+                Value::String(owner_id.as_str().to_string()),
+            );
+            map.insert(
+                Value::String("owner".to_string()),
+                Value::Mapping(owner_map),
+            );
         }
 
         // ownedMember (as array of references)
         if !element.owned_elements.is_empty() {
-            let members: Vec<Value> = element.owned_elements.iter()
+            let members: Vec<Value> = element
+                .owned_elements
+                .iter()
                 .map(|id| {
                     let mut m = Mapping::new();
-                    m.insert(Value::String("@id".to_string()), Value::String(id.as_str().to_string()));
+                    m.insert(
+                        Value::String("@id".to_string()),
+                        Value::String(id.as_str().to_string()),
+                    );
                     Value::Mapping(m)
                 })
                 .collect();
-            map.insert(Value::String("ownedMember".to_string()), Value::Sequence(members));
+            map.insert(
+                Value::String("ownedMember".to_string()),
+                Value::Sequence(members),
+            );
         }
 
         Value::Mapping(map)
@@ -534,7 +601,10 @@ mod writer {
             PropertyValue::Boolean(b) => Value::Bool(*b),
             PropertyValue::Reference(id) => {
                 let mut m = Mapping::new();
-                m.insert(Value::String("@id".to_string()), Value::String(id.as_str().to_string()));
+                m.insert(
+                    Value::String("@id".to_string()),
+                    Value::String(id.as_str().to_string()),
+                );
                 Value::Mapping(m)
             }
             PropertyValue::List(items) => {
@@ -553,9 +623,13 @@ struct YamlReader;
 
 #[cfg(not(feature = "interchange"))]
 impl YamlReader {
-    fn new() -> Self { Self }
+    fn new() -> Self {
+        Self
+    }
     fn read(&self, _input: &[u8]) -> Result<Model, InterchangeError> {
-        Err(InterchangeError::Unsupported("YAML reading requires the 'interchange' feature".to_string()))
+        Err(InterchangeError::Unsupported(
+            "YAML reading requires the 'interchange' feature".to_string(),
+        ))
     }
 }
 
@@ -564,9 +638,13 @@ struct YamlWriter;
 
 #[cfg(not(feature = "interchange"))]
 impl YamlWriter {
-    fn new() -> Self { Self }
+    fn new() -> Self {
+        Self
+    }
     fn write(&self, _model: &Model) -> Result<Vec<u8>, InterchangeError> {
-        Err(InterchangeError::Unsupported("YAML writing requires the 'interchange' feature".to_string()))
+        Err(InterchangeError::Unsupported(
+            "YAML writing requires the 'interchange' feature".to_string(),
+        ))
     }
 }
 
@@ -629,8 +707,13 @@ mod tests {
             let yaml = Yaml;
 
             let mut model = Model::new();
-            model.add_element(Element::new(ElementId::new("pkg-1"), ElementKind::Package).with_name("Package1"));
-            model.add_element(Element::new(ElementId::new("part-1"), ElementKind::PartDefinition).with_name("Part1"));
+            model.add_element(
+                Element::new(ElementId::new("pkg-1"), ElementKind::Package).with_name("Package1"),
+            );
+            model.add_element(
+                Element::new(ElementId::new("part-1"), ElementKind::PartDefinition)
+                    .with_name("Part1"),
+            );
 
             let bytes = yaml.write(&model).expect("write should succeed");
             let model2 = yaml.read(&bytes).expect("read should succeed");

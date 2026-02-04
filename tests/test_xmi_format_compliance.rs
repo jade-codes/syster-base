@@ -153,15 +153,15 @@ fn test_xsi_namespace_declared() {
 #[test]
 fn test_owned_relationship_xsi_type() {
     let mut model = Model::new();
-    
+
     // Create parent package
     let mut pkg = Element::new("pkg-id", ElementKind::Package);
     pkg.name = Some("TestPackage".into());
-    
+
     // Create child membership relationship
     let membership = Element::new("mem-id", ElementKind::OwningMembership);
     pkg.owned_elements.push(ElementId::new("mem-id"));
-    
+
     model.add_element(pkg);
     model.add_element(membership);
 
@@ -171,9 +171,9 @@ fn test_owned_relationship_xsi_type() {
 
     // Should use xsi:type on ownedRelationship
     assert!(
-        output_str.contains(r#"<ownedRelationship xsi:type="#) || 
-        output_str.contains(r#"xsi:type="sysml:OwningMembership"#) ||
-        output_str.contains(r#"xsi:type="kerml:OwningMembership"#),
+        output_str.contains(r#"<ownedRelationship xsi:type="#)
+            || output_str.contains(r#"xsi:type="sysml:OwningMembership"#)
+            || output_str.contains(r#"xsi:type="kerml:OwningMembership"#),
         "Expected xsi:type on ownedRelationship, got: {}",
         output_str
     );
@@ -185,7 +185,8 @@ fn test_is_composite_written_when_false() {
     let mut model = Model::new();
     let mut elem = Element::new("test-id", ElementKind::AttributeUsage);
     elem.name = Some("attr".into());
-    elem.properties.insert("isComposite".into(), PropertyValue::Boolean(false));
+    elem.properties
+        .insert("isComposite".into(), PropertyValue::Boolean(false));
     model.add_element(elem);
 
     let xmi = Xmi;
@@ -201,15 +202,15 @@ fn test_is_composite_written_when_false() {
 /// Test roundtrip with official XMI file preserves format.
 #[test]
 fn test_roundtrip_preserves_key_attributes() {
-    use std::path::PathBuf;
     use std::process::Command;
-    
+
     // Get test file
     let tmp_dir = std::env::temp_dir().join("syster-test-sysml-release");
     if !tmp_dir.exists() {
         let status = Command::new("git")
             .args([
-                "clone", "--depth=1",
+                "clone",
+                "--depth=1",
                 "https://github.com/Systems-Modeling/SysML-v2-Release.git",
                 tmp_dir.to_str().unwrap(),
             ])
@@ -219,29 +220,39 @@ fn test_roundtrip_preserves_key_attributes() {
             return;
         }
     }
-    
-    let test_file = tmp_dir.join("sysml.library.xmi/Domain Libraries/Quantities and Units/Quantities.sysmlx");
+
+    let test_file =
+        tmp_dir.join("sysml.library.xmi/Domain Libraries/Quantities and Units/Quantities.sysmlx");
     if !test_file.exists() {
         println!("Skipping test - file not found");
         return;
     }
-    
+
     let original = std::fs::read(&test_file).expect("read file");
     let original_str = String::from_utf8_lossy(&original);
-    
+
     let xmi = Xmi;
     let model = xmi.read(&original).expect("parse");
     let output = xmi.write(&model).expect("write");
     let output_str = String::from_utf8_lossy(&output);
-    
+
     // Check key format aspects are preserved
     if original_str.contains("declaredName=") {
-        assert!(output_str.contains("declaredName="), "declaredName should be preserved");
+        assert!(
+            output_str.contains("declaredName="),
+            "declaredName should be preserved"
+        );
     }
     if original_str.contains("elementId=") {
-        assert!(output_str.contains("elementId="), "elementId should be preserved");
+        assert!(
+            output_str.contains("elementId="),
+            "elementId should be preserved"
+        );
     }
     if original_str.contains(r#"encoding="ASCII""#) {
-        assert!(output_str.contains(r#"encoding="ASCII""#), "ASCII encoding should be preserved");
+        assert!(
+            output_str.contains(r#"encoding="ASCII""#),
+            "ASCII encoding should be preserved"
+        );
     }
 }

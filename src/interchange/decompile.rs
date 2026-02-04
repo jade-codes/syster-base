@@ -181,10 +181,10 @@ impl<'a> DecompileContext<'a> {
             ElementKind::DataType => self.decompile_definition(element, "datatype"),
             ElementKind::Structure => self.decompile_definition(element, "struct"),
             ElementKind::Classifier => self.decompile_definition(element, "classifier"),
-            
+
             // KerML features
             ElementKind::Feature => self.decompile_feature(element),
-            
+
             // Multiplicity
             ElementKind::MultiplicityRange => self.decompile_multiplicity(element),
 
@@ -268,7 +268,10 @@ impl<'a> DecompileContext<'a> {
 
         if let Some(name) = &element.name {
             let short = self.format_short_name(element);
-            self.write_line(&format!("{}library package {}{} {{", standard_kw, short, name));
+            self.write_line(&format!(
+                "{}library package {}{} {{",
+                standard_kw, short, name
+            ));
         } else {
             self.write_line(&format!("{}library package {{", standard_kw));
         }
@@ -344,26 +347,42 @@ impl<'a> DecompileContext<'a> {
         let chaining = self.format_chaining(&element.id);
         let multiplicity = self.format_inline_multiplicity(&element.id);
         let short = self.format_short_name(element);
-        
+
         // Check for additional feature modifiers from properties
         let mut modifiers = Vec::new();
         let is_unique_key: Arc<str> = Arc::from("isUnique");
         if let Some(pv) = element.properties.get(&is_unique_key) {
             match pv {
                 super::model::PropertyValue::Boolean(false) => modifiers.push("nonunique"),
-                super::model::PropertyValue::String(s) if s.as_ref() == "false" => modifiers.push("nonunique"),
+                super::model::PropertyValue::String(s) if s.as_ref() == "false" => {
+                    modifiers.push("nonunique")
+                }
                 _ => {}
             }
         }
 
-        let mod_str = if modifiers.is_empty() { String::new() } else { format!(" {}", modifiers.join(" ")) };
+        let mod_str = if modifiers.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", modifiers.join(" "))
+        };
 
         // Build the full feature declaration
         // Format: [abstract] feature name : Type [mult] [modifiers] [subsets X] [chains Y] [redefines Z]
         if let Some(name) = &element.name {
-            let decl = format!("{}feature {}{}{}{}{}{}{}{}", 
-                abstract_kw, short, name, typing, multiplicity, mod_str, subsetting, chaining, redefinition);
-            
+            let decl = format!(
+                "{}feature {}{}{}{}{}{}{}{}",
+                abstract_kw,
+                short,
+                name,
+                typing,
+                multiplicity,
+                mod_str,
+                subsetting,
+                chaining,
+                redefinition
+            );
+
             if element.owned_elements.is_empty() && element.documentation.is_none() {
                 self.write_line(&format!("{};", decl));
             } else {
@@ -373,8 +392,10 @@ impl<'a> DecompileContext<'a> {
             }
         } else {
             // Anonymous feature
-            let decl = format!("{}feature{}{}{}{}{}{}", 
-                abstract_kw, typing, multiplicity, mod_str, subsetting, chaining, redefinition);
+            let decl = format!(
+                "{}feature{}{}{}{}{}{}",
+                abstract_kw, typing, multiplicity, mod_str, subsetting, chaining, redefinition
+            );
             self.write_line(&format!("{};", decl));
         }
 
@@ -385,23 +406,29 @@ impl<'a> DecompileContext<'a> {
         // Multiplicity ranges are typically decompiled inline, but if standalone:
         if let Some(name) = &element.name {
             let bounds = self.format_multiplicity_bounds(&element.id);
-            
+
             // Check for documentation in children
             let has_doc = element.owned_elements.iter().any(|child_id| {
-                self.model.elements.get(child_id)
-                    .map(|c| c.kind == ElementKind::Documentation || 
-                         c.owned_elements.iter().any(|gc_id| {
-                             self.model.elements.get(gc_id)
-                                 .map(|gc| gc.kind == ElementKind::Documentation)
-                                 .unwrap_or(false)
-                         }))
+                self.model
+                    .elements
+                    .get(child_id)
+                    .map(|c| {
+                        c.kind == ElementKind::Documentation
+                            || c.owned_elements.iter().any(|gc_id| {
+                                self.model
+                                    .elements
+                                    .get(gc_id)
+                                    .map(|gc| gc.kind == ElementKind::Documentation)
+                                    .unwrap_or(false)
+                            })
+                    })
                     .unwrap_or(false)
             });
-            
+
             if has_doc {
                 self.write_line(&format!("multiplicity {} {} {{", name, bounds));
                 self.indent_level += 1;
-                
+
                 // Decompile documentation
                 for child_id in &element.owned_elements {
                     if let Some(child) = self.model.elements.get(child_id) {
@@ -418,7 +445,7 @@ impl<'a> DecompileContext<'a> {
                         }
                     }
                 }
-                
+
                 self.indent_level -= 1;
                 self.write_line("}");
             } else {
@@ -455,7 +482,7 @@ impl<'a> DecompileContext<'a> {
     fn format_multiplicity_bounds(&self, mult_id: &ElementId) -> String {
         if let Some(mult_elem) = self.model.elements.get(mult_id) {
             let mut all_literals = Vec::new();
-            
+
             // Look for LiteralInteger/LiteralInfinity children (may be wrapped in memberships)
             for child_id in &mult_elem.owned_elements {
                 if let Some(child) = self.model.elements.get(child_id) {
@@ -463,11 +490,11 @@ impl<'a> DecompileContext<'a> {
                     all_literals.extend(self.collect_literals(child));
                 }
             }
-            
+
             // First literal is lower bound, second is upper bound
-            let lower = all_literals.get(0).cloned();
+            let lower = all_literals.first().cloned();
             let upper = all_literals.get(1).cloned();
-            
+
             match (lower, upper) {
                 (Some(l), Some(u)) => format!("[{}..{}]", l, u),
                 (Some(l), None) => format!("[{}]", l),
@@ -482,7 +509,7 @@ impl<'a> DecompileContext<'a> {
     fn collect_literals(&self, element: &Element) -> Vec<String> {
         let mut result = Vec::new();
         let value_key: Arc<str> = Arc::from("value");
-        
+
         match element.kind {
             ElementKind::LiteralInteger => {
                 // Check for value in properties (could be Integer or String)
@@ -508,7 +535,7 @@ impl<'a> DecompileContext<'a> {
                 }
             }
         }
-        
+
         result
     }
 
@@ -623,7 +650,9 @@ impl<'a> DecompileContext<'a> {
                     // Check if it's a FeatureTyping with href
                     if child.kind == ElementKind::FeatureTyping {
                         let href_key: Arc<str> = Arc::from("href_target_name");
-                        if let Some(super::model::PropertyValue::String(name)) = child.properties.get(&href_key) {
+                        if let Some(super::model::PropertyValue::String(name)) =
+                            child.properties.get(&href_key)
+                        {
                             types.push(name.to_string());
                         }
                     }
@@ -632,7 +661,9 @@ impl<'a> DecompileContext<'a> {
                         if let Some(grandchild) = self.model.elements.get(grandchild_id) {
                             if grandchild.kind == ElementKind::FeatureTyping {
                                 let href_key: Arc<str> = Arc::from("href_target_name");
-                                if let Some(super::model::PropertyValue::String(name)) = grandchild.properties.get(&href_key) {
+                                if let Some(super::model::PropertyValue::String(name)) =
+                                    grandchild.properties.get(&href_key)
+                                {
                                     types.push(name.to_string());
                                 }
                             }
@@ -655,7 +686,7 @@ impl<'a> DecompileContext<'a> {
             .relationships
             .iter()
             .filter(|r| {
-                &r.owner == &Some(element_id.clone()) && r.kind == RelationshipKind::NamespaceImport
+                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::NamespaceImport
             })
             .filter_map(|r| {
                 self.model
@@ -673,8 +704,7 @@ impl<'a> DecompileContext<'a> {
             .relationships
             .iter()
             .filter(|r| {
-                &r.owner == &Some(element_id.clone())
-                    && r.kind == RelationshipKind::MembershipImport
+                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::MembershipImport
             })
             .filter_map(|r| {
                 self.model
@@ -767,7 +797,9 @@ impl<'a> DecompileContext<'a> {
         if let Some(element) = self.model.elements.get(target_id) {
             // Check for href (cross-file reference)
             let href_key: Arc<str> = Arc::from("href");
-            if let Some(super::model::PropertyValue::String(href)) = element.properties.get(&href_key) {
+            if let Some(super::model::PropertyValue::String(href)) =
+                element.properties.get(&href_key)
+            {
                 // Extract qualified name from href (format: "file.xmi#uuid" or just qualified name)
                 return Some(self.extract_name_from_href(href));
             }
@@ -785,29 +817,31 @@ impl<'a> DecompileContext<'a> {
         if let Some(element) = self.model.elements.get(target_id) {
             // Check for href first
             let href_key: Arc<str> = Arc::from("href");
-            if let Some(super::model::PropertyValue::String(href)) = element.properties.get(&href_key) {
+            if let Some(super::model::PropertyValue::String(href)) =
+                element.properties.get(&href_key)
+            {
                 return Some(self.extract_name_from_href(href));
             }
-            
+
             // Build qualified name from owner chain
             let name = element.name.as_deref()?;
-            
+
             // Walk up the ownership chain to find a named classifier/type
             let owner_name = self.find_named_owner(target_id);
             if let Some(owner) = owner_name {
                 return Some(format!("{}::{}", owner, name));
             }
-            
+
             return Some(name.to_string());
         }
         None
     }
-    
+
     /// Walk up the ownership chain to find a named owner (classifier, package, etc.)
     fn find_named_owner(&self, element_id: &ElementId) -> Option<String> {
         let element = self.model.elements.get(element_id)?;
         let mut current_owner_id = element.owner.clone();
-        
+
         while let Some(owner_id) = current_owner_id {
             if let Some(owner) = self.model.elements.get(&owner_id) {
                 // If this owner has a name and is a "real" element (not a membership), use it
@@ -830,7 +864,7 @@ impl<'a> DecompileContext<'a> {
     fn extract_name_from_href(&self, href: &str) -> String {
         // href format: "../../path/File.sysmlx#uuid" or "File.sysmlx#uuid"
         // Extract the file name and try to form a qualified name
-        
+
         // First, try to find element by ID in the href
         if let Some(hash_pos) = href.rfind('#') {
             let id = &href[hash_pos + 1..];
@@ -844,7 +878,7 @@ impl<'a> DecompileContext<'a> {
                 }
             }
         }
-        
+
         // Try to extract from path (e.g., "ScalarValues.kermlx#uuid" -> ScalarValues)
         if let Some(hash_pos) = href.rfind('#') {
             let path = &href[..hash_pos];
@@ -857,7 +891,7 @@ impl<'a> DecompileContext<'a> {
                 return path[..ext_pos].to_string();
             }
         }
-        
+
         // Fallback: return the href as-is (UUID)
         href.to_string()
     }

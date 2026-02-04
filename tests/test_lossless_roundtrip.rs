@@ -10,14 +10,14 @@
 #![cfg(feature = "interchange")]
 
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use syster::interchange::{model::*, ModelFormat, Xmi, JsonLd, Yaml};
+use syster::interchange::{JsonLd, ModelFormat, Xmi, Yaml, model::*};
 
 /// Clone the SysML-v2-Release repo if not already present
 fn get_sysml_release_dir() -> Option<PathBuf> {
     let tmp_dir = std::env::temp_dir().join("syster-test-sysml-release");
-    
+
     if !tmp_dir.exists() {
         println!("Cloning SysML-v2-Release repository...");
         let status = Command::new("git")
@@ -29,17 +29,17 @@ fn get_sysml_release_dir() -> Option<PathBuf> {
             ])
             .status()
             .ok()?;
-        
+
         if !status.success() {
             return None;
         }
     }
-    
+
     Some(tmp_dir)
 }
 
 /// Find all .sysmlx/.kermlx files in the repository
-fn find_all_xmi_files(base_dir: &PathBuf) -> Vec<PathBuf> {
+fn find_all_xmi_files(base_dir: &Path) -> Vec<PathBuf> {
     let mut files = Vec::new();
     let xmi_lib_dir = base_dir.join("sysml.library.xmi");
     if xmi_lib_dir.exists() {
@@ -48,7 +48,7 @@ fn find_all_xmi_files(base_dir: &PathBuf) -> Vec<PathBuf> {
     files
 }
 
-fn collect_xmi_files(dir: &PathBuf, files: &mut Vec<PathBuf>) {
+fn collect_xmi_files(dir: &Path, files: &mut Vec<PathBuf>) {
     if let Ok(entries) = std::fs::read_dir(dir) {
         for entry in entries.flatten() {
             let path = entry.path();
@@ -105,7 +105,10 @@ impl ComparisonResult {
             parts.push(format!("{} kind mismatches", self.kind_mismatches.len()));
         }
         if !self.property_mismatches.is_empty() {
-            parts.push(format!("{} property mismatches", self.property_mismatches.len()));
+            parts.push(format!(
+                "{} property mismatches",
+                self.property_mismatches.len()
+            ));
         }
         if parts.is_empty() {
             "OK".to_string()
@@ -140,8 +143,16 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
         if orig_el.name != rt_el.name {
             result.name_mismatches.push((
                 id.to_string(),
-                orig_el.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
-                rt_el.name.as_ref().map(|s| s.to_string()).unwrap_or_default(),
+                orig_el
+                    .name
+                    .as_ref()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
+                rt_el
+                    .name
+                    .as_ref()
+                    .map(|s| s.to_string())
+                    .unwrap_or_default(),
             ));
         }
 
@@ -158,7 +169,10 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
         if orig_el.is_abstract != rt_el.is_abstract {
             result.property_mismatches.push((
                 id.to_string(),
-                format!("is_abstract: {} vs {}", orig_el.is_abstract, rt_el.is_abstract),
+                format!(
+                    "is_abstract: {} vs {}",
+                    orig_el.is_abstract, rt_el.is_abstract
+                ),
             ));
         }
         if orig_el.is_derived != rt_el.is_derived {
@@ -170,7 +184,10 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
         if orig_el.is_readonly != rt_el.is_readonly {
             result.property_mismatches.push((
                 id.to_string(),
-                format!("is_readonly: {} vs {}", orig_el.is_readonly, rt_el.is_readonly),
+                format!(
+                    "is_readonly: {} vs {}",
+                    orig_el.is_readonly, rt_el.is_readonly
+                ),
             ));
         }
     }
@@ -179,19 +196,35 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
     let orig_rels: HashSet<_> = original
         .relationships
         .iter()
-        .map(|r| (r.source.to_string(), format!("{:?}", r.kind), r.target.to_string()))
+        .map(|r| {
+            (
+                r.source.to_string(),
+                format!("{:?}", r.kind),
+                r.target.to_string(),
+            )
+        })
         .collect();
     let rt_rels: HashSet<_> = roundtripped
         .relationships
         .iter()
-        .map(|r| (r.source.to_string(), format!("{:?}", r.kind), r.target.to_string()))
+        .map(|r| {
+            (
+                r.source.to_string(),
+                format!("{:?}", r.kind),
+                r.target.to_string(),
+            )
+        })
         .collect();
 
     for rel in orig_rels.difference(&rt_rels) {
-        result.missing_relationships.push(format!("{} -{:?}-> {}", rel.0, rel.1, rel.2));
+        result
+            .missing_relationships
+            .push(format!("{} -{:?}-> {}", rel.0, rel.1, rel.2));
     }
     for rel in rt_rels.difference(&orig_rels) {
-        result.extra_relationships.push(format!("{} -{:?}-> {}", rel.0, rel.1, rel.2));
+        result
+            .extra_relationships
+            .push(format!("{} -{:?}-> {}", rel.0, rel.1, rel.2));
     }
 
     result
@@ -212,7 +245,7 @@ fn test_xmi_lossless_roundtrip() {
     println!("\n=== XMI Lossless Roundtrip Test ===");
     println!("Testing {} XMI files...\n", xmi_files.len());
 
-    let xmi = Xmi::default();
+    let xmi = Xmi;
     let mut passed = 0;
     let mut failed = 0;
     let mut errors: Vec<(String, String)> = Vec::new();
@@ -262,7 +295,12 @@ fn test_xmi_lossless_roundtrip() {
         let comparison = compare_models(&original, &roundtripped);
 
         if comparison.is_lossless() {
-            println!("✓ {} - {} elements, {} relationships", file_name, original.elements.len(), original.relationships.len());
+            println!(
+                "✓ {} - {} elements, {} relationships",
+                file_name,
+                original.elements.len(),
+                original.relationships.len()
+            );
             passed += 1;
         } else {
             println!("✗ {} - {}", file_name, comparison.summary());
@@ -302,8 +340,8 @@ fn test_jsonld_lossless_roundtrip() {
     println!("\n=== JSON-LD Lossless Roundtrip Test (XMI → JSON-LD → Model) ===");
     println!("Testing {} files...\n", xmi_files.len());
 
-    let xmi = Xmi::default();
-    let jsonld = JsonLd::default();
+    let xmi = Xmi;
+    let jsonld = JsonLd;
     let mut passed = 0;
     let mut failed = 0;
     let mut elements_ok = 0;
@@ -353,16 +391,26 @@ fn test_jsonld_lossless_roundtrip() {
 
         // For JSON-LD, we expect elements to be preserved but relationships may be lost
         // (current implementation doesn't serialize relationships)
-        let elements_preserved = comparison.missing_elements.is_empty() 
+        let elements_preserved = comparison.missing_elements.is_empty()
             && comparison.name_mismatches.is_empty()
             && comparison.kind_mismatches.is_empty();
-        
+
         if elements_preserved {
             if comparison.missing_relationships.is_empty() {
-                println!("✓ {} - {} elements, {} relationships (fully lossless)", file_name, original.elements.len(), original.relationships.len());
+                println!(
+                    "✓ {} - {} elements, {} relationships (fully lossless)",
+                    file_name,
+                    original.elements.len(),
+                    original.relationships.len()
+                );
                 passed += 1;
             } else {
-                println!("⚠ {} - {} elements OK, {} relationships lost", file_name, original.elements.len(), comparison.missing_relationships.len());
+                println!(
+                    "⚠ {} - {} elements OK, {} relationships lost",
+                    file_name,
+                    original.elements.len(),
+                    comparison.missing_relationships.len()
+                );
                 elements_ok += 1;
                 rels_lost += comparison.missing_relationships.len();
             }
@@ -375,7 +423,10 @@ fn test_jsonld_lossless_roundtrip() {
 
     println!("\n=== Summary ===");
     println!("Fully lossless: {}", passed);
-    println!("Elements OK, rels lost: {} ({} total rels lost)", elements_ok, rels_lost);
+    println!(
+        "Elements OK, rels lost: {} ({} total rels lost)",
+        elements_ok, rels_lost
+    );
     println!("Failed: {}", failed);
 
     // All files should be fully lossless
@@ -384,10 +435,13 @@ fn test_jsonld_lossless_roundtrip() {
         let element_pass_rate = (passed + elements_ok) as f64 / total as f64 * 100.0;
         println!("Element preservation rate: {:.1}%", element_pass_rate);
     }
-    
+
     // JSON-LD roundtrip should be completely lossless
     assert_eq!(failed, 0, "JSON-LD roundtrip should have no failures");
-    assert_eq!(rels_lost, 0, "JSON-LD roundtrip should preserve all relationships");
+    assert_eq!(
+        rels_lost, 0,
+        "JSON-LD roundtrip should preserve all relationships"
+    );
 }
 
 #[test]
@@ -405,8 +459,8 @@ fn test_yaml_lossless_roundtrip() {
     println!("\n=== YAML Lossless Roundtrip Test (XMI → YAML → Model) ===");
     println!("Testing {} files...\n", xmi_files.len());
 
-    let xmi = Xmi::default();
-    let yaml = Yaml::default();
+    let xmi = Xmi;
+    let yaml = Yaml;
     let mut passed = 0;
     let mut failed = 0;
     let mut elements_ok = 0;
@@ -456,16 +510,26 @@ fn test_yaml_lossless_roundtrip() {
 
         // For YAML, we expect elements to be preserved but relationships may be lost
         // (current implementation doesn't serialize relationships)
-        let elements_preserved = comparison.missing_elements.is_empty() 
+        let elements_preserved = comparison.missing_elements.is_empty()
             && comparison.name_mismatches.is_empty()
             && comparison.kind_mismatches.is_empty();
-        
+
         if elements_preserved {
             if comparison.missing_relationships.is_empty() {
-                println!("✓ {} - {} elements, {} relationships (fully lossless)", file_name, original.elements.len(), original.relationships.len());
+                println!(
+                    "✓ {} - {} elements, {} relationships (fully lossless)",
+                    file_name,
+                    original.elements.len(),
+                    original.relationships.len()
+                );
                 passed += 1;
             } else {
-                println!("⚠ {} - {} elements OK, {} relationships lost", file_name, original.elements.len(), comparison.missing_relationships.len());
+                println!(
+                    "⚠ {} - {} elements OK, {} relationships lost",
+                    file_name,
+                    original.elements.len(),
+                    comparison.missing_relationships.len()
+                );
                 elements_ok += 1;
                 rels_lost += comparison.missing_relationships.len();
             }
@@ -478,7 +542,10 @@ fn test_yaml_lossless_roundtrip() {
 
     println!("\n=== Summary ===");
     println!("Fully lossless: {}", passed);
-    println!("Elements OK, rels lost: {} ({} total rels lost)", elements_ok, rels_lost);
+    println!(
+        "Elements OK, rels lost: {} ({} total rels lost)",
+        elements_ok, rels_lost
+    );
     println!("Failed: {}", failed);
 
     // All files should be fully lossless
@@ -487,10 +554,13 @@ fn test_yaml_lossless_roundtrip() {
         let element_pass_rate = (passed + elements_ok) as f64 / total as f64 * 100.0;
         println!("Element preservation rate: {:.1}%", element_pass_rate);
     }
-    
+
     // YAML roundtrip should be completely lossless
     assert_eq!(failed, 0, "YAML roundtrip should have no failures");
-    assert_eq!(rels_lost, 0, "YAML roundtrip should preserve all relationships");
+    assert_eq!(
+        rels_lost, 0,
+        "YAML roundtrip should preserve all relationships"
+    );
 }
 
 /// Test that converting between all formats preserves data
@@ -508,14 +578,20 @@ fn test_cross_format_roundtrip() {
     };
 
     // Test with a subset of files for speed
-    let xmi_files: Vec<_> = find_all_xmi_files(&release_dir).into_iter().take(10).collect();
+    let xmi_files: Vec<_> = find_all_xmi_files(&release_dir)
+        .into_iter()
+        .take(10)
+        .collect();
 
     println!("\n=== Cross-Format Roundtrip Test ===");
-    println!("Testing XMI → JSON-LD → YAML → XMI for {} files...\n", xmi_files.len());
+    println!(
+        "Testing XMI → JSON-LD → YAML → XMI for {} files...\n",
+        xmi_files.len()
+    );
 
-    let xmi = Xmi::default();
-    let jsonld = JsonLd::default();
-    let yaml = Yaml::default();
+    let xmi = Xmi;
+    let jsonld = JsonLd;
+    let yaml = Yaml;
 
     let mut passed = 0;
     let mut elements_ok = 0;
@@ -595,16 +671,25 @@ fn test_cross_format_roundtrip() {
         let comparison = compare_models(&original, &final_model);
 
         // For cross-format, we expect elements to be preserved but relationships will be lost
-        let elements_preserved = comparison.missing_elements.is_empty() 
+        let elements_preserved = comparison.missing_elements.is_empty()
             && comparison.name_mismatches.is_empty()
             && comparison.kind_mismatches.is_empty();
 
         if elements_preserved {
             if comparison.missing_relationships.is_empty() {
-                println!("✓ {} - {} elements (fully lossless)", file_name, original.elements.len());
+                println!(
+                    "✓ {} - {} elements (fully lossless)",
+                    file_name,
+                    original.elements.len()
+                );
                 passed += 1;
             } else {
-                println!("⚠ {} - {} elements OK, {} relationships lost", file_name, original.elements.len(), comparison.missing_relationships.len());
+                println!(
+                    "⚠ {} - {} elements OK, {} relationships lost",
+                    file_name,
+                    original.elements.len(),
+                    comparison.missing_relationships.len()
+                );
                 elements_ok += 1;
                 rels_lost += comparison.missing_relationships.len();
             }
@@ -616,7 +701,10 @@ fn test_cross_format_roundtrip() {
 
     println!("\n=== Summary ===");
     println!("Fully lossless: {}", passed);
-    println!("Elements OK, rels lost: {} ({} total rels lost)", elements_ok, rels_lost);
+    println!(
+        "Elements OK, rels lost: {} ({} total rels lost)",
+        elements_ok, rels_lost
+    );
     println!("Failed: {}", failed);
 
     let total = passed + elements_ok + failed;
@@ -624,11 +712,18 @@ fn test_cross_format_roundtrip() {
         let element_pass_rate = (passed + elements_ok) as f64 / total as f64 * 100.0;
         println!("Element preservation rate: {:.1}%", element_pass_rate);
         // Elements should all be preserved even if relationships are lost
-        assert!(element_pass_rate >= 95.0, "Cross-format element preservation rate {:.1}% is below 95%", element_pass_rate);
+        assert!(
+            element_pass_rate >= 95.0,
+            "Cross-format element preservation rate {:.1}% is below 95%",
+            element_pass_rate
+        );
     }
-    
+
     if rels_lost > 0 {
-        println!("\n⚠ NOTE: {} relationships lost due to JSON-LD/YAML format limitations.", rels_lost);
+        println!(
+            "\n⚠ NOTE: {} relationships lost due to JSON-LD/YAML format limitations.",
+            rels_lost
+        );
     }
 }
 /// Test direct byte-level comparison for XMI roundtrip.
@@ -655,9 +750,10 @@ fn test_xmi_byte_comparison() {
     let mut different = 0;
     let mut differences: Vec<(String, ByteDiff)> = Vec::new();
 
-    for file_path in xmi_files.iter().take(20) {  // Start with first 20 files
+    for file_path in xmi_files.iter().take(20) {
+        // Start with first 20 files
         let file_name = file_path.file_name().unwrap().to_string_lossy().to_string();
-        
+
         let original_bytes = match std::fs::read(file_path) {
             Ok(b) => b,
             Err(_) => continue,
@@ -678,11 +774,13 @@ fn test_xmi_byte_comparison() {
             identical += 1;
         } else {
             let diff = analyze_byte_diff(&original_bytes, &roundtripped_bytes);
-            println!("≠ {} - {} bytes orig, {} bytes new ({})", 
-                file_name, 
-                original_bytes.len(), 
+            println!(
+                "≠ {} - {} bytes orig, {} bytes new ({})",
+                file_name,
+                original_bytes.len(),
                 roundtripped_bytes.len(),
-                diff.summary());
+                diff.summary()
+            );
             differences.push((file_name, diff));
             different += 1;
         }
@@ -697,7 +795,10 @@ fn test_xmi_byte_comparison() {
         println!("\n=== Sample Differences ===");
         for (name, diff) in differences.iter().take(5) {
             println!("\n{}:", name);
-            println!("  Size: {} -> {} ({:+} bytes)", diff.orig_size, diff.new_size, diff.size_diff);
+            println!(
+                "  Size: {} -> {} ({:+} bytes)",
+                diff.orig_size, diff.new_size, diff.size_diff
+            );
             if let Some(ref first_diff) = diff.first_diff_context {
                 println!("  First diff around byte {}:", diff.first_diff_pos);
                 println!("    Original: {:?}", first_diff.0);
@@ -735,7 +836,7 @@ fn analyze_byte_diff(original: &[u8], roundtripped: &[u8]) -> ByteDiff {
     let orig_size = original.len();
     let new_size = roundtripped.len();
     let size_diff = new_size as isize - orig_size as isize;
-    
+
     // Find first differing position
     let mut first_diff_pos = 0;
     for (i, (a, b)) in original.iter().zip(roundtripped.iter()).enumerate() {
@@ -751,7 +852,7 @@ fn analyze_byte_diff(original: &[u8], roundtripped: &[u8]) -> ByteDiff {
         let start = first_diff_pos.saturating_sub(20);
         let orig_end = (first_diff_pos + 40).min(orig_size);
         let new_end = (first_diff_pos + 40).min(new_size);
-        
+
         let orig_ctx = String::from_utf8_lossy(&original[start..orig_end]).to_string();
         let new_ctx = String::from_utf8_lossy(&roundtripped[start..new_end]).to_string();
         Some((orig_ctx, new_ctx))
@@ -781,40 +882,48 @@ fn test_xmi_detailed_diff() {
     };
 
     // Use a smaller file for detailed comparison
-    let file_path = release_dir.join("sysml.library.xmi/Domain Libraries/Quantities and Units/Quantities.sysmlx");
+    let file_path = release_dir
+        .join("sysml.library.xmi/Domain Libraries/Quantities and Units/Quantities.sysmlx");
     if !file_path.exists() {
         println!("Skipping - test file not found");
         return;
     }
 
     let xmi = Xmi;
-    
+
     let original_bytes = std::fs::read(&file_path).expect("read file");
     let model = xmi.read(&original_bytes).expect("parse XMI");
     let roundtripped_bytes = xmi.write(&model).expect("write XMI");
-    
+
     let original_str = String::from_utf8_lossy(&original_bytes);
     let roundtripped_str = String::from_utf8_lossy(&roundtripped_bytes);
-    
+
     println!("=== Original (first 80 lines) ===");
     for (i, line) in original_str.lines().take(80).enumerate() {
         println!("{:4}: {}", i + 1, line);
     }
-    
+
     println!("\n=== Roundtripped (first 80 lines) ===");
     for (i, line) in roundtripped_str.lines().take(80).enumerate() {
         println!("{:4}: {}", i + 1, line);
     }
-    
+
     // Count key structural elements
     let orig_elements = original_str.matches("xmi:id=").count();
     let new_elements = roundtripped_str.matches("xmi:id=").count();
-    
+
     let orig_rels = original_str.matches("ownedRelationship").count();
     let new_rels = roundtripped_str.matches("ownedRelationship").count();
-    
+
     println!("\n=== Structural Comparison ===");
-    println!("Elements (xmi:id count): {} -> {}", orig_elements, new_elements);
+    println!(
+        "Elements (xmi:id count): {} -> {}",
+        orig_elements, new_elements
+    );
     println!("ownedRelationship count: {} -> {}", orig_rels, new_rels);
-    println!("Total bytes: {} -> {}", original_bytes.len(), roundtripped_bytes.len());
+    println!(
+        "Total bytes: {} -> {}",
+        original_bytes.len(),
+        roundtripped_bytes.len()
+    );
 }

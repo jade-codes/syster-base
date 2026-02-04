@@ -26,6 +26,7 @@ pub mod context {
     /// SysML v2 JSON-LD context.
     pub const SYSML: &str = "https://www.omg.org/spec/SysML/20230201/context";
     /// KerML JSON-LD context.
+    #[allow(dead_code)]
     pub const KERML: &str = "https://www.omg.org/spec/KerML/20230201/context";
 }
 
@@ -105,7 +106,9 @@ impl ModelFormat for JsonLd {
 #[cfg(feature = "interchange")]
 mod reader {
     use super::*;
-    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind};
+    use crate::interchange::model::{
+        Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind,
+    };
     use serde_json::Value;
     use std::sync::Arc;
 
@@ -156,7 +159,7 @@ mod reader {
             Ok(model)
         }
     }
-    
+
     /// Parse a JSON object as a Relationship if it has source/target fields.
     fn parse_relationship(obj: &serde_json::Map<String, Value>) -> Option<Relationship> {
         // Must have @id, @type, source, and target
@@ -164,12 +167,12 @@ mod reader {
             Some(Value::String(s)) => s.clone(),
             _ => return None,
         };
-        
+
         let type_str = match obj.get("@type") {
             Some(Value::String(s)) => s.as_str(),
             _ => return None,
         };
-        
+
         // Check if this is a relationship type
         let kind = match type_str {
             "Specialization" | "Subclassification" => RelationshipKind::Specialization,
@@ -193,7 +196,7 @@ mod reader {
             "Disjoining" => RelationshipKind::Disjoining,
             _ => return None, // Not a relationship type
         };
-        
+
         // Get source
         let source = match obj.get("source") {
             Some(Value::Object(src_obj)) => match src_obj.get("@id") {
@@ -202,7 +205,7 @@ mod reader {
             },
             _ => return None,
         };
-        
+
         // Get target
         let target = match obj.get("target") {
             Some(Value::Object(tgt_obj)) => match tgt_obj.get("@id") {
@@ -211,16 +214,16 @@ mod reader {
             },
             _ => return None,
         };
-        
+
         let mut rel = Relationship::new(id, kind, source, target);
-        
+
         // Get owner if present
         if let Some(Value::Object(owner_obj)) = obj.get("owner") {
             if let Some(Value::String(owner_id)) = owner_obj.get("@id") {
                 rel.owner = Some(ElementId::new(owner_id.clone()));
             }
         }
-        
+
         Some(rel)
     }
 
@@ -402,12 +405,12 @@ mod writer {
 
         pub fn write(&self, model: &Model) -> Result<Vec<u8>, InterchangeError> {
             let mut all_items: Vec<Value> = Vec::new();
-            
+
             // Add all elements
             for element in model.iter_elements() {
                 all_items.push(element_to_json(element));
             }
-            
+
             // Add all relationships as separate objects
             for relationship in &model.relationships {
                 all_items.push(relationship_to_json(relationship));
@@ -425,11 +428,11 @@ mod writer {
                 .map_err(|e| InterchangeError::json(format!("Serialization error: {e}")))
         }
     }
-    
+
     /// Convert a Relationship to JSON-LD Value.
     fn relationship_to_json(rel: &Relationship) -> Value {
         let mut obj = Map::new();
-        
+
         // @type based on relationship kind
         let rel_type = match rel.kind {
             RelationshipKind::Specialization => "Specialization",
@@ -452,16 +455,16 @@ mod writer {
             RelationshipKind::FeatureChaining => "FeatureChaining",
             RelationshipKind::Disjoining => "Disjoining",
         };
-        
+
         obj.insert("@type".to_string(), json!(rel_type));
         obj.insert("@id".to_string(), json!(rel.id.as_str()));
         obj.insert("source".to_string(), json!({"@id": rel.source.as_str()}));
         obj.insert("target".to_string(), json!({"@id": rel.target.as_str()}));
-        
+
         if let Some(ref owner_id) = rel.owner {
             obj.insert("owner".to_string(), json!({"@id": owner_id.as_str()}));
         }
-        
+
         Value::Object(obj)
     }
 
@@ -799,7 +802,7 @@ mod tests {
             cls.properties
                 .insert(Arc::from("priority"), PropertyValue::Integer(5));
             cls.properties
-                .insert(Arc::from("ratio"), PropertyValue::Real(3.14));
+                .insert(Arc::from("ratio"), PropertyValue::Real(2.5));
             cls.properties
                 .insert(Arc::from("label"), PropertyValue::String(Arc::from("test")));
             model.add_element(cls);
@@ -828,7 +831,7 @@ mod tests {
             );
             assert_eq!(
                 cls2.properties.get(&Arc::from("ratio")),
-                Some(&PropertyValue::Real(3.14)),
+                Some(&PropertyValue::Real(2.5)),
                 "ratio property not preserved"
             );
             assert_eq!(

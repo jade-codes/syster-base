@@ -30,6 +30,7 @@ pub mod paths {
     /// Model directory.
     pub const MODEL_DIR: &str = "model/";
     /// Resources directory.
+    #[allow(dead_code)]
     pub const RESOURCES_DIR: &str = "resources/";
 }
 

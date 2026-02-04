@@ -307,7 +307,7 @@ impl ElementKind {
                 | Self::Annotation
         )
     }
-    
+
     /// Returns true if this is a SysML (not KerML) element kind.
     /// SysML elements use `declaredName` instead of `name`.
     pub fn is_sysml(&self) -> bool {
@@ -574,7 +574,7 @@ impl ElementKind {
     /// Parse from XMI type name.
     pub fn from_xmi_type(xmi_type: &str) -> Self {
         // Strip namespace prefix if present
-        let type_name = xmi_type.split(':').last().unwrap_or(xmi_type);
+        let type_name = xmi_type.rsplit(':').next().unwrap_or(xmi_type);
 
         match type_name {
             "Namespace" => Self::Namespace,
@@ -684,7 +684,7 @@ impl ElementKind {
     /// Get the JSON-LD @type value.
     pub fn jsonld_type(&self) -> &'static str {
         // JSON-LD uses the same type names without namespace prefix
-        self.xmi_type().split(':').last().unwrap_or("Element")
+        self.xmi_type().rsplit(':').next().unwrap_or("Element")
     }
 }
 
@@ -788,31 +788,36 @@ impl Element {
     /// Set isAbstract (syncs to property for roundtrip fidelity).
     pub fn set_abstract(&mut self, value: bool) {
         self.is_abstract = value;
-        self.properties.insert(Arc::from("isAbstract"), PropertyValue::Boolean(value));
+        self.properties
+            .insert(Arc::from("isAbstract"), PropertyValue::Boolean(value));
     }
 
     /// Set isVariation (syncs to property for roundtrip fidelity).
     pub fn set_variation(&mut self, value: bool) {
         self.is_variation = value;
-        self.properties.insert(Arc::from("isVariation"), PropertyValue::Boolean(value));
+        self.properties
+            .insert(Arc::from("isVariation"), PropertyValue::Boolean(value));
     }
 
     /// Set isDerived (syncs to property for roundtrip fidelity).
     pub fn set_derived(&mut self, value: bool) {
         self.is_derived = value;
-        self.properties.insert(Arc::from("isDerived"), PropertyValue::Boolean(value));
+        self.properties
+            .insert(Arc::from("isDerived"), PropertyValue::Boolean(value));
     }
 
     /// Set isReadOnly (syncs to property for roundtrip fidelity).
     pub fn set_readonly(&mut self, value: bool) {
         self.is_readonly = value;
-        self.properties.insert(Arc::from("isReadOnly"), PropertyValue::Boolean(value));
+        self.properties
+            .insert(Arc::from("isReadOnly"), PropertyValue::Boolean(value));
     }
 
     /// Set isParallel (syncs to property for roundtrip fidelity).
     pub fn set_parallel(&mut self, value: bool) {
         self.is_parallel = value;
-        self.properties.insert(Arc::from("isParallel"), PropertyValue::Boolean(value));
+        self.properties
+            .insert(Arc::from("isParallel"), PropertyValue::Boolean(value));
     }
 }
 

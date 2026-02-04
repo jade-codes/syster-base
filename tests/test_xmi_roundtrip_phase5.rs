@@ -141,7 +141,7 @@ package MyModel {
         let all_symbols_refs: Vec<_> = analysis.symbol_index().all_symbols().collect();
         let all_symbols: Vec<_> = all_symbols_refs.iter().map(|s| (*s).clone()).collect();
         let new_model = model_from_symbols(&all_symbols);
-        let new_xmi_bytes = Xmi.write(&new_model).expect("Should write new XMI");
+        let _new_xmi_bytes = Xmi.write(&new_model).expect("Should write new XMI");
 
         // Original elements should have same IDs
         for orig_symbol in &original_symbols {

@@ -8,8 +8,8 @@
 //! extraction while abstracting away language-specific details.
 
 use crate::parser::{
-    self, AstNode, Definition as RowanDefinition, DefinitionKind as RowanDefinitionKind,
-    Direction, Expression, Import as RowanImport, NamespaceMember, Package as RowanPackage, SourceFile,
+    self, AstNode, Definition as RowanDefinition, DefinitionKind as RowanDefinitionKind, Direction,
+    Expression, Import as RowanImport, NamespaceMember, Package as RowanPackage, SourceFile,
     SpecializationKind, Usage as RowanUsage, UsageKind as RowanUsageKind,
 };
 pub use rowan::TextRange;
@@ -1174,8 +1174,8 @@ impl NormalizedUsage {
                         is_readonly: false,
                         is_derived: false,
                         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+                        direction: None,
+                        multiplicity: None,
                     }));
                 } else if let Some(qn) = end.target() {
                     // No endpoint name, just a direct reference (e.g., `a.port to b.port`)
@@ -1507,7 +1507,9 @@ impl NormalizedUsage {
             is_derived: usage.is_derived(),
             is_parallel: usage.is_parallel(),
             direction: usage.direction(),
-            multiplicity: usage.multiplicity().map(|(l, u)| Multiplicity { lower: l, upper: u }),
+            multiplicity: usage
+                .multiplicity()
+                .map(|(l, u)| Multiplicity { lower: l, upper: u }),
         }
     }
 
@@ -1549,8 +1551,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1664,8 +1666,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1776,8 +1778,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -1796,8 +1798,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1863,8 +1865,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1925,8 +1927,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1981,8 +1983,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2074,8 +2076,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -2105,8 +2107,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2162,8 +2164,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2215,8 +2217,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2257,8 +2259,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -2284,8 +2286,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2358,8 +2360,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2421,8 +2423,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         }
     }
 }

@@ -984,8 +984,8 @@ fn extract_from_normalized_package(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+        direction: None,
+        multiplicity: None,
     });
 
     ctx.push_scope(&name);
@@ -1190,8 +1190,8 @@ fn extract_from_normalized_definition(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+        direction: None,
+        multiplicity: None,
     });
 
     // Recurse into children
@@ -1594,8 +1594,8 @@ fn extract_from_normalized_import(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+        direction: None,
+        multiplicity: None,
     });
 }
 
@@ -1657,8 +1657,8 @@ fn extract_from_normalized_alias(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+        direction: None,
+        multiplicity: None,
     });
 }
 
@@ -1723,8 +1723,8 @@ fn extract_from_normalized_comment(
         is_readonly: false,
         is_derived: false,
         is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+        direction: None,
+        multiplicity: None,
     });
 }
 
@@ -1882,8 +1882,8 @@ fn extract_from_normalized_dependency(
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         });
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
@@ -1917,8 +1917,8 @@ fn extract_from_normalized_dependency(
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
-                    direction: None,
-                    multiplicity: None,
+            direction: None,
+            multiplicity: None,
         });
     }
 }
@@ -2003,21 +2003,57 @@ mod tests {
         let symbols = super::extract_symbols_unified(FileId::new(0), &syntax);
 
         // Find the ports and verify direction
-        let fuel_in = symbols.iter().find(|s| s.name.as_ref() == "fuelIn").unwrap();
+        let fuel_in = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "fuelIn")
+            .unwrap();
         assert_eq!(fuel_in.direction, Some(Direction::In));
-        assert_eq!(fuel_in.multiplicity, Some(Multiplicity { lower: Some(1), upper: Some(1) }));
+        assert_eq!(
+            fuel_in.multiplicity,
+            Some(Multiplicity {
+                lower: Some(1),
+                upper: Some(1)
+            })
+        );
 
-        let exhaust = symbols.iter().find(|s| s.name.as_ref() == "exhaust").unwrap();
+        let exhaust = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "exhaust")
+            .unwrap();
         assert_eq!(exhaust.direction, Some(Direction::Out));
-        assert_eq!(exhaust.multiplicity, Some(Multiplicity { lower: Some(0), upper: None }));
+        assert_eq!(
+            exhaust.multiplicity,
+            Some(Multiplicity {
+                lower: Some(0),
+                upper: None
+            })
+        );
 
-        let control = symbols.iter().find(|s| s.name.as_ref() == "control").unwrap();
+        let control = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "control")
+            .unwrap();
         assert_eq!(control.direction, Some(Direction::InOut));
-        assert_eq!(control.multiplicity, Some(Multiplicity { lower: Some(1), upper: Some(5) }));
+        assert_eq!(
+            control.multiplicity,
+            Some(Multiplicity {
+                lower: Some(1),
+                upper: Some(5)
+            })
+        );
 
-        let wheels = symbols.iter().find(|s| s.name.as_ref() == "wheels").unwrap();
+        let wheels = symbols
+            .iter()
+            .find(|s| s.name.as_ref() == "wheels")
+            .unwrap();
         assert_eq!(wheels.direction, None);
-        assert_eq!(wheels.multiplicity, Some(Multiplicity { lower: Some(4), upper: Some(4) }));
+        assert_eq!(
+            wheels.multiplicity,
+            Some(Multiplicity {
+                lower: Some(4),
+                upper: Some(4)
+            })
+        );
     }
 }
 

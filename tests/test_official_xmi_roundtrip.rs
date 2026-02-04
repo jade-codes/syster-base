@@ -168,7 +168,7 @@ fn test_official_xmi_roundtrip() {
 
     eprintln!("\nTesting {} official XMI files...\n", files.len());
 
-    let xmi = Xmi::default();
+    let xmi = Xmi;
     let mut results = TestResults::default();
 
     for file_path in &files {
@@ -397,7 +397,7 @@ fn test_xmi_write_stability() {
         files.len()
     );
 
-    let xmi = Xmi::default();
+    let xmi = Xmi;
     let mut stable = 0;
     let mut unstable = 0;
 
@@ -461,7 +461,7 @@ fn test_xmi_roundtrip_convergence() {
         files.len()
     );
 
-    let xmi = Xmi::default();
+    let xmi = Xmi;
     let mut converged = 0;
     let mut not_converged = 0;
     let mut size_diffs: Vec<(String, usize, usize)> = Vec::new();
@@ -562,8 +562,8 @@ fn test_official_xmi_to_jsonld_roundtrip() {
         files.len()
     );
 
-    let xmi = Xmi::default();
-    let jsonld = JsonLd::default();
+    let xmi = Xmi;
+    let jsonld = JsonLd;
     let mut results = TestResults::default();
 
     for file_path in &files {

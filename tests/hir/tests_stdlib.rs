@@ -5,7 +5,7 @@
 
 use crate::helpers::symbol_assertions::*;
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use syster::hir::SymbolKind;
 use syster::ide::AnalysisHost;
 
@@ -49,7 +49,7 @@ fn load_all_stdlib_files() -> AnalysisHost {
     host
 }
 
-fn load_files_recursive(host: &mut AnalysisHost, dir: &PathBuf) {
+fn load_files_recursive(host: &mut AnalysisHost, dir: &Path) {
     if !dir.exists() {
         return;
     }

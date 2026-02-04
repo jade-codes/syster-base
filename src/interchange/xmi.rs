@@ -103,7 +103,11 @@ impl ModelFormat for Xmi {
 impl Xmi {
     /// Read XMI from bytes with a source path for resolving cross-file references.
     #[cfg(feature = "interchange")]
-    pub fn read_from_path(&self, input: &[u8], path: &std::path::Path) -> Result<Model, InterchangeError> {
+    pub fn read_from_path(
+        &self,
+        input: &[u8],
+        path: &std::path::Path,
+    ) -> Result<Model, InterchangeError> {
         XmiReader::new().read_with_path(input, Some(path))
     }
 }
@@ -153,7 +157,7 @@ mod reader {
         /// Containment wrapper (ownedMember, etc.) - no push.
         Containment,
         /// Actual element - push element ID to parent stack.
-        Element(String),
+        Element,
     }
 
     impl XmiReader {
@@ -175,10 +179,14 @@ mod reader {
         pub fn read(&mut self, input: &[u8]) -> Result<Model, InterchangeError> {
             self.read_with_path(input, None)
         }
-        
-        pub fn read_with_path(&mut self, input: &[u8], path: Option<&std::path::Path>) -> Result<Model, InterchangeError> {
+
+        pub fn read_with_path(
+            &mut self,
+            input: &[u8],
+            path: Option<&std::path::Path>,
+        ) -> Result<Model, InterchangeError> {
             self.base_path = path.map(|p| p.parent().unwrap_or(p).to_path_buf());
-            
+
             let mut reader = Reader::from_reader(input);
             reader.config_mut().trim_text(true);
 
@@ -230,9 +238,9 @@ mod reader {
 
             // Quick check: does this element have an href attribute?
             // If so, it's a reference element, not a containment wrapper.
-            let has_href = e.attributes().any(|attr| {
-                attr.map(|a| a.key.as_ref() == b"href").unwrap_or(false)
-            });
+            let has_href = e
+                .attributes()
+                .any(|attr| attr.map(|a| a.key.as_ref() == b"href").unwrap_or(false));
 
             // Check if this is a containment wrapper (but NOT if it has href - those are references)
             if is_containment_tag(tag_name)
@@ -304,7 +312,7 @@ mod reader {
                     }
                     // Relationship target references - store as property AND use for relationship
                     "target" | "superclassifier" | "redefinedFeature" | "subsettedFeature"
-                    | "general" | "specific" | "type" | "chainingFeature" 
+                    | "general" | "specific" | "type" | "chainingFeature"
                     | "importedMembership" | "importedNamespace" | "disjoiningType"
                     | "originalType" | "memberElement" | "referencedFeature" => {
                         target_ref = Some(value.clone());
@@ -367,16 +375,24 @@ mod reader {
                     element.set_parallel(val);
                 }
                 if let Some(val) = is_standard {
-                    element.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(val));
+                    element
+                        .properties
+                        .insert(Arc::from("isStandard"), PropertyValue::Boolean(val));
                 }
                 if let Some(val) = is_composite {
-                    element.properties.insert(Arc::from("isComposite"), PropertyValue::Boolean(val));
+                    element
+                        .properties
+                        .insert(Arc::from("isComposite"), PropertyValue::Boolean(val));
                 }
                 if let Some(val) = is_unique {
-                    element.properties.insert(Arc::from("isUnique"), PropertyValue::Boolean(val));
+                    element
+                        .properties
+                        .insert(Arc::from("isUnique"), PropertyValue::Boolean(val));
                 }
                 if let Some(val) = is_ordered {
-                    element.properties.insert(Arc::from("isOrdered"), PropertyValue::Boolean(val));
+                    element
+                        .properties
+                        .insert(Arc::from("isOrdered"), PropertyValue::Boolean(val));
                 }
 
                 // Store documentation body
@@ -406,14 +422,16 @@ mod reader {
                     // Track ALL children under their parent in parse order
                     self.children_in_order
                         .entry(parent_id.clone())
-                        .or_insert_with(Vec::new)
+                        .or_default()
                         .push(id.clone());
                 }
 
                 // If this is a relationship kind, try to create a Relationship
                 if kind.is_relationship() {
                     if let (Some(src), Some(tgt)) = (
-                        source_ref.clone().or_else(|| self.parent_stack.last().cloned()),
+                        source_ref
+                            .clone()
+                            .or_else(|| self.parent_stack.last().cloned()),
                         target_ref,
                     ) {
                         let rel_kind = element_kind_to_relationship_kind(kind);
@@ -426,15 +444,15 @@ mod reader {
                 }
 
                 self.elements_by_id.insert(id.clone(), element);
-                self.parent_stack.push(id.clone());
-                self.depth_stack.push(StackEntry::Element(id));
+                self.parent_stack.push(id);
+                self.depth_stack.push(StackEntry::Element);
             } else if let Some(h) = href {
                 // Element without ID but with href - this is a reference element like <type href="..."/>
                 // or <superclassifier href="..."/> or <importedMembership href="..."/>
                 if let Some(parent_id) = self.parent_stack.last().cloned() {
                     // Extract the target element ID from the href (after the #)
                     let target_id = h.rsplit('#').next().map(|s| s.to_string());
-                    
+
                     // Try to resolve the full qualified name from the referenced file
                     let resolved_name = self.resolve_href_name(&h);
                     let fallback_name = if resolved_name.is_none() {
@@ -442,7 +460,7 @@ mod reader {
                     } else {
                         None
                     };
-                    
+
                     // Now do the mutable borrow
                     if let Some(parent_elem) = self.elements_by_id.get_mut(&parent_id) {
                         if let Some(name) = resolved_name {
@@ -474,17 +492,13 @@ mod reader {
                             );
                         }
                     }
-                    
+
                     // Check if we have a pending relationship source for this parent
                     if let Some(target) = target_id {
                         if let Some((src, kind)) = self.pending_rel_sources.remove(&parent_id) {
                             let rel_kind = element_kind_to_relationship_kind(kind);
-                            let relationship = Relationship::new(
-                                parent_id.clone(),
-                                rel_kind,
-                                src,
-                                target,
-                            );
+                            let relationship =
+                                Relationship::new(parent_id.clone(), rel_kind, src, target);
                             self.relationships.push(relationship);
                         }
                     }
@@ -497,34 +511,34 @@ mod reader {
 
             Ok(())
         }
-        
+
         /// Resolve an href to a qualified name by loading the referenced file.
         fn resolve_href_name(&mut self, href: &str) -> Option<String> {
             // Check cache first
             if let Some(cached) = self.href_name_cache.get(href) {
                 return Some(cached.clone());
             }
-            
+
             // Parse href: "path/to/File.kermlx#elementId"
             let hash_pos = href.rfind('#')?;
             let path_part = &href[..hash_pos];
             let element_id = &href[hash_pos + 1..];
-            
+
             // Decode URL encoding
             let decoded_path = path_part.replace("%20", " ");
-            
+
             // Get the base path
             let base = self.base_path.as_ref()?;
-            
+
             // Resolve the full path
             let target_path = base.join(&decoded_path);
-            
+
             // Try to read the file
             let file_content = std::fs::read(&target_path).ok()?;
-            
+
             // Quick parse to find element name - look for the element ID and extract its name
             let content_str = String::from_utf8_lossy(&file_content);
-            
+
             // Find the element by ID and get its name
             // Look for patterns like: xmi:id="<element_id>" ... declaredName="<name>"
             // or: xmi:id="<element_id>" ... name="<name>"
@@ -533,44 +547,46 @@ mod reader {
                 // Look for name attribute in the same element (within ~500 chars)
                 let search_end = (id_pos + 500).min(content_str.len());
                 let search_slice = &content_str[id_pos..search_end];
-                
+
                 // Try declaredName first, then name
                 let name = extract_attr_value(search_slice, "declaredName")
                     .or_else(|| extract_attr_value(search_slice, "name"));
-                
+
                 if let Some(elem_name) = name {
                     // Get the file name (package name)
                     let file_name = target_path.file_stem()?.to_str()?;
                     let qualified_name = format!("{}::{}", file_name, elem_name);
-                    
+
                     // Cache the result
-                    self.href_name_cache.insert(href.to_string(), qualified_name.clone());
-                    
+                    self.href_name_cache
+                        .insert(href.to_string(), qualified_name.clone());
+
                     return Some(qualified_name);
                 }
             }
-            
+
             None
         }
-        
+
         fn handle_end_element(&mut self) {
             // Pop from depth stack and handle accordingly
-            if let Some(entry) = self.depth_stack.pop() {
-                if let StackEntry::Element(_) = entry {
-                    // This was an actual element, pop parent stack too
-                    self.parent_stack.pop();
-                }
+            if let Some(StackEntry::Element) = self.depth_stack.pop() {
+                // This was an actual element, pop parent stack too
+                self.parent_stack.pop();
             }
         }
 
         /// Capture xmlns namespace declarations from the root element.
-        fn capture_namespace_declarations(&mut self, e: &BytesStart<'_>) -> Result<(), InterchangeError> {
+        fn capture_namespace_declarations(
+            &mut self,
+            e: &BytesStart<'_>,
+        ) -> Result<(), InterchangeError> {
             for attr_result in e.attributes() {
                 let attr = attr_result
                     .map_err(|e| InterchangeError::xml(format!("Attribute error: {e}")))?;
                 let key = std::str::from_utf8(attr.key.as_ref())
                     .map_err(|e| InterchangeError::xml(format!("Attribute key error: {e}")))?;
-                
+
                 // Look for xmlns:prefix="uri" declarations
                 if let Some(prefix) = key.strip_prefix("xmlns:") {
                     let value = attr
@@ -656,12 +672,12 @@ mod reader {
     fn extract_name_from_href_path(href: &str) -> Option<String> {
         // href format: "../path/File.kermlx#elementId"
         // We want to extract the file name as package
-        
+
         if let Some(hash_pos) = href.rfind('#') {
             let path = &href[..hash_pos];
             // Simple URL decode for %20 -> space (most common case)
             let decoded_path = path.replace("%20", " ");
-            
+
             // Extract file name without extension
             if let Some(file_start) = decoded_path.rfind('/') {
                 let file = &decoded_path[file_start + 1..];
@@ -680,9 +696,9 @@ mod reader {
         match kind {
             ElementKind::Specialization => RelationshipKind::Specialization,
             ElementKind::FeatureTyping => RelationshipKind::FeatureTyping,
-            ElementKind::Subsetting | ElementKind::ReferenceSubsetting | ElementKind::CrossSubsetting => {
-                RelationshipKind::Subsetting
-            }
+            ElementKind::Subsetting
+            | ElementKind::ReferenceSubsetting
+            | ElementKind::CrossSubsetting => RelationshipKind::Subsetting,
             ElementKind::Redefinition => RelationshipKind::Redefinition,
             ElementKind::Import | ElementKind::NamespaceImport => RelationshipKind::NamespaceImport,
             ElementKind::MembershipImport => RelationshipKind::MembershipImport,
@@ -734,7 +750,7 @@ mod writer {
 
             // Get roots
             let roots: Vec<_> = model.iter_roots().collect();
-            
+
             if roots.len() == 1 {
                 // Single root - use element as document root (OMG format)
                 let root = roots[0];
@@ -761,22 +777,22 @@ mod writer {
         ) -> Result<(), InterchangeError> {
             let type_name = Self::get_xmi_type(element);
             let mut elem_start = BytesStart::new(&type_name);
-            
+
             // Add XMI version and namespaces
             elem_start.push_attribute(("xmi:version", "2.0"));
             elem_start.push_attribute(("xmlns:xmi", namespace::XMI));
             elem_start.push_attribute(("xmlns:xsi", namespace::XSI));
-            
+
             // Write namespaces from metadata (for roundtrip fidelity) or defaults
             Self::write_namespace_attrs(&mut elem_start, model);
-            
+
             // Write element attributes
             self.write_element_attrs(&mut elem_start, element, model);
-            
+
             // Check for href or children
             let has_href = element.properties.get("href").is_some();
             let has_children = !element.owned_elements.is_empty();
-            
+
             if has_href || has_children {
                 writer
                     .write_event(Event::Start(elem_start))
@@ -813,7 +829,7 @@ mod writer {
             xmi_start.push_attribute(("xmi:version", "2.0"));
             xmi_start.push_attribute(("xmlns:xmi", namespace::XMI));
             xmi_start.push_attribute(("xmlns:xsi", namespace::XSI));
-            
+
             // Write namespaces from metadata (for roundtrip fidelity) or defaults
             Self::write_namespace_attrs(&mut xmi_start, model);
 
@@ -833,17 +849,25 @@ mod writer {
         }
 
         /// Write element attributes (id, name, flags, etc.)
-        fn write_element_attrs(&self, elem_start: &mut BytesStart, element: &Element, model: &Model) {
+        fn write_element_attrs(
+            &self,
+            elem_start: &mut BytesStart,
+            element: &Element,
+            _model: &Model,
+        ) {
             // xmi:id and elementId (same value, per OMG spec)
             elem_start.push_attribute(("xmi:id", element.id.as_str()));
             elem_start.push_attribute(("elementId", element.id.as_str()));
 
             // Determine if this element uses SysML naming (declaredName) based on xsi:type prefix
-            let uses_sysml_naming = if let Some(super::super::model::PropertyValue::String(xsi_type)) = element.properties.get("_xsi_type") {
-                xsi_type.starts_with("sysml:")
-            } else {
-                element.kind.is_sysml()
-            };
+            let uses_sysml_naming =
+                if let Some(super::super::model::PropertyValue::String(xsi_type)) =
+                    element.properties.get("_xsi_type")
+                {
+                    xsi_type.starts_with("sysml:")
+                } else {
+                    element.kind.is_sysml()
+                };
 
             // Name - use declaredName for SysML elements
             if let Some(ref name) = element.name {
@@ -853,7 +877,7 @@ mod writer {
                     elem_start.push_attribute(("name", name.as_ref()));
                 }
             }
-            
+
             // Short name
             if let Some(ref short_name) = element.short_name {
                 if uses_sysml_naming {
@@ -862,12 +886,12 @@ mod writer {
                     elem_start.push_attribute(("shortName", short_name.as_ref()));
                 }
             }
-            
+
             // Qualified name (if present)
             if let Some(ref qn) = element.qualified_name {
                 elem_start.push_attribute(("qualifiedName", qn.as_ref()));
             }
-            
+
             // Relationship attributes are now stored as properties and written below
 
             // Boolean flags - write from properties (source of truth)
@@ -923,7 +947,7 @@ mod writer {
             // Use raw bytes to avoid double-escaping
             if let Some(ref doc) = element.documentation {
                 let escaped = doc
-                    .replace('&', "&amp;")  // Must be first!
+                    .replace('&', "&amp;") // Must be first!
                     .replace('<', "&lt;")
                     .replace('>', "&gt;")
                     .replace('"', "&quot;")
@@ -935,10 +959,19 @@ mod writer {
             for (key, value) in &element.properties {
                 let k = key.as_ref();
                 // Skip boolean properties (already written above) and internal properties
-                if k == "isAbstract" || k == "isVariation" || k == "isDerived" || k == "isReadOnly"
-                    || k == "isParallel" || k == "isStandard" || k == "isComposite" 
-                    || k == "isUnique" || k == "isOrdered"
-                    || k == "href" || k == "href_target_name" || k.starts_with("_") {
+                if k == "isAbstract"
+                    || k == "isVariation"
+                    || k == "isDerived"
+                    || k == "isReadOnly"
+                    || k == "isParallel"
+                    || k == "isStandard"
+                    || k == "isComposite"
+                    || k == "isUnique"
+                    || k == "isOrdered"
+                    || k == "href"
+                    || k == "href_target_name"
+                    || k.starts_with("_")
+                {
                     continue;
                 }
                 if let super::super::model::PropertyValue::String(s) = value {
@@ -952,7 +985,7 @@ mod writer {
         /// otherwise writes both kerml and sysml namespaces as defaults.
         fn write_namespace_attrs(elem_start: &mut BytesStart, model: &Model) {
             let ns = &model.metadata.declared_namespaces;
-            
+
             if ns.is_empty() {
                 // No namespace info - write both as defaults
                 elem_start.push_attribute(("xmlns:kerml", namespace::KERML));
@@ -973,7 +1006,9 @@ mod writer {
         /// This preserves roundtrip fidelity for sysml: vs kerml: prefix.
         fn get_xmi_type(element: &Element) -> String {
             // Prefer stored original xsi:type for roundtrip fidelity
-            if let Some(super::super::model::PropertyValue::String(orig)) = element.properties.get("_xsi_type") {
+            if let Some(super::super::model::PropertyValue::String(orig)) =
+                element.properties.get("_xsi_type")
+            {
                 return orig.to_string();
             }
             element.kind.xmi_type().to_string()
@@ -987,7 +1022,9 @@ mod writer {
                 ElementKind::Membership => "memberElement",
                 ElementKind::Specialization => "superclassifier",
                 ElementKind::FeatureTyping => "type",
-                ElementKind::Subsetting | ElementKind::ReferenceSubsetting | ElementKind::CrossSubsetting => "subsettedFeature",
+                ElementKind::Subsetting
+                | ElementKind::ReferenceSubsetting
+                | ElementKind::CrossSubsetting => "subsettedFeature",
                 ElementKind::Redefinition => "redefinedFeature",
                 ElementKind::Disjoining => "disjoiningType",
                 ElementKind::Conjugation => "originalType",
@@ -1001,21 +1038,28 @@ mod writer {
             writer: &mut Writer<W>,
             element: &Element,
         ) -> Result<(), InterchangeError> {
-            if let Some(super::super::model::PropertyValue::String(href)) = element.properties.get("href") {
+            if let Some(super::super::model::PropertyValue::String(href)) =
+                element.properties.get("href")
+            {
                 // Use stored tag name if available (for roundtrip), else derive from kind
-                let href_elem_name: String = if let Some(super::super::model::PropertyValue::String(tag)) = element.properties.get("_href_tag") {
-                    tag.to_string()
-                } else {
-                    Self::href_element_name(element.kind).to_string()
-                };
-                
+                let href_elem_name: String =
+                    if let Some(super::super::model::PropertyValue::String(tag)) =
+                        element.properties.get("_href_tag")
+                    {
+                        tag.to_string()
+                    } else {
+                        Self::href_element_name(element.kind).to_string()
+                    };
+
                 let mut href_elem = BytesStart::new(&href_elem_name);
-                
+
                 // Add xsi:type if stored (for roundtrip)
-                if let Some(super::super::model::PropertyValue::String(xsi_type)) = element.properties.get("_href_xsi_type") {
+                if let Some(super::super::model::PropertyValue::String(xsi_type)) =
+                    element.properties.get("_href_xsi_type")
+                {
                     href_elem.push_attribute(("xsi:type", xsi_type.as_ref()));
                 }
-                
+
                 href_elem.push_attribute(("href", href.as_ref()));
                 writer
                     .write_event(Event::Empty(href_elem))
@@ -1025,7 +1069,7 @@ mod writer {
         }
 
         /// Write an ownedRelationship element with xsi:type.
-        /// 
+        ///
         /// In OMG XMI format:
         /// - Relationship types (MembershipImport, NamespaceImport, etc.) are written directly:
         ///   `<ownedRelationship xsi:type="sysml:MembershipImport">...</ownedRelationship>`
@@ -1057,10 +1101,10 @@ mod writer {
             let type_name = Self::get_xmi_type(child);
             let mut rel_start = BytesStart::new("ownedRelationship");
             rel_start.push_attribute(("xsi:type", type_name.as_str()));
-            
+
             // Write element attributes
             self.write_element_attrs(&mut rel_start, child, model);
-            
+
             // Check for href or children
             let has_href = child.properties.get("href").is_some();
             let has_children = !child.owned_elements.is_empty();
@@ -1102,7 +1146,7 @@ mod writer {
             // <ownedRelationship xsi:type="OwningMembership">
             //   <ownedRelatedElement xsi:type="sysml:Package">...</ownedRelatedElement>
             // </ownedRelationship>
-            // 
+            //
             // Note: We don't have an explicit OwningMembership element in our model,
             // so we just write the ownedRelatedElement directly.
             // This is a simplification that works for re-parsing but differs from strict OMG format.
@@ -1119,14 +1163,14 @@ mod writer {
             let type_name = Self::get_xmi_type(element);
             let mut elem_start = BytesStart::new("ownedRelatedElement");
             elem_start.push_attribute(("xsi:type", type_name.as_str()));
-            
+
             // Write element attributes
             self.write_element_attrs(&mut elem_start, element, model);
 
             // Check for href or children
             let has_href = element.properties.get("href").is_some();
             let has_children = !element.owned_elements.is_empty();
-            
+
             if has_href || has_children {
                 writer
                     .write_event(Event::Start(elem_start))
@@ -1161,9 +1205,9 @@ mod writer {
         ) -> Result<(), InterchangeError> {
             let type_name = Self::get_xmi_type(element);
             let mut elem_start = BytesStart::new(&type_name);
-            
+
             self.write_element_attrs(&mut elem_start, element, model);
-            
+
             let has_children = !element.owned_elements.is_empty();
             if has_children {
                 writer
@@ -1245,7 +1289,7 @@ pub fn element_kind_to_xmi(kind: ElementKind) -> &'static str {
 /// Convert a relationship XMI type to RelationshipKind.
 #[allow(dead_code)]
 pub fn relationship_kind_from_xmi(xmi_type: &str) -> Option<RelationshipKind> {
-    let type_name = xmi_type.split(':').last().unwrap_or(xmi_type);
+    let type_name = xmi_type.rsplit(':').next().unwrap_or(xmi_type);
     match type_name {
         "Specialization" => Some(RelationshipKind::Specialization),
         "FeatureTyping" => Some(RelationshipKind::FeatureTyping),
@@ -1374,9 +1418,21 @@ mod tests {
 
             // Single root element is written directly (OMG format) - no xmi:XMI wrapper
             // OMG 2025 format uses declaredName instead of name
-            assert!(output_str.contains("sysml:Package"), "Missing sysml:Package. Got:\n{}", output_str);
-            assert!(output_str.contains(r#"xmi:id="pkg1""#), "Missing xmi:id. Got:\n{}", output_str);
-            assert!(output_str.contains(r#"declaredName="TestPackage""#), "Missing declaredName. Got:\n{}", output_str);
+            assert!(
+                output_str.contains("sysml:Package"),
+                "Missing sysml:Package. Got:\n{}",
+                output_str
+            );
+            assert!(
+                output_str.contains(r#"xmi:id="pkg1""#),
+                "Missing xmi:id. Got:\n{}",
+                output_str
+            );
+            assert!(
+                output_str.contains(r#"declaredName="TestPackage""#),
+                "Missing declaredName. Got:\n{}",
+                output_str
+            );
         }
 
         #[test]
@@ -1635,11 +1691,14 @@ mod tests {
 <sysml:Documentation xmi:version="2.0" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sysml="https://www.omg.org/spec/SysML/20250201" xmi:id="doc1" elementId="doc1" body="Line one.&#xA;Line two.&#xA;"/>"#;
 
             let model = Xmi.read(input.as_bytes()).expect("Failed to read XMI");
-            
+
             // Verify the newline was parsed correctly
             let doc = model.get(&ElementId::new("doc1")).expect("doc not found");
-            assert_eq!(doc.documentation.as_deref(), Some("Line one.\nLine two.\n"), 
-                "Newlines should be parsed from &#xA;");
+            assert_eq!(
+                doc.documentation.as_deref(),
+                Some("Line one.\nLine two.\n"),
+                "Newlines should be parsed from &#xA;"
+            );
 
             // Write it back
             let output = Xmi.write(&model).expect("Failed to write XMI");
