@@ -59,6 +59,7 @@ pub mod metadata;
 pub mod model;
 pub mod recompile;
 mod xmi;
+mod yaml;
 
 pub use decompile::{DecompileResult, decompile, decompile_with_source};
 pub use error::InterchangeError;
@@ -68,6 +69,7 @@ pub use integrate::{
 };
 pub use jsonld::JsonLd;
 pub use kpar::{Kpar, KparManifest};
+pub use yaml::Yaml;
 pub use metadata::{
     Dependency, ElementMeta, ImportMetadata, PackageMetadata, ProjectMetadata, SourceInfo,
 };
@@ -79,7 +81,7 @@ pub use xmi::Xmi;
 
 /// Supported file extensions for interchange formats.
 pub fn supported_extensions() -> &'static [&'static str] {
-    &["xmi", "kpar", "jsonld", "json"]
+    &["xmi", "kpar", "jsonld", "json", "yaml", "yml"]
 }
 
 /// Detect format from file extension.
@@ -89,6 +91,7 @@ pub fn detect_format(path: &std::path::Path) -> Option<Box<dyn ModelFormat>> {
         "xmi" => Some(Box::new(Xmi)),
         "kpar" => Some(Box::new(Kpar)),
         "jsonld" | "json" => Some(Box::new(JsonLd)),
+        "yaml" | "yml" => Some(Box::new(Yaml)),
         _ => None,
     }
 }
@@ -99,6 +102,7 @@ pub fn detect_format_from_mime(mime: &str) -> Option<Box<dyn ModelFormat>> {
         "application/xmi+xml" | "application/xml" => Some(Box::new(Xmi)),
         "application/zip" | "application/kpar" => Some(Box::new(Kpar)),
         "application/ld+json" | "application/json" => Some(Box::new(JsonLd)),
+        "application/x-yaml" | "text/yaml" => Some(Box::new(Yaml)),
         _ => None,
     }
 }

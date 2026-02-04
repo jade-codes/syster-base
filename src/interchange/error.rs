@@ -17,6 +17,10 @@ pub enum InterchangeError {
     #[error("JSON error: {0}")]
     Json(String),
 
+    /// YAML parsing or serialization error.
+    #[error("YAML error: {0}")]
+    Yaml(String),
+
     /// IO error during read/write.
     #[error("IO error: {0}")]
     Io(#[from] std::io::Error),
@@ -60,6 +64,11 @@ impl InterchangeError {
     /// Create a JSON error.
     pub fn json(message: impl Into<String>) -> Self {
         Self::Json(message.into())
+    }
+
+    /// Create a YAML error.
+    pub fn yaml(message: impl Into<String>) -> Self {
+        Self::Yaml(message.into())
     }
 
     /// Create a missing element error.

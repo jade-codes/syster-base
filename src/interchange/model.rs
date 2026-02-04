@@ -83,7 +83,8 @@ impl From<String> for ElementId {
 /// Maps to SysML v2 / KerML metaclasses.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum ElementKind {
-    // Packages
+    // Namespaces and Packages
+    Namespace,
     Package,
     LibraryPackage,
 
@@ -145,19 +146,50 @@ pub enum ElementKind {
     Expression,
     BooleanExpression,
     Invariant,
+    Connector,
+    BindingConnector,
+    Succession,
+    Flow,
+
+    // Multiplicity and Literals
+    MultiplicityRange,
+    LiteralInteger,
+    LiteralInfinity,
+    LiteralBoolean,
+    LiteralString,
+    NullExpression,
+
+    // Expressions
+    FeatureReferenceExpression,
+    OperatorExpression,
+    InvocationExpression,
+    FeatureChainExpression,
+    ConstructorExpression,
 
     // Relationships (first-class)
     Membership,
     OwningMembership,
     FeatureMembership,
+    ReturnParameterMembership,
+    ParameterMembership,
+    EndFeatureMembership,
+    ResultExpressionMembership,
     Import,
     NamespaceImport,
     MembershipImport,
     Specialization,
     FeatureTyping,
     Subsetting,
+    ReferenceSubsetting,
+    CrossSubsetting,
     Redefinition,
     Conjugation,
+    FeatureValue,
+    FeatureChaining,
+    FeatureInverting,
+    Intersecting,
+    Disjoining,
+    Unioning,
 
     // Comments and documentation
     Comment,
@@ -167,6 +199,11 @@ pub enum ElementKind {
     // Annotations
     MetadataUsage,
     AnnotatingElement,
+    Annotation,
+
+    // Classifiers
+    Classifier,
+    Metaclass,
 
     // Generic
     Other,
@@ -247,20 +284,34 @@ impl ElementKind {
             Self::Membership
                 | Self::OwningMembership
                 | Self::FeatureMembership
+                | Self::ReturnParameterMembership
+                | Self::ParameterMembership
+                | Self::EndFeatureMembership
+                | Self::ResultExpressionMembership
                 | Self::Import
                 | Self::NamespaceImport
                 | Self::MembershipImport
                 | Self::Specialization
                 | Self::FeatureTyping
                 | Self::Subsetting
+                | Self::ReferenceSubsetting
+                | Self::CrossSubsetting
                 | Self::Redefinition
                 | Self::Conjugation
+                | Self::FeatureValue
+                | Self::FeatureChaining
+                | Self::FeatureInverting
+                | Self::Intersecting
+                | Self::Disjoining
+                | Self::Unioning
+                | Self::Annotation
         )
     }
 
     /// Get the XMI type name for this kind.
     pub fn xmi_type(&self) -> &'static str {
         match self {
+            Self::Namespace => "sysml:Namespace",
             Self::Package => "sysml:Package",
             Self::LibraryPackage => "sysml:LibraryPackage",
             Self::Class => "kerml:Class",
@@ -314,23 +365,160 @@ impl ElementKind {
             Self::Expression => "kerml:Expression",
             Self::BooleanExpression => "kerml:BooleanExpression",
             Self::Invariant => "kerml:Invariant",
+            Self::Connector => "kerml:Connector",
+            Self::BindingConnector => "kerml:BindingConnector",
+            Self::Succession => "kerml:Succession",
+            Self::Flow => "kerml:Flow",
+            Self::MultiplicityRange => "kerml:MultiplicityRange",
+            Self::LiteralInteger => "kerml:LiteralInteger",
+            Self::LiteralInfinity => "kerml:LiteralInfinity",
+            Self::LiteralBoolean => "kerml:LiteralBoolean",
+            Self::LiteralString => "kerml:LiteralString",
+            Self::NullExpression => "kerml:NullExpression",
+            Self::FeatureReferenceExpression => "kerml:FeatureReferenceExpression",
+            Self::OperatorExpression => "kerml:OperatorExpression",
+            Self::InvocationExpression => "kerml:InvocationExpression",
+            Self::FeatureChainExpression => "kerml:FeatureChainExpression",
+            Self::ConstructorExpression => "kerml:ConstructorExpression",
             Self::Membership => "kerml:Membership",
             Self::OwningMembership => "kerml:OwningMembership",
             Self::FeatureMembership => "kerml:FeatureMembership",
+            Self::ReturnParameterMembership => "kerml:ReturnParameterMembership",
+            Self::ParameterMembership => "kerml:ParameterMembership",
+            Self::EndFeatureMembership => "kerml:EndFeatureMembership",
+            Self::ResultExpressionMembership => "kerml:ResultExpressionMembership",
             Self::Import => "kerml:Import",
             Self::NamespaceImport => "kerml:NamespaceImport",
             Self::MembershipImport => "kerml:MembershipImport",
             Self::Specialization => "kerml:Specialization",
             Self::FeatureTyping => "kerml:FeatureTyping",
             Self::Subsetting => "kerml:Subsetting",
+            Self::ReferenceSubsetting => "kerml:ReferenceSubsetting",
+            Self::CrossSubsetting => "kerml:CrossSubsetting",
             Self::Redefinition => "kerml:Redefinition",
             Self::Conjugation => "kerml:Conjugation",
+            Self::FeatureValue => "kerml:FeatureValue",
+            Self::FeatureChaining => "kerml:FeatureChaining",
+            Self::FeatureInverting => "kerml:FeatureInverting",
+            Self::Intersecting => "kerml:Intersecting",
+            Self::Disjoining => "kerml:Disjoining",
+            Self::Unioning => "kerml:Unioning",
             Self::Comment => "kerml:Comment",
             Self::Documentation => "kerml:Documentation",
             Self::TextualRepresentation => "kerml:TextualRepresentation",
             Self::MetadataUsage => "sysml:MetadataUsage",
             Self::AnnotatingElement => "kerml:AnnotatingElement",
+            Self::Annotation => "kerml:Annotation",
+            Self::Classifier => "kerml:Classifier",
+            Self::Metaclass => "kerml:Metaclass",
             Self::Other => "kerml:Element",
+        }
+    }
+
+    /// Get the xsi:type value for this kind (official XMI format).
+    pub fn xsi_type(&self) -> &'static str {
+        match self {
+            Self::Package => "sysml:Package",
+            Self::LibraryPackage => "sysml:LibraryPackage",
+            Self::Class => "sysml:Class",
+            Self::DataType => "sysml:DataType",
+            Self::Structure => "sysml:Structure",
+            Self::Association => "sysml:Association",
+            Self::AssociationStructure => "sysml:AssociationStructure",
+            Self::Interaction => "sysml:Interaction",
+            Self::Behavior => "sysml:Behavior",
+            Self::Function => "sysml:Function",
+            Self::Predicate => "sysml:Predicate",
+            Self::PartDefinition => "sysml:PartDefinition",
+            Self::ItemDefinition => "sysml:ItemDefinition",
+            Self::ActionDefinition => "sysml:ActionDefinition",
+            Self::PortDefinition => "sysml:PortDefinition",
+            Self::AttributeDefinition => "sysml:AttributeDefinition",
+            Self::ConnectionDefinition => "sysml:ConnectionDefinition",
+            Self::InterfaceDefinition => "sysml:InterfaceDefinition",
+            Self::AllocationDefinition => "sysml:AllocationDefinition",
+            Self::RequirementDefinition => "sysml:RequirementDefinition",
+            Self::ConstraintDefinition => "sysml:ConstraintDefinition",
+            Self::StateDefinition => "sysml:StateDefinition",
+            Self::CalculationDefinition => "sysml:CalculationDefinition",
+            Self::UseCaseDefinition => "sysml:UseCaseDefinition",
+            Self::AnalysisCaseDefinition => "sysml:AnalysisCaseDefinition",
+            Self::ConcernDefinition => "sysml:ConcernDefinition",
+            Self::ViewDefinition => "sysml:ViewDefinition",
+            Self::ViewpointDefinition => "sysml:ViewpointDefinition",
+            Self::RenderingDefinition => "sysml:RenderingDefinition",
+            Self::EnumerationDefinition => "sysml:EnumerationDefinition",
+            Self::MetadataDefinition => "sysml:MetadataDefinition",
+            Self::PartUsage => "sysml:PartUsage",
+            Self::ItemUsage => "sysml:ItemUsage",
+            Self::ActionUsage => "sysml:ActionUsage",
+            Self::PortUsage => "sysml:PortUsage",
+            Self::AttributeUsage => "sysml:AttributeUsage",
+            Self::ConnectionUsage => "sysml:ConnectionUsage",
+            Self::InterfaceUsage => "sysml:InterfaceUsage",
+            Self::AllocationUsage => "sysml:AllocationUsage",
+            Self::RequirementUsage => "sysml:RequirementUsage",
+            Self::ConstraintUsage => "sysml:ConstraintUsage",
+            Self::StateUsage => "sysml:StateUsage",
+            Self::TransitionUsage => "sysml:TransitionUsage",
+            Self::CalculationUsage => "sysml:CalculationUsage",
+            Self::ReferenceUsage => "sysml:ReferenceUsage",
+            Self::OccurrenceUsage => "sysml:OccurrenceUsage",
+            Self::FlowConnectionUsage => "sysml:FlowConnectionUsage",
+            Self::SuccessionFlowConnectionUsage => "sysml:SuccessionFlowConnectionUsage",
+            Self::Feature => "sysml:Feature",
+            Self::Step => "sysml:Step",
+            Self::Expression => "sysml:Expression",
+            Self::BooleanExpression => "sysml:BooleanExpression",
+            Self::Invariant => "sysml:Invariant",
+            Self::Connector => "sysml:Connector",
+            Self::BindingConnector => "sysml:BindingConnector",
+            Self::Succession => "sysml:Succession",
+            Self::Flow => "sysml:Flow",
+            Self::MultiplicityRange => "sysml:MultiplicityRange",
+            Self::LiteralInteger => "sysml:LiteralInteger",
+            Self::LiteralInfinity => "sysml:LiteralInfinity",
+            Self::LiteralBoolean => "sysml:LiteralBoolean",
+            Self::LiteralString => "sysml:LiteralString",
+            Self::NullExpression => "sysml:NullExpression",
+            Self::FeatureReferenceExpression => "sysml:FeatureReferenceExpression",
+            Self::OperatorExpression => "sysml:OperatorExpression",
+            Self::InvocationExpression => "sysml:InvocationExpression",
+            Self::FeatureChainExpression => "sysml:FeatureChainExpression",
+            Self::ConstructorExpression => "sysml:ConstructorExpression",
+            Self::Membership => "sysml:Membership",
+            Self::OwningMembership => "sysml:OwningMembership",
+            Self::FeatureMembership => "sysml:FeatureMembership",
+            Self::ReturnParameterMembership => "sysml:ReturnParameterMembership",
+            Self::ParameterMembership => "sysml:ParameterMembership",
+            Self::EndFeatureMembership => "sysml:EndFeatureMembership",
+            Self::ResultExpressionMembership => "sysml:ResultExpressionMembership",
+            Self::Import => "sysml:Import",
+            Self::NamespaceImport => "sysml:NamespaceImport",
+            Self::MembershipImport => "sysml:MembershipImport",
+            Self::Specialization => "sysml:Subclassification",
+            Self::FeatureTyping => "sysml:FeatureTyping",
+            Self::Subsetting => "sysml:Subsetting",
+            Self::ReferenceSubsetting => "sysml:ReferenceSubsetting",
+            Self::CrossSubsetting => "sysml:CrossSubsetting",
+            Self::Redefinition => "sysml:Redefinition",
+            Self::Conjugation => "sysml:Conjugation",
+            Self::FeatureValue => "sysml:FeatureValue",
+            Self::FeatureChaining => "sysml:FeatureChaining",
+            Self::FeatureInverting => "sysml:FeatureInverting",
+            Self::Intersecting => "sysml:Intersecting",
+            Self::Disjoining => "sysml:Disjoining",
+            Self::Unioning => "sysml:Unioning",
+            Self::Comment => "sysml:Comment",
+            Self::Documentation => "sysml:Documentation",
+            Self::TextualRepresentation => "sysml:TextualRepresentation",
+            Self::MetadataUsage => "sysml:MetadataUsage",
+            Self::AnnotatingElement => "sysml:AnnotatingElement",
+            Self::Annotation => "sysml:Annotation",
+            Self::Classifier => "sysml:Classifier",
+            Self::Metaclass => "sysml:Metaclass",
+            Self::Other => "sysml:Element",
+            Self::Namespace => "sysml:Namespace",
         }
     }
 
@@ -340,6 +528,7 @@ impl ElementKind {
         let type_name = xmi_type.split(':').last().unwrap_or(xmi_type);
 
         match type_name {
+            "Namespace" => Self::Namespace,
             "Package" => Self::Package,
             "LibraryPackage" => Self::LibraryPackage,
             "Class" => Self::Class,
@@ -393,22 +582,52 @@ impl ElementKind {
             "Expression" => Self::Expression,
             "BooleanExpression" => Self::BooleanExpression,
             "Invariant" => Self::Invariant,
+            "Connector" => Self::Connector,
+            "BindingConnector" => Self::BindingConnector,
+            "Succession" => Self::Succession,
+            "Flow" => Self::Flow,
+            "MultiplicityRange" => Self::MultiplicityRange,
+            "LiteralInteger" => Self::LiteralInteger,
+            "LiteralInfinity" => Self::LiteralInfinity,
+            "LiteralBoolean" => Self::LiteralBoolean,
+            "LiteralString" => Self::LiteralString,
+            "NullExpression" => Self::NullExpression,
+            "FeatureReferenceExpression" => Self::FeatureReferenceExpression,
+            "OperatorExpression" => Self::OperatorExpression,
+            "InvocationExpression" => Self::InvocationExpression,
+            "FeatureChainExpression" => Self::FeatureChainExpression,
+            "ConstructorExpression" => Self::ConstructorExpression,
             "Membership" => Self::Membership,
             "OwningMembership" => Self::OwningMembership,
             "FeatureMembership" => Self::FeatureMembership,
+            "ReturnParameterMembership" => Self::ReturnParameterMembership,
+            "ParameterMembership" => Self::ParameterMembership,
+            "EndFeatureMembership" => Self::EndFeatureMembership,
+            "ResultExpressionMembership" => Self::ResultExpressionMembership,
             "Import" => Self::Import,
             "NamespaceImport" => Self::NamespaceImport,
             "MembershipImport" => Self::MembershipImport,
-            "Specialization" => Self::Specialization,
+            "Specialization" | "Subclassification" => Self::Specialization,
             "FeatureTyping" => Self::FeatureTyping,
             "Subsetting" => Self::Subsetting,
+            "ReferenceSubsetting" => Self::ReferenceSubsetting,
+            "CrossSubsetting" => Self::CrossSubsetting,
             "Redefinition" => Self::Redefinition,
             "Conjugation" => Self::Conjugation,
+            "FeatureValue" => Self::FeatureValue,
+            "FeatureChaining" => Self::FeatureChaining,
+            "FeatureInverting" => Self::FeatureInverting,
+            "Intersecting" => Self::Intersecting,
+            "Disjoining" => Self::Disjoining,
+            "Unioning" => Self::Unioning,
             "Comment" => Self::Comment,
             "Documentation" => Self::Documentation,
             "TextualRepresentation" => Self::TextualRepresentation,
             "MetadataUsage" => Self::MetadataUsage,
             "AnnotatingElement" => Self::AnnotatingElement,
+            "Annotation" => Self::Annotation,
+            "Classifier" => Self::Classifier,
+            "Metaclass" => Self::Metaclass,
             _ => Self::Other,
         }
     }
@@ -657,6 +876,8 @@ pub enum RelationshipKind {
     FlowConnection,
     /// Succession.
     Succession,
+    /// Feature chaining.
+    FeatureChaining,
 }
 
 impl RelationshipKind {
@@ -680,6 +901,7 @@ impl RelationshipKind {
             Self::Connection => "sysml:ConnectionUsage",
             Self::FlowConnection => "sysml:FlowConnectionUsage",
             Self::Succession => "sysml:SuccessionAsUsage",
+            Self::FeatureChaining => "kerml:FeatureChaining",
         }
     }
 }

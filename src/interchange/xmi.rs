@@ -98,6 +98,14 @@ impl ModelFormat for Xmi {
     }
 }
 
+impl Xmi {
+    /// Read XMI from bytes with a source path for resolving cross-file references.
+    #[cfg(feature = "interchange")]
+    pub fn read_from_path(&self, input: &[u8], path: &std::path::Path) -> Result<Model, InterchangeError> {
+        XmiReader::new().read_with_path(input, Some(path))
+    }
+}
+
 // ============================================================================
 // XMI READER (requires interchange feature)
 // ============================================================================
@@ -124,6 +132,10 @@ mod reader {
         rel_counter: u32,
         /// Tracks children per parent in parse order (parent_id -> [child_ids]).
         children_in_order: IndexMap<String, Vec<String>>,
+        /// Base path for resolving href references.
+        base_path: Option<std::path::PathBuf>,
+        /// Cache of resolved href element names.
+        href_name_cache: std::collections::HashMap<String, String>,
     }
 
     /// Stack entry type for tracking nested elements.
@@ -146,10 +158,18 @@ mod reader {
                 relationships: Vec::new(),
                 rel_counter: 0,
                 children_in_order: IndexMap::new(),
+                base_path: None,
+                href_name_cache: std::collections::HashMap::new(),
             }
         }
 
         pub fn read(&mut self, input: &[u8]) -> Result<Model, InterchangeError> {
+            self.read_with_path(input, None)
+        }
+        
+        pub fn read_with_path(&mut self, input: &[u8], path: Option<&std::path::Path>) -> Result<Model, InterchangeError> {
+            self.base_path = path.map(|p| p.parent().unwrap_or(p).to_path_buf());
+            
             let mut reader = Reader::from_reader(input);
             reader.config_mut().trim_text(true);
 
@@ -241,7 +261,7 @@ mod reader {
 
                 match key {
                     "xmi:id" | "id" => xmi_id = Some(value),
-                    "xmi:type" | "xsi:type" | "type" => xmi_type = Some(value),
+                    "xmi:type" | "xsi:type" => xmi_type = Some(value),
                     "name" | "declaredName" => name = Some(value),
                     "qualifiedName" => qualified_name = Some(value),
                     "shortName" | "declaredShortName" => short_name = Some(value),
@@ -259,7 +279,7 @@ mod reader {
                     "source" | "relatedElement" | "subclassifier" | "typedFeature"
                     | "redefiningFeature" | "subsettingFeature" => source_ref = Some(value),
                     "target" | "superclassifier" | "redefinedFeature" | "subsettedFeature"
-                    | "general" | "specific" => target_ref = Some(value),
+                    | "general" | "specific" | "type" | "chainingFeature" => target_ref = Some(value),
                     _ => {
                         // Store other attributes for roundtrip
                         if !key.starts_with("xmlns") && !key.starts_with("xmi:version") {
@@ -357,6 +377,39 @@ mod reader {
                 self.elements_by_id.insert(id.clone(), element);
                 self.parent_stack.push(id.clone());
                 self.depth_stack.push(StackEntry::Element(id));
+            } else if let Some(h) = href {
+                // Element without ID but with href - this is a reference element like <type href="..."/>
+                // Just store it for decompilation reference
+                if let Some(parent_id) = self.parent_stack.last().cloned() {
+                    // Try to resolve the full qualified name from the referenced file
+                    let resolved_name = self.resolve_href_name(&h);
+                    let fallback_name = if resolved_name.is_none() {
+                        extract_name_from_href_path(&h)
+                    } else {
+                        None
+                    };
+                    
+                    // Now do the mutable borrow
+                    if let Some(parent_elem) = self.elements_by_id.get_mut(&parent_id) {
+                        if let Some(name) = resolved_name {
+                            parent_elem.properties.insert(
+                                Arc::from("href_target_name"),
+                                PropertyValue::String(Arc::from(name.as_str())),
+                            );
+                        } else if let Some(name) = fallback_name {
+                            // Fallback to just the file name
+                            parent_elem.properties.insert(
+                                Arc::from("href_target_name"),
+                                PropertyValue::String(Arc::from(name.as_str())),
+                            );
+                        }
+                        parent_elem.properties.insert(
+                            Arc::from("href"),
+                            PropertyValue::String(Arc::from(h.as_str())),
+                        );
+                    }
+                }
+                self.depth_stack.push(StackEntry::Containment);
             } else {
                 // Element without ID - still track for depth
                 self.depth_stack.push(StackEntry::Containment);
@@ -364,6 +417,62 @@ mod reader {
 
             Ok(())
         }
+        
+        /// Resolve an href to a qualified name by loading the referenced file.
+        fn resolve_href_name(&mut self, href: &str) -> Option<String> {
+            // Check cache first
+            if let Some(cached) = self.href_name_cache.get(href) {
+                return Some(cached.clone());
+            }
+            
+            // Parse href: "path/to/File.kermlx#elementId"
+            let hash_pos = href.rfind('#')?;
+            let path_part = &href[..hash_pos];
+            let element_id = &href[hash_pos + 1..];
+            
+            // Decode URL encoding
+            let decoded_path = path_part.replace("%20", " ");
+            
+            // Get the base path
+            let base = self.base_path.as_ref()?;
+            
+            // Resolve the full path
+            let target_path = base.join(&decoded_path);
+            
+            // Try to read the file
+            let file_content = std::fs::read(&target_path).ok()?;
+            
+            // Quick parse to find element name - look for the element ID and extract its name
+            let content_str = String::from_utf8_lossy(&file_content);
+            
+            // Find the element by ID and get its name
+            // Look for patterns like: xmi:id="<element_id>" ... declaredName="<name>"
+            // or: xmi:id="<element_id>" ... name="<name>"
+            let id_pattern = format!(r#"xmi:id="{}""#, element_id);
+            if let Some(id_pos) = content_str.find(&id_pattern) {
+                // Look for name attribute in the same element (within ~500 chars)
+                let search_end = (id_pos + 500).min(content_str.len());
+                let search_slice = &content_str[id_pos..search_end];
+                
+                // Try declaredName first, then name
+                let name = extract_attr_value(search_slice, "declaredName")
+                    .or_else(|| extract_attr_value(search_slice, "name"));
+                
+                if let Some(elem_name) = name {
+                    // Get the file name (package name)
+                    let file_name = target_path.file_stem()?.to_str()?;
+                    let qualified_name = format!("{}::{}", file_name, elem_name);
+                    
+                    // Cache the result
+                    self.href_name_cache.insert(href.to_string(), qualified_name.clone());
+                    
+                    return Some(qualified_name);
+                }
+            }
+            
+            None
+        }
+        
         fn handle_end_element(&mut self) {
             // Pop from depth stack and handle accordingly
             if let Some(entry) = self.depth_stack.pop() {
@@ -407,6 +516,15 @@ mod reader {
         }
     }
 
+    /// Extract an attribute value from an XML snippet.
+    fn extract_attr_value(xml: &str, attr_name: &str) -> Option<String> {
+        let pattern = format!(r#"{}=""#, attr_name);
+        let start = xml.find(&pattern)? + pattern.len();
+        let remaining = &xml[start..];
+        let end = remaining.find('"')?;
+        Some(remaining[..end].to_string())
+    }
+
     /// Check if a tag name is a containment wrapper (not an element itself).
     fn is_containment_tag(tag: &str) -> bool {
         matches!(
@@ -430,19 +548,50 @@ mod reader {
         // they have xsi:type and should be parsed as elements
     }
 
+    /// Extract a meaningful name from an href path.
+    /// E.g., "../Kernel%20Data%20Type%20Library/ScalarValues.kermlx#uuid" -> "ScalarValues"
+    fn extract_name_from_href_path(href: &str) -> Option<String> {
+        // href format: "../path/File.kermlx#elementId"
+        // We want to extract the file name as package
+        
+        if let Some(hash_pos) = href.rfind('#') {
+            let path = &href[..hash_pos];
+            // Simple URL decode for %20 -> space (most common case)
+            let decoded_path = path.replace("%20", " ");
+            
+            // Extract file name without extension
+            if let Some(file_start) = decoded_path.rfind('/') {
+                let file = &decoded_path[file_start + 1..];
+                if let Some(ext_pos) = file.rfind('.') {
+                    return Some(file[..ext_pos].to_string());
+                }
+            } else if let Some(ext_pos) = decoded_path.rfind('.') {
+                return Some(decoded_path[..ext_pos].to_string());
+            }
+        }
+        None
+    }
+
     /// Convert ElementKind to RelationshipKind for relationship elements.
     fn element_kind_to_relationship_kind(kind: ElementKind) -> RelationshipKind {
         match kind {
             ElementKind::Specialization => RelationshipKind::Specialization,
             ElementKind::FeatureTyping => RelationshipKind::FeatureTyping,
-            ElementKind::Subsetting => RelationshipKind::Subsetting,
+            ElementKind::Subsetting | ElementKind::ReferenceSubsetting | ElementKind::CrossSubsetting => {
+                RelationshipKind::Subsetting
+            }
             ElementKind::Redefinition => RelationshipKind::Redefinition,
             ElementKind::Import | ElementKind::NamespaceImport => RelationshipKind::NamespaceImport,
             ElementKind::MembershipImport => RelationshipKind::MembershipImport,
             ElementKind::Membership => RelationshipKind::Membership,
-            ElementKind::OwningMembership => RelationshipKind::OwningMembership,
+            ElementKind::OwningMembership
+            | ElementKind::ReturnParameterMembership
+            | ElementKind::ParameterMembership
+            | ElementKind::EndFeatureMembership
+            | ElementKind::ResultExpressionMembership => RelationshipKind::OwningMembership,
             ElementKind::FeatureMembership => RelationshipKind::FeatureMembership,
             ElementKind::Conjugation => RelationshipKind::Conjugation,
+            ElementKind::FeatureChaining => RelationshipKind::FeatureChaining,
             _ => RelationshipKind::Dependency, // Default fallback
         }
     }
@@ -521,6 +670,42 @@ mod writer {
             }
             if let Some(ref short_name) = element.short_name {
                 elem_start.push_attribute(("shortName", short_name.as_ref()));
+            }
+            
+            // For relationship elements, add source/target attributes
+            // Look up the corresponding Relationship struct by element ID
+            if element.kind.is_relationship() {
+                if let Some(rel) = model.relationships.iter().find(|r| r.id == element.id) {
+                    match rel.kind {
+                        RelationshipKind::Specialization => {
+                            elem_start.push_attribute(("subclassifier", rel.source.as_str()));
+                            elem_start.push_attribute(("superclassifier", rel.target.as_str()));
+                        }
+                        RelationshipKind::FeatureTyping => {
+                            elem_start.push_attribute(("typedFeature", rel.source.as_str()));
+                            elem_start.push_attribute(("type", rel.target.as_str()));
+                        }
+                        RelationshipKind::Redefinition => {
+                            elem_start.push_attribute(("redefiningFeature", rel.source.as_str()));
+                            elem_start.push_attribute(("redefinedFeature", rel.target.as_str()));
+                        }
+                        RelationshipKind::Subsetting => {
+                            elem_start.push_attribute(("subsettingFeature", rel.source.as_str()));
+                            elem_start.push_attribute(("subsettedFeature", rel.target.as_str()));
+                        }
+                        RelationshipKind::MembershipImport => {
+                            elem_start.push_attribute(("importedMembership", rel.target.as_str()));
+                        }
+                        RelationshipKind::NamespaceImport => {
+                            elem_start.push_attribute(("importedNamespace", rel.target.as_str()));
+                        }
+                        _ => {
+                            // Generic relationship - use source/target
+                            elem_start.push_attribute(("source", rel.source.as_str()));
+                            elem_start.push_attribute(("target", rel.target.as_str()));
+                        }
+                    }
+                }
             }
 
             // Write boolean flags (only if true, per XMI convention)
