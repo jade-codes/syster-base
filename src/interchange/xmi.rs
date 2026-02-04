@@ -350,28 +350,21 @@ mod reader {
                     element.short_name = Some(Arc::from(sn.as_str()));
                 }
 
-                // Set boolean flags (for backwards compat with Element struct fields)
-                element.is_abstract = is_abstract.unwrap_or(false);
-                element.is_variation = is_variation.unwrap_or(false);
-                element.is_derived = is_derived.unwrap_or(false);
-                element.is_readonly = is_readonly.unwrap_or(false);
-                element.is_parallel = is_parallel.unwrap_or(false);
-
-                // Store all boolean attributes in properties if explicitly set (for roundtrip)
+                // Set boolean flags using setters (syncs field + property)
                 if let Some(val) = is_abstract {
-                    element.properties.insert(Arc::from("isAbstract"), PropertyValue::Boolean(val));
+                    element.set_abstract(val);
                 }
                 if let Some(val) = is_variation {
-                    element.properties.insert(Arc::from("isVariation"), PropertyValue::Boolean(val));
+                    element.set_variation(val);
                 }
                 if let Some(val) = is_derived {
-                    element.properties.insert(Arc::from("isDerived"), PropertyValue::Boolean(val));
+                    element.set_derived(val);
                 }
                 if let Some(val) = is_readonly {
-                    element.properties.insert(Arc::from("isReadOnly"), PropertyValue::Boolean(val));
+                    element.set_readonly(val);
                 }
                 if let Some(val) = is_parallel {
-                    element.properties.insert(Arc::from("isParallel"), PropertyValue::Boolean(val));
+                    element.set_parallel(val);
                 }
                 if let Some(val) = is_standard {
                     element.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(val));
@@ -877,7 +870,7 @@ mod writer {
             
             // Relationship attributes are now stored as properties and written below
 
-            // Boolean flags - write from properties if explicitly set (for roundtrip fidelity)
+            // Boolean flags - write from properties (source of truth)
             // Order matters for byte-perfect roundtrip: isAbstract, isVariation, isDerived, isReadOnly, isParallel, isUnique, isOrdered, isComposite, isStandard
             if let Some(super::super::model::PropertyValue::Boolean(v)) =
                 element.properties.get("isAbstract")
@@ -1491,19 +1484,19 @@ mod tests {
 
             let mut elem = Element::new("pd1", ElementKind::PartDefinition);
             elem.name = Some("TestPart".into());
-            elem.is_abstract = true;
-            elem.is_variation = true;
+            elem.set_abstract(true);
+            elem.set_variation(true);
             model.add_element(elem);
 
             let mut feat = Element::new("f1", ElementKind::Feature);
             feat.name = Some("TestFeature".into());
-            feat.is_derived = true;
-            feat.is_readonly = true;
+            feat.set_derived(true);
+            feat.set_readonly(true);
             model.add_element(feat);
 
             let mut state = Element::new("s1", ElementKind::StateUsage);
             state.name = Some("TestState".into());
-            state.is_parallel = true;
+            state.set_parallel(true);
             model.add_element(state);
 
             let output = Xmi.write(&model).expect("Failed to write XMI");
@@ -1537,19 +1530,19 @@ mod tests {
 
             let mut elem = Element::new("pd1", ElementKind::PartDefinition);
             elem.name = Some("AbstractVariation".into());
-            elem.is_abstract = true;
-            elem.is_variation = true;
+            elem.set_abstract(true);
+            elem.set_variation(true);
             model.add_element(elem);
 
             let mut feat = Element::new("f1", ElementKind::AttributeUsage);
             feat.name = Some("DerivedReadonly".into());
-            feat.is_derived = true;
-            feat.is_readonly = true;
+            feat.set_derived(true);
+            feat.set_readonly(true);
             model.add_element(feat);
 
             let mut state = Element::new("s1", ElementKind::StateUsage);
             state.name = Some("ParallelState".into());
-            state.is_parallel = true;
+            state.set_parallel(true);
             model.add_element(state);
 
             // Write and read back

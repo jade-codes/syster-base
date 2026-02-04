@@ -190,6 +190,7 @@ mod reader {
             "FlowConnectionUsage" => RelationshipKind::FlowConnection,
             "Succession" => RelationshipKind::Succession,
             "FeatureChaining" => RelationshipKind::FeatureChaining,
+            "Disjoining" => RelationshipKind::Disjoining,
             _ => return None, // Not a relationship type
         };
         
@@ -257,27 +258,27 @@ mod reader {
 
         // Get isAbstract
         if let Some(Value::Bool(is_abstract)) = obj.get("isAbstract") {
-            element.is_abstract = *is_abstract;
+            element.set_abstract(*is_abstract);
         }
 
         // Get isVariation
         if let Some(Value::Bool(is_variation)) = obj.get("isVariation") {
-            element.is_variation = *is_variation;
+            element.set_variation(*is_variation);
         }
 
         // Get isDerived
         if let Some(Value::Bool(is_derived)) = obj.get("isDerived") {
-            element.is_derived = *is_derived;
+            element.set_derived(*is_derived);
         }
 
         // Get isReadOnly
         if let Some(Value::Bool(is_readonly)) = obj.get("isReadOnly") {
-            element.is_readonly = *is_readonly;
+            element.set_readonly(*is_readonly);
         }
 
         // Get isParallel
         if let Some(Value::Bool(is_parallel)) = obj.get("isParallel") {
-            element.is_parallel = *is_parallel;
+            element.set_parallel(*is_parallel);
         }
 
         // Get documentation (body text)
@@ -737,7 +738,7 @@ mod tests {
             let mut cls = Element::new("cls1", ElementKind::Class);
             cls.name = Some(Arc::from("AbstractClass"));
             cls.short_name = Some(Arc::from("AC"));
-            cls.is_abstract = true;
+            cls.set_abstract(true);
             cls.documentation = Some(Arc::from("This is documented"));
             cls.properties
                 .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
@@ -791,7 +792,7 @@ mod tests {
             let mut cls = Element::new("cls1", ElementKind::Class);
             cls.name = Some(Arc::from("TestClass"));
             cls.short_name = Some(Arc::from("TC"));
-            cls.is_abstract = true;
+            cls.set_abstract(true);
             cls.documentation = Some(Arc::from("A documented class"));
             cls.properties
                 .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
@@ -913,19 +914,19 @@ mod tests {
 
             let mut elem = Element::new("pd1", ElementKind::PartDefinition);
             elem.name = Some("TestPart".into());
-            elem.is_abstract = true;
-            elem.is_variation = true;
+            elem.set_abstract(true);
+            elem.set_variation(true);
             model.add_element(elem);
 
             let mut feat = Element::new("f1", ElementKind::Feature);
             feat.name = Some("TestFeature".into());
-            feat.is_derived = true;
-            feat.is_readonly = true;
+            feat.set_derived(true);
+            feat.set_readonly(true);
             model.add_element(feat);
 
             let mut state = Element::new("s1", ElementKind::StateUsage);
             state.name = Some("TestState".into());
-            state.is_parallel = true;
+            state.set_parallel(true);
             model.add_element(state);
 
             let output = JsonLd.write(&model).expect("Failed to write JSON-LD");
@@ -959,19 +960,19 @@ mod tests {
 
             let mut elem = Element::new("pd1", ElementKind::PartDefinition);
             elem.name = Some("AbstractVariation".into());
-            elem.is_abstract = true;
-            elem.is_variation = true;
+            elem.set_abstract(true);
+            elem.set_variation(true);
             model.add_element(elem);
 
             let mut feat = Element::new("f1", ElementKind::AttributeUsage);
             feat.name = Some("DerivedReadonly".into());
-            feat.is_derived = true;
-            feat.is_readonly = true;
+            feat.set_derived(true);
+            feat.set_readonly(true);
             model.add_element(feat);
 
             let mut state = Element::new("s1", ElementKind::StateUsage);
             state.name = Some("ParallelState".into());
-            state.is_parallel = true;
+            state.set_parallel(true);
             model.add_element(state);
 
             // Write and read back
