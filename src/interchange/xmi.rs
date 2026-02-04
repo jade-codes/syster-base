@@ -1274,38 +1274,6 @@ impl XmiWriter {
 // CONVERSION HELPERS
 // ============================================================================
 
-/// Convert an XMI type string to ElementKind.
-#[allow(dead_code)]
-pub fn element_kind_from_xmi(xmi_type: &str) -> ElementKind {
-    ElementKind::from_xmi_type(xmi_type)
-}
-
-/// Convert an ElementKind to XMI type string.
-#[allow(dead_code)]
-pub fn element_kind_to_xmi(kind: ElementKind) -> &'static str {
-    kind.xmi_type()
-}
-
-/// Convert a relationship XMI type to RelationshipKind.
-#[allow(dead_code)]
-pub fn relationship_kind_from_xmi(xmi_type: &str) -> Option<RelationshipKind> {
-    let type_name = xmi_type.rsplit(':').next().unwrap_or(xmi_type);
-    match type_name {
-        "Specialization" => Some(RelationshipKind::Specialization),
-        "FeatureTyping" => Some(RelationshipKind::FeatureTyping),
-        "Subsetting" => Some(RelationshipKind::Subsetting),
-        "Redefinition" => Some(RelationshipKind::Redefinition),
-        "Conjugation" => Some(RelationshipKind::Conjugation),
-        "Membership" => Some(RelationshipKind::Membership),
-        "OwningMembership" => Some(RelationshipKind::OwningMembership),
-        "FeatureMembership" => Some(RelationshipKind::FeatureMembership),
-        "NamespaceImport" => Some(RelationshipKind::NamespaceImport),
-        "MembershipImport" => Some(RelationshipKind::MembershipImport),
-        "Dependency" => Some(RelationshipKind::Dependency),
-        _ => None,
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1337,22 +1305,28 @@ mod tests {
 
     #[test]
     fn test_element_kind_from_xmi() {
-        assert_eq!(element_kind_from_xmi("sysml:Package"), ElementKind::Package);
         assert_eq!(
-            element_kind_from_xmi("sysml:PartDefinition"),
+            ElementKind::from_xmi_type("sysml:Package"),
+            ElementKind::Package
+        );
+        assert_eq!(
+            ElementKind::from_xmi_type("sysml:PartDefinition"),
             ElementKind::PartDefinition
         );
-        assert_eq!(element_kind_from_xmi("kerml:Feature"), ElementKind::Feature);
+        assert_eq!(
+            ElementKind::from_xmi_type("kerml:Feature"),
+            ElementKind::Feature
+        );
     }
 
     #[test]
     fn test_relationship_kind_from_xmi() {
         assert_eq!(
-            relationship_kind_from_xmi("kerml:Specialization"),
+            RelationshipKind::from_xmi_type("kerml:Specialization"),
             Some(RelationshipKind::Specialization)
         );
         assert_eq!(
-            relationship_kind_from_xmi("kerml:FeatureTyping"),
+            RelationshipKind::from_xmi_type("kerml:FeatureTyping"),
             Some(RelationshipKind::FeatureTyping)
         );
     }

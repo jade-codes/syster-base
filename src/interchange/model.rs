@@ -991,6 +991,33 @@ impl RelationshipKind {
             Self::Disjoining => "kerml:Disjoining",
         }
     }
+
+    /// Parse from XMI type name.
+    pub fn from_xmi_type(xmi_type: &str) -> Option<Self> {
+        let type_name = xmi_type.rsplit(':').next().unwrap_or(xmi_type);
+        match type_name {
+            "Specialization" => Some(Self::Specialization),
+            "FeatureTyping" => Some(Self::FeatureTyping),
+            "Subsetting" => Some(Self::Subsetting),
+            "Redefinition" => Some(Self::Redefinition),
+            "Conjugation" => Some(Self::Conjugation),
+            "Membership" => Some(Self::Membership),
+            "OwningMembership" => Some(Self::OwningMembership),
+            "FeatureMembership" => Some(Self::FeatureMembership),
+            "NamespaceImport" => Some(Self::NamespaceImport),
+            "MembershipImport" => Some(Self::MembershipImport),
+            "Dependency" => Some(Self::Dependency),
+            "SatisfyRequirementUsage" => Some(Self::Satisfaction),
+            "RequirementVerificationMembership" => Some(Self::Verification),
+            "AllocationUsage" => Some(Self::Allocation),
+            "ConnectionUsage" => Some(Self::Connection),
+            "FlowConnectionUsage" => Some(Self::FlowConnection),
+            "SuccessionAsUsage" => Some(Self::Succession),
+            "FeatureChaining" => Some(Self::FeatureChaining),
+            "Disjoining" => Some(Self::Disjoining),
+            _ => None,
+        }
+    }
 }
 
 // ============================================================================

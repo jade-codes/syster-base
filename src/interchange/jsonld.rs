@@ -25,9 +25,6 @@ use super::{FormatCapability, InterchangeError, ModelFormat};
 pub mod context {
     /// SysML v2 JSON-LD context.
     pub const SYSML: &str = "https://www.omg.org/spec/SysML/20230201/context";
-    /// KerML JSON-LD context.
-    #[allow(dead_code)]
-    pub const KERML: &str = "https://www.omg.org/spec/KerML/20230201/context";
 }
 
 /// JSON-LD format handler.
