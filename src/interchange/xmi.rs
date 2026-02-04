@@ -214,20 +214,23 @@ mod reader {
             let tag_name = std::str::from_utf8(name_bytes.as_ref())
                 .map_err(|e| InterchangeError::xml(format!("Invalid tag name: {e}")))?;
 
-            // Skip the XMI root element or namespace root
-            if tag_name == "xmi:XMI"
-                || tag_name == "XMI"
-                || tag_name == "sysml:Namespace"
-                || tag_name == "kerml:Namespace"
-            {
+            // Skip only the XMI wrapper element - sysml:Namespace/kerml:Namespace are real elements!
+            if tag_name == "xmi:XMI" || tag_name == "XMI" {
                 self.depth_stack.push(StackEntry::Root);
                 return Ok(());
             }
 
-            // Check if this is a containment wrapper (but NOT ownedRelationship or ownedRelatedElement - we want to parse those)
+            // Quick check: does this element have an href attribute?
+            // If so, it's a reference element, not a containment wrapper.
+            let has_href = e.attributes().any(|attr| {
+                attr.map(|a| a.key.as_ref() == b"href").unwrap_or(false)
+            });
+
+            // Check if this is a containment wrapper (but NOT if it has href - those are references)
             if is_containment_tag(tag_name)
                 && tag_name != "ownedRelationship"
                 && tag_name != "ownedRelatedElement"
+                && !has_href
             {
                 self.depth_stack.push(StackEntry::Containment);
                 return Ok(());
@@ -701,12 +704,16 @@ mod writer {
             // Write element attributes
             self.write_element_attrs(&mut elem_start, element, model);
             
-            // Write element with children
+            // Check for href or children
+            let has_href = element.properties.get("href").is_some();
             let has_children = !element.owned_elements.is_empty();
-            if has_children {
+            
+            if has_href || has_children {
                 writer
                     .write_event(Event::Start(elem_start))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
+
+                Self::write_href_child(writer, element)?;
 
                 for child_id in &element.owned_elements {
                     if let Some(child) = model.get(child_id) {
@@ -817,9 +824,17 @@ mod writer {
                 elem_start.push_attribute(("isComposite", if *v { "true" } else { "false" }));
             }
 
-            // Documentation body
+            // Documentation body - escape for XML attribute
+            // We must escape: & < > " and newlines
+            // Use raw bytes to avoid double-escaping
             if let Some(ref doc) = element.documentation {
-                elem_start.push_attribute(("body", doc.as_ref()));
+                let escaped = doc
+                    .replace('&', "&amp;")  // Must be first!
+                    .replace('<', "&lt;")
+                    .replace('>', "&gt;")
+                    .replace('"', "&quot;")
+                    .replace('\n', "&#xA;");
+                elem_start.push_attribute((b"body" as &[u8], escaped.as_bytes()));
             }
 
             // Other properties
@@ -869,7 +884,30 @@ mod writer {
         }
 
         /// Write an ownedRelationship element with xsi:type.
+        /// 
+        /// In OMG XMI format:
+        /// - Relationship types (MembershipImport, NamespaceImport, etc.) are written directly:
+        ///   `<ownedRelationship xsi:type="sysml:MembershipImport">...</ownedRelationship>`
+        /// - Non-relationship types (Documentation, Package, etc.) need a wrapper:
+        ///   `<ownedRelationship xsi:type="OwningMembership"><ownedRelatedElement xsi:type="sysml:Package">...`
         fn write_owned_relationship<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            child: &Element,
+        ) -> Result<(), InterchangeError> {
+            // Check if the child is a relationship type
+            if child.kind.is_relationship() {
+                // Relationship types are written directly in ownedRelationship
+                self.write_relationship_direct(writer, model, child)
+            } else {
+                // Non-relationship types need ownedRelatedElement wrapper
+                self.write_non_relationship_wrapped(writer, model, child)
+            }
+        }
+
+        /// Write a relationship type directly as ownedRelationship.
+        fn write_relationship_direct<W: std::io::Write>(
             &self,
             writer: &mut Writer<W>,
             model: &Model,
@@ -893,7 +931,7 @@ mod writer {
 
                 Self::write_href_child(writer, child)?;
 
-                // Write nested children as ownedRelatedElement
+                // Write nested children
                 for grandchild_id in &child.owned_elements {
                     if let Some(grandchild) = model.get(grandchild_id) {
                         self.write_owned_related_element(writer, model, grandchild)?;
@@ -910,6 +948,24 @@ mod writer {
             }
 
             Ok(())
+        }
+
+        /// Write a non-relationship type wrapped in ownedRelationship > ownedRelatedElement.
+        fn write_non_relationship_wrapped<W: std::io::Write>(
+            &self,
+            writer: &mut Writer<W>,
+            model: &Model,
+            child: &Element,
+        ) -> Result<(), InterchangeError> {
+            // For non-relationship children, we need the wrapper structure:
+            // <ownedRelationship xsi:type="OwningMembership">
+            //   <ownedRelatedElement xsi:type="sysml:Package">...</ownedRelatedElement>
+            // </ownedRelationship>
+            // 
+            // Note: We don't have an explicit OwningMembership element in our model,
+            // so we just write the ownedRelatedElement directly.
+            // This is a simplification that works for re-parsing but differs from strict OMG format.
+            self.write_owned_related_element(writer, model, child)
         }
 
         /// Write an ownedRelatedElement with xsi:type.
@@ -1175,10 +1231,11 @@ mod tests {
             let output = Xmi.write(&model).expect("Failed to write XMI");
             let output_str = String::from_utf8(output).expect("Invalid UTF-8");
 
-            assert!(output_str.contains("xmi:XMI"));
-            assert!(output_str.contains("sysml:Package"));
-            assert!(output_str.contains(r#"xmi:id="pkg1""#));
-            assert!(output_str.contains(r#"name="TestPackage""#));
+            // Single root element is written directly (OMG format) - no xmi:XMI wrapper
+            // OMG 2025 format uses declaredName instead of name
+            assert!(output_str.contains("sysml:Package"), "Missing sysml:Package. Got:\n{}", output_str);
+            assert!(output_str.contains(r#"xmi:id="pkg1""#), "Missing xmi:id. Got:\n{}", output_str);
+            assert!(output_str.contains(r#"declaredName="TestPackage""#), "Missing declaredName. Got:\n{}", output_str);
         }
 
         #[test]
@@ -1383,6 +1440,81 @@ mod tests {
             assert!(!elem.is_derived, "isDerived should default to false");
             assert!(!elem.is_readonly, "isReadOnly should default to false");
             assert!(!elem.is_parallel, "isParallel should default to false");
+        }
+
+        #[test]
+        fn test_membership_import_href_child_roundtrip() {
+            // This is the exact structure from Quantities.sysmlx - MembershipImport with
+            // <importedMembership href="..."/> child element
+            let input = r#"<?xml version="1.0" encoding="ASCII"?>
+<sysml:Namespace xmi:version="2.0" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sysml="https://www.omg.org/spec/SysML/20250201" xmi:id="ns1" elementId="ns1">
+  <ownedRelationship xsi:type="sysml:MembershipImport" xmi:id="aed4e039-574f-5c98-83de-3aca582b628a" elementId="aed4e039-574f-5c98-83de-3aca582b628a">
+    <importedMembership href="../../Kernel%20Libraries/Kernel%20Data%20Type%20Library/ScalarValues.kermlx#a9e3be1d-4057-5cda-bdc0-eff9df4b33ea"/>
+  </ownedRelationship>
+</sysml:Namespace>"#;
+
+            let model = Xmi.read(input.as_bytes()).expect("Failed to read XMI");
+            let output = Xmi.write(&model).expect("Failed to write XMI");
+            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
+
+            // The output MUST contain the <importedMembership href="..."/> child element
+            assert!(
+                output_str.contains("<importedMembership href="),
+                "Output must contain <importedMembership href=...> child element.\nGot:\n{}",
+                output_str
+            );
+        }
+
+        #[test]
+        fn test_namespace_import_href_child_roundtrip() {
+            // Similar test for NamespaceImport with <importedNamespace href="..."/> child
+            let input = r#"<?xml version="1.0" encoding="ASCII"?>
+<sysml:Namespace xmi:version="2.0" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:sysml="https://www.omg.org/spec/SysML/20250201" xmi:id="ns1" elementId="ns1">
+  <ownedRelationship xsi:type="sysml:NamespaceImport" xmi:id="4c829288-5c6b-5120-967f-9415c466b325" elementId="4c829288-5c6b-5120-967f-9415c466b325">
+    <importedNamespace href="../../Kernel%20Libraries/Kernel%20Data%20Type%20Library/Collections.kermlx#9837d4a5-c753-58a8-b614-16d4cb5fac19"/>
+  </ownedRelationship>
+</sysml:Namespace>"#;
+
+            let model = Xmi.read(input.as_bytes()).expect("Failed to read XMI");
+            let output = Xmi.write(&model).expect("Failed to write XMI");
+            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
+
+            // The output MUST contain the <importedNamespace href="..."/> child element
+            assert!(
+                output_str.contains("<importedNamespace href="),
+                "Output must contain <importedNamespace href=...> child element.\nGot:\n{}",
+                output_str
+            );
+        }
+
+        #[test]
+        fn test_documentation_body_newline_escaping() {
+            // Documentation body with newline should use &#xA; entity, not literal newline
+            let input = r#"<?xml version="1.0" encoding="ASCII"?>
+<sysml:Documentation xmi:version="2.0" xmlns:xmi="http://www.omg.org/spec/XMI/20131001" xmlns:sysml="https://www.omg.org/spec/SysML/20250201" xmi:id="doc1" elementId="doc1" body="Line one.&#xA;Line two.&#xA;"/>"#;
+
+            let model = Xmi.read(input.as_bytes()).expect("Failed to read XMI");
+            
+            // Verify the newline was parsed correctly
+            let doc = model.get(&ElementId::new("doc1")).expect("doc not found");
+            assert_eq!(doc.documentation.as_deref(), Some("Line one.\nLine two.\n"), 
+                "Newlines should be parsed from &#xA;");
+
+            // Write it back
+            let output = Xmi.write(&model).expect("Failed to write XMI");
+            let output_str = String::from_utf8(output).expect("Invalid UTF-8");
+
+            // Output must use &#xA; entity, NOT literal newlines or double-escaped &amp;#xA;
+            assert!(
+                output_str.contains("&#xA;"),
+                "Output must contain &#xA; entity for newlines.\nGot:\n{}",
+                output_str
+            );
+            assert!(
+                !output_str.contains("&amp;#xA;"),
+                "Output must NOT double-escape to &amp;#xA;.\nGot:\n{}",
+                output_str
+            );
         }
     }
 }
