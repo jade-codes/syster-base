@@ -320,6 +320,14 @@ mod reader {
             if let Some(id) = xmi_id {
                 let mut element = Element::new(id.clone(), kind);
 
+                // Store original xsi:type for roundtrip fidelity
+                if let Some(ref t) = xmi_type {
+                    element.properties.insert(
+                        Arc::from("_xsi_type"),
+                        PropertyValue::String(Arc::from(t.as_str())),
+                    );
+                }
+
                 if let Some(n) = name {
                     element.name = Some(Arc::from(n.as_str()));
                 }
@@ -691,8 +699,8 @@ mod writer {
             model: &Model,
             element: &Element,
         ) -> Result<(), InterchangeError> {
-            let type_name = element.kind.xmi_type();
-            let mut elem_start = BytesStart::new(type_name);
+            let type_name = Self::get_xmi_type(element);
+            let mut elem_start = BytesStart::new(&type_name);
             
             // Add XMI version and all namespaces
             elem_start.push_attribute(("xmi:version", "2.0"));
@@ -722,7 +730,7 @@ mod writer {
                 }
 
                 writer
-                    .write_event(Event::End(BytesEnd::new(type_name)))
+                    .write_event(Event::End(BytesEnd::new(&type_name)))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
             } else {
                 writer
@@ -851,6 +859,16 @@ mod writer {
             }
         }
 
+        /// Get the XMI type for an element, preferring the original if stored.
+        /// This preserves roundtrip fidelity for sysml: vs kerml: prefix.
+        fn get_xmi_type(element: &Element) -> String {
+            // Prefer stored original xsi:type for roundtrip fidelity
+            if let Some(super::super::model::PropertyValue::String(orig)) = element.properties.get("_xsi_type") {
+                return orig.to_string();
+            }
+            element.kind.xmi_type().to_string()
+        }
+
         /// Get the href child element name for a given element kind.
         fn href_element_name(kind: ElementKind) -> &'static str {
             match kind {
@@ -913,9 +931,9 @@ mod writer {
             model: &Model,
             child: &Element,
         ) -> Result<(), InterchangeError> {
-            let type_name = child.kind.xmi_type();
+            let type_name = Self::get_xmi_type(child);
             let mut rel_start = BytesStart::new("ownedRelationship");
-            rel_start.push_attribute(("xsi:type", type_name));
+            rel_start.push_attribute(("xsi:type", type_name.as_str()));
             
             // Write element attributes
             self.write_element_attrs(&mut rel_start, child, model);
@@ -975,9 +993,9 @@ mod writer {
             model: &Model,
             element: &Element,
         ) -> Result<(), InterchangeError> {
-            let type_name = element.kind.xmi_type();
+            let type_name = Self::get_xmi_type(element);
             let mut elem_start = BytesStart::new("ownedRelatedElement");
-            elem_start.push_attribute(("xsi:type", type_name));
+            elem_start.push_attribute(("xsi:type", type_name.as_str()));
             
             // Write element attributes
             self.write_element_attrs(&mut elem_start, element, model);
@@ -1018,8 +1036,8 @@ mod writer {
             model: &Model,
             element: &Element,
         ) -> Result<(), InterchangeError> {
-            let type_name = element.kind.xmi_type();
-            let mut elem_start = BytesStart::new(type_name);
+            let type_name = Self::get_xmi_type(element);
+            let mut elem_start = BytesStart::new(&type_name);
             
             self.write_element_attrs(&mut elem_start, element, model);
             
@@ -1036,7 +1054,7 @@ mod writer {
                 }
 
                 writer
-                    .write_event(Event::End(BytesEnd::new(type_name)))
+                    .write_event(Event::End(BytesEnd::new(&type_name)))
                     .map_err(|e| InterchangeError::xml(format!("Write error: {e}")))?;
             } else {
                 writer
