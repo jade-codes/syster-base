@@ -1,4 +1,5 @@
 //! Quick test to export XMI for comparison
+#![cfg(feature = "interchange")]
 
 use std::collections::HashSet;
 use std::path::Path;
