@@ -386,6 +386,8 @@ mod tests {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -421,6 +423,8 @@ mod tests {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         };
 
         // Add a usage with type_ref
@@ -473,6 +477,8 @@ mod tests {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         };
 
         index.add_file(FileId::new(0), vec![symbol]);

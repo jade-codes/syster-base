@@ -990,6 +990,101 @@ impl Usage {
         None
     }
 
+    /// Get multiplicity bounds [lower..upper] from the usage.
+    /// Returns (lower, upper) where None means unbounded (*).
+    /// E.g., `[1..5]` -> `(Some(1), Some(5))`, `[*]` -> `(None, None)`, `[0..*]` -> `(Some(0), None)`
+    pub fn multiplicity(&self) -> Option<(Option<u64>, Option<u64>)> {
+        // Find MULTIPLICITY node in children first (direct multiplicity like `wheels[4]`)
+        if let Some(mult_node) = self
+            .0
+            .children()
+            .find(|n| n.kind() == SyntaxKind::MULTIPLICITY)
+        {
+            return Self::parse_multiplicity_node(&mult_node);
+        }
+
+        // Check for multiplicity in TYPING or SPECIALIZATION children (like `fuelIn : FuelType[1]`)
+        for child in self.0.children() {
+            match child.kind() {
+                SyntaxKind::TYPING | SyntaxKind::SPECIALIZATION => {
+                    if let Some(mult_node) = child
+                        .children()
+                        .find(|n| n.kind() == SyntaxKind::MULTIPLICITY)
+                    {
+                        return Self::parse_multiplicity_node(&mult_node);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        None
+    }
+
+    /// Parse a MULTIPLICITY node and extract bounds
+    fn parse_multiplicity_node(mult_node: &SyntaxNode) -> Option<(Option<u64>, Option<u64>)> {
+        let mut lower: Option<u64> = None;
+        let mut upper: Option<u64> = None;
+        let mut found_dot_dot = false;
+
+        // Recursively search for INTEGER and STAR tokens in the multiplicity node
+        fn find_bounds(
+            node: &SyntaxNode,
+            lower: &mut Option<u64>,
+            upper: &mut Option<u64>,
+            found_dot_dot: &mut bool,
+        ) {
+            for child in node.children_with_tokens() {
+                match child.kind() {
+                    SyntaxKind::INTEGER => {
+                        if let Some(token) = child.into_token() {
+                            let text = token.text();
+                            if let Ok(val) = text.parse::<u64>() {
+                                if *found_dot_dot {
+                                    *upper = Some(val);
+                                } else {
+                                    *lower = Some(val);
+                                }
+                            }
+                        }
+                    }
+                    SyntaxKind::STAR => {
+                        // * means unbounded - leave as None
+                        if *found_dot_dot {
+                            *upper = None;
+                        } else {
+                            *lower = None;
+                        }
+                    }
+                    SyntaxKind::DOT_DOT => {
+                        *found_dot_dot = true;
+                    }
+                    _ => {
+                        // Recurse into child nodes (e.g., LITERAL_EXPR)
+                        if let Some(node) = child.into_node() {
+                            find_bounds(&node, lower, upper, found_dot_dot);
+                        }
+                    }
+                }
+            }
+        }
+
+        find_bounds(mult_node, &mut lower, &mut upper, &mut found_dot_dot);
+
+        // If no ".." found, lower is also the upper bound (e.g., [4] means [4..4])
+        if !found_dot_dot && lower.is_some() {
+            upper = lower;
+        }
+
+        // Only return Some if we found at least one bound or a star
+        if lower.is_some() || upper.is_some() || found_dot_dot {
+            Some((lower, upper))
+        } else {
+            // Try returning the found structure anyway - might be [*] or similar
+            Some((lower, upper))
+        }
+    }
+
     /// Get prefix metadata references.
     /// e.g., `#mop attribute mass : Real;` -> returns [PrefixMetadata for "mop"]
     ///
@@ -1277,7 +1372,7 @@ pub enum UsageKind {
     Connector,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Direction {
     In,
     Out,

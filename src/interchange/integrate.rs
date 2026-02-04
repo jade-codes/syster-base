@@ -145,6 +145,8 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_readonly: element.is_readonly,
             is_derived: element.is_derived,
             is_parallel: element.is_parallel,
+            direction: None,    // TODO: Extract from element if available
+            multiplicity: None, // TODO: Extract from element if available
         };
 
         symbols.push(symbol);
@@ -597,18 +599,21 @@ mod tests {
         // Verify our model has what we expect
         assert_eq!(model.elements.len(), 1, "Should have one package");
 
+        // Capture the original element ID
+        let original_id = model.elements.keys().next().unwrap().clone();
+
         // When we write to XMI and read back
         let xmi_bytes = Xmi.write(&model).expect("Should write XMI");
         let roundtrip_model = Xmi.read(&xmi_bytes).expect("Should read XMI");
 
-        // Then the element count should match (at least the roots)
+        // Then we should find our original element
         assert!(
             !roundtrip_model.elements.is_empty(),
             "Should have at least one element after roundtrip"
         );
         assert!(
-            !roundtrip_model.roots.is_empty(),
-            "Should have at least one root after roundtrip"
+            roundtrip_model.elements.contains_key(&original_id),
+            "Should find the original element by ID after roundtrip"
         );
     }
 

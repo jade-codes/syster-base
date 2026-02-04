@@ -8,11 +8,14 @@
 //! extraction while abstracting away language-specific details.
 
 use crate::parser::{
-    self, AstNode, Definition as RowanDefinition, DefinitionKind as RowanDefinitionKind,
+    self, AstNode, Definition as RowanDefinition, DefinitionKind as RowanDefinitionKind, Direction,
     Expression, Import as RowanImport, NamespaceMember, Package as RowanPackage, SourceFile,
     SpecializationKind, Usage as RowanUsage, UsageKind as RowanUsageKind,
 };
 pub use rowan::TextRange;
+
+// Re-export Direction for use by consumers
+pub use crate::parser::Direction as FeatureDirection;
 
 // ============================================================================
 // Feature Chain - for dotted references like `engine.power.value`
@@ -130,6 +133,13 @@ pub struct NormalizedDefinition {
     pub is_variation: bool,
 }
 
+/// Multiplicity bounds (lower, upper) where None means unbounded (*)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Multiplicity {
+    pub lower: Option<u64>,
+    pub upper: Option<u64>,
+}
+
 /// A normalized usage (SysML usage or KerML feature).
 #[derive(Debug, Clone)]
 pub struct NormalizedUsage {
@@ -155,6 +165,10 @@ pub struct NormalizedUsage {
     pub is_derived: bool,
     /// Whether the usage (for state) has the `parallel` keyword
     pub is_parallel: bool,
+    /// Direction (in, out, inout) for ports and parameters
+    pub direction: Option<Direction>,
+    /// Multiplicity bounds [lower..upper]
+    pub multiplicity: Option<Multiplicity>,
 }
 
 /// A normalized import statement.
@@ -504,6 +518,8 @@ impl NormalizedElement {
                     is_readonly: false,
                     is_derived: false,
                     is_parallel: false,
+                    direction: None,
+                    multiplicity: None,
                 })
             }
             NamespaceMember::Comment(comment) => {
@@ -1158,6 +1174,8 @@ impl NormalizedUsage {
                         is_readonly: false,
                         is_derived: false,
                         is_parallel: false,
+                        direction: None,
+                        multiplicity: None,
                     }));
                 } else if let Some(qn) = end.target() {
                     // No endpoint name, just a direct reference (e.g., `a.port to b.port`)
@@ -1363,6 +1381,8 @@ impl NormalizedUsage {
                     is_readonly: false,
                     is_derived: false,
                     is_parallel: false,
+                    direction: None,
+                    multiplicity: None,
                 }));
             }
         }
@@ -1486,6 +1506,10 @@ impl NormalizedUsage {
             is_readonly: usage.is_readonly(),
             is_derived: usage.is_derived(),
             is_parallel: usage.is_parallel(),
+            direction: usage.direction(),
+            multiplicity: usage
+                .multiplicity()
+                .map(|(l, u)| Multiplicity { lower: l, upper: u }),
         }
     }
 
@@ -1527,6 +1551,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1640,6 +1666,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1750,6 +1778,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -1768,6 +1798,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1833,6 +1865,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1893,6 +1927,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -1947,6 +1983,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2038,6 +2076,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -2067,6 +2107,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2122,6 +2164,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2173,6 +2217,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2213,6 +2259,8 @@ impl NormalizedUsage {
                 is_readonly: false,
                 is_derived: false,
                 is_parallel: false,
+                direction: None,
+                multiplicity: None,
             }));
         }
 
@@ -2238,6 +2286,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2310,6 +2360,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 
@@ -2371,6 +2423,8 @@ impl NormalizedUsage {
             is_readonly: false,
             is_derived: false,
             is_parallel: false,
+            direction: None,
+            multiplicity: None,
         }
     }
 }

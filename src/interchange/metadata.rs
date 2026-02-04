@@ -290,6 +290,26 @@ impl ElementMeta {
     }
 }
 
+// ============================================================================
+// File I/O for ImportMetadata
+// ============================================================================
+
+impl ImportMetadata {
+    /// Read ImportMetadata from a JSON file.
+    pub fn read_from_file(path: impl AsRef<std::path::Path>) -> Result<Self, std::io::Error> {
+        let content = std::fs::read_to_string(path.as_ref())?;
+        serde_json::from_str(&content)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
+    }
+
+    /// Write ImportMetadata to a JSON file.
+    pub fn write_to_file(&self, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
+        let json = serde_json::to_string_pretty(self)
+            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+        std::fs::write(path.as_ref(), json)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -412,25 +432,5 @@ mod tests {
         // Should not contain empty unmapped_attributes or null optionals
         assert!(!json.contains("unmappedAttributes"));
         assert!(!json.contains("elements"));
-    }
-}
-
-// ============================================================================
-// File I/O for ImportMetadata
-// ============================================================================
-
-impl ImportMetadata {
-    /// Read ImportMetadata from a JSON file.
-    pub fn read_from_file(path: impl AsRef<std::path::Path>) -> Result<Self, std::io::Error> {
-        let content = std::fs::read_to_string(path.as_ref())?;
-        serde_json::from_str(&content)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))
-    }
-
-    /// Write ImportMetadata to a JSON file.
-    pub fn write_to_file(&self, path: impl AsRef<std::path::Path>) -> Result<(), std::io::Error> {
-        let json = serde_json::to_string_pretty(self)
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
-        std::fs::write(path.as_ref(), json)
     }
 }

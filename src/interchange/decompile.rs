@@ -18,6 +18,7 @@ use super::metadata::{ElementMeta, ImportMetadata, SourceInfo};
 use super::model::{Element, ElementId, ElementKind, Model, RelationshipKind, Visibility};
 use std::collections::HashMap;
 use std::fmt::Write;
+use std::sync::Arc;
 
 /// Result of decompiling a model.
 pub struct DecompileResult {
@@ -179,6 +180,13 @@ impl<'a> DecompileContext<'a> {
             ElementKind::Class => self.decompile_definition(element, "class"),
             ElementKind::DataType => self.decompile_definition(element, "datatype"),
             ElementKind::Structure => self.decompile_definition(element, "struct"),
+            ElementKind::Classifier => self.decompile_definition(element, "classifier"),
+
+            // KerML features
+            ElementKind::Feature => self.decompile_feature(element),
+
+            // Multiplicity
+            ElementKind::MultiplicityRange => self.decompile_multiplicity(element),
 
             // Documentation
             ElementKind::Comment => self.decompile_comment(element),
@@ -250,11 +258,22 @@ impl<'a> DecompileContext<'a> {
     fn decompile_library_package(&mut self, element: &Element) {
         self.write_visibility(element);
 
+        // Check for isStandard property
+        let is_standard_key: Arc<str> = Arc::from("isStandard");
+        let standard_kw = match element.properties.get(&is_standard_key) {
+            Some(super::model::PropertyValue::Boolean(true)) => "standard ",
+            Some(super::model::PropertyValue::String(s)) if s.as_ref() == "true" => "standard ",
+            _ => "",
+        };
+
         if let Some(name) = &element.name {
             let short = self.format_short_name(element);
-            self.write_line(&format!("library package {}{} {{", short, name));
+            self.write_line(&format!(
+                "{}library package {}{} {{",
+                standard_kw, short, name
+            ));
         } else {
-            self.write_line("library package {");
+            self.write_line(&format!("{}library package {{", standard_kw));
         }
 
         self.decompile_body(element);
@@ -316,6 +335,208 @@ impl<'a> DecompileContext<'a> {
             // Anonymous usage with typing/subsetting
             self.write_line(&format!("{}{};", keyword, relations));
         }
+    }
+
+    fn decompile_feature(&mut self, element: &Element) {
+        self.write_visibility(element);
+
+        let abstract_kw = if element.is_abstract { "abstract " } else { "" };
+        let typing = self.format_typing(&element.id);
+        let subsetting = self.format_subsetting(&element.id);
+        let redefinition = self.format_redefinition(&element.id);
+        let chaining = self.format_chaining(&element.id);
+        let multiplicity = self.format_inline_multiplicity(&element.id);
+        let short = self.format_short_name(element);
+
+        // Check for additional feature modifiers from properties
+        let mut modifiers = Vec::new();
+        let is_unique_key: Arc<str> = Arc::from("isUnique");
+        if let Some(pv) = element.properties.get(&is_unique_key) {
+            match pv {
+                super::model::PropertyValue::Boolean(false) => modifiers.push("nonunique"),
+                super::model::PropertyValue::String(s) if s.as_ref() == "false" => {
+                    modifiers.push("nonunique")
+                }
+                _ => {}
+            }
+        }
+
+        let mod_str = if modifiers.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", modifiers.join(" "))
+        };
+
+        // Build the full feature declaration
+        // Format: [abstract] feature name : Type [mult] [modifiers] [subsets X] [chains Y] [redefines Z]
+        if let Some(name) = &element.name {
+            let decl = format!(
+                "{}feature {}{}{}{}{}{}{}{}",
+                abstract_kw,
+                short,
+                name,
+                typing,
+                multiplicity,
+                mod_str,
+                subsetting,
+                chaining,
+                redefinition
+            );
+
+            if element.owned_elements.is_empty() && element.documentation.is_none() {
+                self.write_line(&format!("{};", decl));
+            } else {
+                self.write_line(&format!("{} {{", decl));
+                self.decompile_body(element);
+                self.write_line("}");
+            }
+        } else {
+            // Anonymous feature
+            let decl = format!(
+                "{}feature{}{}{}{}{}{}",
+                abstract_kw, typing, multiplicity, mod_str, subsetting, chaining, redefinition
+            );
+            self.write_line(&format!("{};", decl));
+        }
+
+        self.write_blank_line();
+    }
+
+    fn decompile_multiplicity(&mut self, element: &Element) {
+        // Multiplicity ranges are typically decompiled inline, but if standalone:
+        if let Some(name) = &element.name {
+            let bounds = self.format_multiplicity_bounds(&element.id);
+
+            // Check for documentation in children
+            let has_doc = element.owned_elements.iter().any(|child_id| {
+                self.model
+                    .elements
+                    .get(child_id)
+                    .map(|c| {
+                        c.kind == ElementKind::Documentation
+                            || c.owned_elements.iter().any(|gc_id| {
+                                self.model
+                                    .elements
+                                    .get(gc_id)
+                                    .map(|gc| gc.kind == ElementKind::Documentation)
+                                    .unwrap_or(false)
+                            })
+                    })
+                    .unwrap_or(false)
+            });
+
+            if has_doc {
+                self.write_line(&format!("multiplicity {} {} {{", name, bounds));
+                self.indent_level += 1;
+
+                // Decompile documentation
+                for child_id in &element.owned_elements {
+                    if let Some(child) = self.model.elements.get(child_id) {
+                        if child.kind == ElementKind::Documentation {
+                            self.decompile_documentation(child);
+                        }
+                        // Check through membership wrappers
+                        for grandchild_id in &child.owned_elements {
+                            if let Some(grandchild) = self.model.elements.get(grandchild_id) {
+                                if grandchild.kind == ElementKind::Documentation {
+                                    self.decompile_documentation(grandchild);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                self.indent_level -= 1;
+                self.write_line("}");
+            } else {
+                self.write_line(&format!("multiplicity {} {};", name, bounds));
+            }
+            self.write_blank_line();
+        }
+    }
+
+    fn format_inline_multiplicity(&self, element_id: &ElementId) -> String {
+        // Look for owned MultiplicityRange children
+        if let Some(element) = self.model.elements.get(element_id) {
+            for child_id in &element.owned_elements {
+                if let Some(child) = self.model.elements.get(child_id) {
+                    if child.kind == ElementKind::MultiplicityRange {
+                        return self.format_multiplicity_bounds(&child.id);
+                    }
+                    // Check through membership containers
+                    if child.kind.is_relationship() {
+                        for grandchild_id in &child.owned_elements {
+                            if let Some(grandchild) = self.model.elements.get(grandchild_id) {
+                                if grandchild.kind == ElementKind::MultiplicityRange {
+                                    return self.format_multiplicity_bounds(&grandchild.id);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        String::new()
+    }
+
+    fn format_multiplicity_bounds(&self, mult_id: &ElementId) -> String {
+        if let Some(mult_elem) = self.model.elements.get(mult_id) {
+            let mut all_literals = Vec::new();
+
+            // Look for LiteralInteger/LiteralInfinity children (may be wrapped in memberships)
+            for child_id in &mult_elem.owned_elements {
+                if let Some(child) = self.model.elements.get(child_id) {
+                    // Go through membership wrappers and collect all literals
+                    all_literals.extend(self.collect_literals(child));
+                }
+            }
+
+            // First literal is lower bound, second is upper bound
+            let lower = all_literals.first().cloned();
+            let upper = all_literals.get(1).cloned();
+
+            match (lower, upper) {
+                (Some(l), Some(u)) => format!("[{}..{}]", l, u),
+                (Some(l), None) => format!("[{}]", l),
+                (None, Some(u)) => format!("[0..{}]", u),
+                (None, None) => String::new(),
+            }
+        } else {
+            String::new()
+        }
+    }
+
+    fn collect_literals(&self, element: &Element) -> Vec<String> {
+        let mut result = Vec::new();
+        let value_key: Arc<str> = Arc::from("value");
+
+        match element.kind {
+            ElementKind::LiteralInteger => {
+                // Check for value in properties (could be Integer or String)
+                if let Some(pv) = element.properties.get(&value_key) {
+                    match pv {
+                        super::model::PropertyValue::Integer(v) => result.push(v.to_string()),
+                        super::model::PropertyValue::String(s) => result.push(s.to_string()),
+                        _ => result.push("0".to_string()),
+                    }
+                } else {
+                    result.push("0".to_string());
+                }
+            }
+            ElementKind::LiteralInfinity => {
+                result.push("*".to_string());
+            }
+            _ => {
+                // Recurse through membership wrappers
+                for child_id in &element.owned_elements {
+                    if let Some(child) = self.model.elements.get(child_id) {
+                        result.extend(self.collect_literals(child));
+                    }
+                }
+            }
+        }
+
+        result
     }
 
     fn decompile_comment(&mut self, element: &Element) {
@@ -413,18 +634,44 @@ impl<'a> DecompileContext<'a> {
     }
 
     fn format_typing(&self, element_id: &ElementId) -> String {
-        let types: Vec<&str> = self
+        let mut types: Vec<String> = self
             .model
             .relationships
             .iter()
             .filter(|r| &r.source == element_id && r.kind == RelationshipKind::FeatureTyping)
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
-                    .and_then(|e| e.name.as_deref())
-            })
+            .filter_map(|r| self.get_element_ref_name(&r.target))
             .collect();
+
+        // Also check for href-based typing (cross-file references)
+        // These are stored on FeatureTyping elements that are children of this feature
+        if let Some(element) = self.model.elements.get(element_id) {
+            for child_id in &element.owned_elements {
+                if let Some(child) = self.model.elements.get(child_id) {
+                    // Check if it's a FeatureTyping with href
+                    if child.kind == ElementKind::FeatureTyping {
+                        let href_key: Arc<str> = Arc::from("href_target_name");
+                        if let Some(super::model::PropertyValue::String(name)) =
+                            child.properties.get(&href_key)
+                        {
+                            types.push(name.to_string());
+                        }
+                    }
+                    // Also check nested in memberships
+                    for grandchild_id in &child.owned_elements {
+                        if let Some(grandchild) = self.model.elements.get(grandchild_id) {
+                            if grandchild.kind == ElementKind::FeatureTyping {
+                                let href_key: Arc<str> = Arc::from("href_target_name");
+                                if let Some(super::model::PropertyValue::String(name)) =
+                                    grandchild.properties.get(&href_key)
+                                {
+                                    types.push(name.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
 
         if types.is_empty() {
             String::new()
@@ -439,7 +686,7 @@ impl<'a> DecompileContext<'a> {
             .relationships
             .iter()
             .filter(|r| {
-                &r.owner == &Some(element_id.clone()) && r.kind == RelationshipKind::NamespaceImport
+                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::NamespaceImport
             })
             .filter_map(|r| {
                 self.model
@@ -457,8 +704,7 @@ impl<'a> DecompileContext<'a> {
             .relationships
             .iter()
             .filter(|r| {
-                &r.owner == &Some(element_id.clone())
-                    && r.kind == RelationshipKind::MembershipImport
+                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::MembershipImport
             })
             .filter_map(|r| {
                 self.model
@@ -485,17 +731,12 @@ impl<'a> DecompileContext<'a> {
 
     /// Format subsetting relationships (subsets).
     fn format_subsetting(&self, element_id: &ElementId) -> String {
-        let subsets: Vec<&str> = self
+        let subsets: Vec<String> = self
             .model
             .relationships
             .iter()
             .filter(|r| &r.source == element_id && r.kind == RelationshipKind::Subsetting)
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
-                    .and_then(|e| e.name.as_deref())
-            })
+            .filter_map(|r| self.get_element_ref_name(&r.target))
             .collect();
 
         if subsets.is_empty() {
@@ -507,17 +748,12 @@ impl<'a> DecompileContext<'a> {
 
     /// Format redefinition relationships (redefines).
     fn format_redefinition(&self, element_id: &ElementId) -> String {
-        let redefines: Vec<&str> = self
+        let redefines: Vec<String> = self
             .model
             .relationships
             .iter()
             .filter(|r| &r.source == element_id && r.kind == RelationshipKind::Redefinition)
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
-                    .and_then(|e| e.name.as_deref())
-            })
+            .filter_map(|r| self.get_qualified_element_ref(&r.target))
             .collect();
 
         if redefines.is_empty() {
@@ -525,6 +761,139 @@ impl<'a> DecompileContext<'a> {
         } else {
             format!(" redefines {}", redefines.join(", "))
         }
+    }
+
+    /// Format feature chaining relationships (chains).
+    fn format_chaining(&self, element_id: &ElementId) -> String {
+        let chains: Vec<String> = self
+            .model
+            .relationships
+            .iter()
+            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::FeatureChaining)
+            .filter_map(|r| self.get_chaining_ref(&r.target))
+            .collect();
+
+        if chains.is_empty() {
+            String::new()
+        } else {
+            format!(" chains {}", chains.join("."))
+        }
+    }
+
+    /// Get reference for chaining - use simple names joined with dots.
+    fn get_chaining_ref(&self, target_id: &ElementId) -> Option<String> {
+        // For chaining, just use the simple element name
+        // The chain path is built by joining multiple chaining relationships with dots
+        self.model
+            .elements
+            .get(target_id)
+            .and_then(|e| e.name.as_ref())
+            .map(|n| n.to_string())
+    }
+
+    /// Get simple name or href-based name for an element reference.
+    fn get_element_ref_name(&self, target_id: &ElementId) -> Option<String> {
+        // First try to find the element in the model
+        if let Some(element) = self.model.elements.get(target_id) {
+            // Check for href (cross-file reference)
+            let href_key: Arc<str> = Arc::from("href");
+            if let Some(super::model::PropertyValue::String(href)) =
+                element.properties.get(&href_key)
+            {
+                // Extract qualified name from href (format: "file.xmi#uuid" or just qualified name)
+                return Some(self.extract_name_from_href(href));
+            }
+            // Use qualified name if available, else simple name
+            if let Some(qn) = &element.qualified_name {
+                return Some(qn.to_string());
+            }
+            return element.name.as_ref().map(|n| n.to_string());
+        }
+        None
+    }
+
+    /// Get qualified reference for redefines/chains (includes owner context).
+    fn get_qualified_element_ref(&self, target_id: &ElementId) -> Option<String> {
+        if let Some(element) = self.model.elements.get(target_id) {
+            // Check for href first
+            let href_key: Arc<str> = Arc::from("href");
+            if let Some(super::model::PropertyValue::String(href)) =
+                element.properties.get(&href_key)
+            {
+                return Some(self.extract_name_from_href(href));
+            }
+
+            // Build qualified name from owner chain
+            let name = element.name.as_deref()?;
+
+            // Walk up the ownership chain to find a named classifier/type
+            let owner_name = self.find_named_owner(target_id);
+            if let Some(owner) = owner_name {
+                return Some(format!("{}::{}", owner, name));
+            }
+
+            return Some(name.to_string());
+        }
+        None
+    }
+
+    /// Walk up the ownership chain to find a named owner (classifier, package, etc.)
+    fn find_named_owner(&self, element_id: &ElementId) -> Option<String> {
+        let element = self.model.elements.get(element_id)?;
+        let mut current_owner_id = element.owner.clone();
+
+        while let Some(owner_id) = current_owner_id {
+            if let Some(owner) = self.model.elements.get(&owner_id) {
+                // If this owner has a name and is a "real" element (not a membership), use it
+                if let Some(name) = &owner.name {
+                    // Skip membership wrappers
+                    if !owner.kind.is_relationship() {
+                        return Some(name.to_string());
+                    }
+                }
+                // Keep walking up
+                current_owner_id = owner.owner.clone();
+            } else {
+                break;
+            }
+        }
+        None
+    }
+
+    /// Extract a meaningful name from an href string.
+    fn extract_name_from_href(&self, href: &str) -> String {
+        // href format: "../../path/File.sysmlx#uuid" or "File.sysmlx#uuid"
+        // Extract the file name and try to form a qualified name
+
+        // First, try to find element by ID in the href
+        if let Some(hash_pos) = href.rfind('#') {
+            let id = &href[hash_pos + 1..];
+            // Check if we have this element
+            if let Some(element) = self.model.elements.get(&ElementId::new(id)) {
+                if let Some(qn) = &element.qualified_name {
+                    return qn.to_string();
+                }
+                if let Some(name) = &element.name {
+                    return name.to_string();
+                }
+            }
+        }
+
+        // Try to extract from path (e.g., "ScalarValues.kermlx#uuid" -> ScalarValues)
+        if let Some(hash_pos) = href.rfind('#') {
+            let path = &href[..hash_pos];
+            if let Some(file_start) = path.rfind('/') {
+                let file = &path[file_start + 1..];
+                if let Some(ext_pos) = file.rfind('.') {
+                    return file[..ext_pos].to_string();
+                }
+            } else if let Some(ext_pos) = path.rfind('.') {
+                return path[..ext_pos].to_string();
+            }
+        }
+
+        // Fallback: return the href as-is (UUID)
+        href.to_string()
     }
 }
 

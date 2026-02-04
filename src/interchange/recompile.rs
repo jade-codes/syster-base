@@ -20,7 +20,7 @@
 //! ```
 
 use super::metadata::ImportMetadata;
-use super::model::{Element, ElementId, Model};
+use super::model::{ElementId, Model};
 use crate::hir::SymbolIndex;
 use std::collections::HashMap;
 
@@ -184,7 +184,7 @@ fn apply_id_mapping(model: &mut Model, mapping: &HashMap<ElementId, ElementId>) 
 mod tests {
     use super::*;
     use crate::interchange::metadata::ElementMeta;
-    use crate::interchange::model::ElementKind;
+    use crate::interchange::model::{Element, ElementKind};
 
     #[test]
     fn test_restore_element_ids_empty_model() {

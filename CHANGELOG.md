@@ -5,6 +5,43 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.1-alpha] - 2026-02-04
+
+### Added
+
+- **Interchange Lossless Roundtrip**: Complete overhaul for byte-perfect XMI roundtrip
+  - XMI files now roundtrip with identical byte output
+  - Namespace declarations preserved via `ModelMetadata.declared_namespaces`
+  - Boolean attributes stored as `Option<bool>` properties for explicit false preservation
+  - `href` element details (`_href_tag`, `_href_xsi_type`) preserved for reference elements
+  - Attribute ordering matches original XMI specification
+
+- **Element Boolean Setters**: New setter methods that sync field and property
+  - `set_abstract()`, `set_variation()`, `set_derived()`, `set_readonly()`, `set_parallel()`
+  - Properties are now the single source of truth for roundtrip fidelity
+
+- **YAML Format Support**: Full YAML interchange format with lossless roundtrip
+  - Uses `@type`, `@id`, `source`, `target` fields like JSON-LD
+  - Relationships stored as separate objects with explicit source/target
+  - All relationship kinds including `Disjoining` supported
+
+- **JSON-LD Disjoining Support**: Added missing `Disjoining` relationship kind
+
+### Fixed
+
+- **Clippy Compliance**: Fixed all clippy warnings with `-D warnings`
+  - Replaced `split(':').last()` with `rsplit(':').next()`
+  - Replaced `or_insert_with(Vec::new)` with `or_default()`
+  - Changed `&PathBuf` parameters to `&Path`
+  - Removed unit struct `::default()` calls
+  - Fixed `len() > 0` to `!is_empty()`
+
+### Removed
+
+- Unused `KERML` constant from `jsonld::context`
+- Unused `RESOURCES_DIR` constant from `kpar::paths`
+- Unused `element_kind_from_xmi`, `element_kind_to_xmi`, `relationship_kind_from_xmi` functions
+
 ## [0.3.0-alpha] - 2026-02-03
 
 ### Changed

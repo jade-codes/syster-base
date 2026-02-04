@@ -29,8 +29,6 @@ pub mod paths {
     pub const MANIFEST: &str = "META-INF/manifest.xml";
     /// Model directory.
     pub const MODEL_DIR: &str = "model/";
-    /// Resources directory.
-    pub const RESOURCES_DIR: &str = "resources/";
 }
 
 /// KPAR format handler.

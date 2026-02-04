@@ -518,7 +518,7 @@ part def SportsCar :> Vehicle {
             .iter()
             .filter(|t| t.token_type == TokenType::Type)
             .collect();
-        
+
         // Should have at least 2 type tokens (source and target chains)
         assert!(
             type_tokens.len() >= 2,
