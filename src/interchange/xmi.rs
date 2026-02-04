@@ -141,6 +141,8 @@ mod reader {
         /// Pending relationship sources - when we have source but not target yet.
         /// Maps element_id -> (source_ref, element_kind)
         pending_rel_sources: std::collections::HashMap<String, (String, ElementKind)>,
+        /// Declared XML namespaces from the document (prefix -> URI).
+        declared_namespaces: std::collections::HashMap<String, String>,
     }
 
     /// Stack entry type for tracking nested elements.
@@ -166,6 +168,7 @@ mod reader {
                 base_path: None,
                 href_name_cache: std::collections::HashMap::new(),
                 pending_rel_sources: std::collections::HashMap::new(),
+                declared_namespaces: std::collections::HashMap::new(),
             }
         }
 
@@ -214,6 +217,11 @@ mod reader {
             let tag_name = std::str::from_utf8(name_bytes.as_ref())
                 .map_err(|e| InterchangeError::xml(format!("Invalid tag name: {e}")))?;
 
+            // Capture namespace declarations from root element (first element we see)
+            if self.depth_stack.is_empty() {
+                self.capture_namespace_declarations(e)?;
+            }
+
             // Skip only the XMI wrapper element - sysml:Namespace/kerml:Namespace are real elements!
             if tag_name == "xmi:XMI" || tag_name == "XMI" {
                 self.depth_stack.push(StackEntry::Root);
@@ -243,13 +251,15 @@ mod reader {
             let mut qualified_name: Option<String> = None;
             let mut short_name: Option<String> = None;
             let mut element_id: Option<String> = None;
-            let mut is_abstract = false;
-            let mut is_variation = false;
-            let mut is_derived = false;
-            let mut is_readonly = false;
-            let mut is_parallel = false;
-            let mut is_standard = false;
-            let mut is_composite = false;
+            let mut is_abstract: Option<bool> = None;
+            let mut is_variation: Option<bool> = None;
+            let mut is_derived: Option<bool> = None;
+            let mut is_readonly: Option<bool> = None;
+            let mut is_parallel: Option<bool> = None;
+            let mut is_standard: Option<bool> = None;
+            let mut is_composite: Option<bool> = None;
+            let mut is_unique: Option<bool> = None;
+            let mut is_ordered: Option<bool> = None;
             let mut body: Option<String> = None;
             let mut href: Option<String> = None;
             let mut extra_attrs: Vec<(String, String)> = Vec::new();
@@ -275,13 +285,15 @@ mod reader {
                     "qualifiedName" => qualified_name = Some(value),
                     "shortName" | "declaredShortName" => short_name = Some(value),
                     "elementId" => element_id = Some(value),
-                    "isAbstract" => is_abstract = value == "true",
-                    "isVariation" => is_variation = value == "true",
-                    "isDerived" => is_derived = value == "true",
-                    "isReadOnly" => is_readonly = value == "true",
-                    "isParallel" => is_parallel = value == "true",
-                    "isStandard" => is_standard = value == "true",
-                    "isComposite" => is_composite = value == "true",
+                    "isAbstract" => is_abstract = Some(value == "true"),
+                    "isVariation" => is_variation = Some(value == "true"),
+                    "isDerived" => is_derived = Some(value == "true"),
+                    "isReadOnly" => is_readonly = Some(value == "true"),
+                    "isParallel" => is_parallel = Some(value == "true"),
+                    "isStandard" => is_standard = Some(value == "true"),
+                    "isComposite" => is_composite = Some(value == "true"),
+                    "isUnique" => is_unique = Some(value == "true"),
+                    "isOrdered" => is_ordered = Some(value == "true"),
                     "body" => body = Some(value),
                     "href" => href = Some(value),
                     // Relationship source references - store as property AND use for relationship
@@ -338,23 +350,40 @@ mod reader {
                     element.short_name = Some(Arc::from(sn.as_str()));
                 }
 
-                // Set boolean flags
-                element.is_abstract = is_abstract;
-                element.is_variation = is_variation;
-                element.is_derived = is_derived;
-                element.is_readonly = is_readonly;
-                element.is_parallel = is_parallel;
+                // Set boolean flags (for backwards compat with Element struct fields)
+                element.is_abstract = is_abstract.unwrap_or(false);
+                element.is_variation = is_variation.unwrap_or(false);
+                element.is_derived = is_derived.unwrap_or(false);
+                element.is_readonly = is_readonly.unwrap_or(false);
+                element.is_parallel = is_parallel.unwrap_or(false);
 
-                // Store isStandard in properties
-                if is_standard {
-                    element
-                        .properties
-                        .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
+                // Store all boolean attributes in properties if explicitly set (for roundtrip)
+                if let Some(val) = is_abstract {
+                    element.properties.insert(Arc::from("isAbstract"), PropertyValue::Boolean(val));
                 }
-                if is_composite {
-                    element
-                        .properties
-                        .insert(Arc::from("isComposite"), PropertyValue::Boolean(true));
+                if let Some(val) = is_variation {
+                    element.properties.insert(Arc::from("isVariation"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_derived {
+                    element.properties.insert(Arc::from("isDerived"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_readonly {
+                    element.properties.insert(Arc::from("isReadOnly"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_parallel {
+                    element.properties.insert(Arc::from("isParallel"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_standard {
+                    element.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_composite {
+                    element.properties.insert(Arc::from("isComposite"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_unique {
+                    element.properties.insert(Arc::from("isUnique"), PropertyValue::Boolean(val));
+                }
+                if let Some(val) = is_ordered {
+                    element.properties.insert(Arc::from("isOrdered"), PropertyValue::Boolean(val));
                 }
 
                 // Store documentation body
@@ -439,6 +468,18 @@ mod reader {
                             Arc::from("href"),
                             PropertyValue::String(Arc::from(h.as_str())),
                         );
+                        // Store original href element tag name for roundtrip fidelity
+                        parent_elem.properties.insert(
+                            Arc::from("_href_tag"),
+                            PropertyValue::String(Arc::from(tag_name)),
+                        );
+                        // Store xsi:type if present on the href element
+                        if let Some(ref t) = xmi_type {
+                            parent_elem.properties.insert(
+                                Arc::from("_href_xsi_type"),
+                                PropertyValue::String(Arc::from(t.as_str())),
+                            );
+                        }
                     }
                     
                     // Check if we have a pending relationship source for this parent
@@ -529,8 +570,31 @@ mod reader {
             }
         }
 
+        /// Capture xmlns namespace declarations from the root element.
+        fn capture_namespace_declarations(&mut self, e: &BytesStart<'_>) -> Result<(), InterchangeError> {
+            for attr_result in e.attributes() {
+                let attr = attr_result
+                    .map_err(|e| InterchangeError::xml(format!("Attribute error: {e}")))?;
+                let key = std::str::from_utf8(attr.key.as_ref())
+                    .map_err(|e| InterchangeError::xml(format!("Attribute key error: {e}")))?;
+                
+                // Look for xmlns:prefix="uri" declarations
+                if let Some(prefix) = key.strip_prefix("xmlns:") {
+                    let value = attr
+                        .unescape_value()
+                        .map_err(|e| InterchangeError::xml(format!("Attribute value error: {e}")))?
+                        .to_string();
+                    self.declared_namespaces.insert(prefix.to_string(), value);
+                }
+            }
+            Ok(())
+        }
+
         fn build_model(&mut self) -> Result<Model, InterchangeError> {
             let mut model = Model::new();
+
+            // Store declared namespaces in metadata for roundtrip
+            model.metadata.declared_namespaces = std::mem::take(&mut self.declared_namespaces);
 
             // Add all elements (drain with full range to preserve order)
             for (_, element) in self.elements_by_id.drain(..) {
@@ -689,7 +753,10 @@ mod writer {
                 self.write_xmi_wrapper(&mut writer, model, &roots)?;
             }
 
-            Ok(buffer.into_inner())
+            // Add trailing newline (per OMG format)
+            let mut output = buffer.into_inner();
+            output.push(b'\n');
+            Ok(output)
         }
 
         /// Write a single root element as the document root.
@@ -702,12 +769,13 @@ mod writer {
             let type_name = Self::get_xmi_type(element);
             let mut elem_start = BytesStart::new(&type_name);
             
-            // Add XMI version and all namespaces
+            // Add XMI version and namespaces
             elem_start.push_attribute(("xmi:version", "2.0"));
             elem_start.push_attribute(("xmlns:xmi", namespace::XMI));
             elem_start.push_attribute(("xmlns:xsi", namespace::XSI));
-            elem_start.push_attribute(("xmlns:kerml", namespace::KERML));
-            elem_start.push_attribute(("xmlns:sysml", namespace::SYSML));
+            
+            // Write namespaces from metadata (for roundtrip fidelity) or defaults
+            Self::write_namespace_attrs(&mut elem_start, model);
             
             // Write element attributes
             self.write_element_attrs(&mut elem_start, element, model);
@@ -752,8 +820,9 @@ mod writer {
             xmi_start.push_attribute(("xmi:version", "2.0"));
             xmi_start.push_attribute(("xmlns:xmi", namespace::XMI));
             xmi_start.push_attribute(("xmlns:xsi", namespace::XSI));
-            xmi_start.push_attribute(("xmlns:kerml", namespace::KERML));
-            xmi_start.push_attribute(("xmlns:sysml", namespace::SYSML));
+            
+            // Write namespaces from metadata (for roundtrip fidelity) or defaults
+            Self::write_namespace_attrs(&mut xmi_start, model);
 
             writer
                 .write_event(Event::Start(xmi_start))
@@ -776,9 +845,16 @@ mod writer {
             elem_start.push_attribute(("xmi:id", element.id.as_str()));
             elem_start.push_attribute(("elementId", element.id.as_str()));
 
+            // Determine if this element uses SysML naming (declaredName) based on xsi:type prefix
+            let uses_sysml_naming = if let Some(super::super::model::PropertyValue::String(xsi_type)) = element.properties.get("_xsi_type") {
+                xsi_type.starts_with("sysml:")
+            } else {
+                element.kind.is_sysml()
+            };
+
             // Name - use declaredName for SysML elements
             if let Some(ref name) = element.name {
-                if element.kind.is_sysml() {
+                if uses_sysml_naming {
                     elem_start.push_attribute(("declaredName", name.as_ref()));
                 } else {
                     elem_start.push_attribute(("name", name.as_ref()));
@@ -787,7 +863,7 @@ mod writer {
             
             // Short name
             if let Some(ref short_name) = element.short_name {
-                if element.kind.is_sysml() {
+                if uses_sysml_naming {
                     elem_start.push_attribute(("declaredShortName", short_name.as_ref()));
                 } else {
                     elem_start.push_attribute(("shortName", short_name.as_ref()));
@@ -801,35 +877,52 @@ mod writer {
             
             // Relationship attributes are now stored as properties and written below
 
-            // Boolean flags
-            if element.is_abstract {
-                elem_start.push_attribute(("isAbstract", "true"));
-            }
-            if element.is_variation {
-                elem_start.push_attribute(("isVariation", "true"));
-            }
-            if element.is_derived {
-                elem_start.push_attribute(("isDerived", "true"));
-            }
-            if element.is_readonly {
-                elem_start.push_attribute(("isReadOnly", "true"));
-            }
-            if element.is_parallel {
-                elem_start.push_attribute(("isParallel", "true"));
-            }
-            
-            // isStandard
-            if let Some(super::super::model::PropertyValue::Boolean(true)) =
-                element.properties.get("isStandard")
+            // Boolean flags - write from properties if explicitly set (for roundtrip fidelity)
+            // Order matters for byte-perfect roundtrip: isAbstract, isVariation, isDerived, isReadOnly, isParallel, isUnique, isOrdered, isComposite, isStandard
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isAbstract")
             {
-                elem_start.push_attribute(("isStandard", "true"));
+                elem_start.push_attribute(("isAbstract", if *v { "true" } else { "false" }));
             }
-            
-            // isComposite - write even when false (per OMG format)
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isVariation")
+            {
+                elem_start.push_attribute(("isVariation", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isDerived")
+            {
+                elem_start.push_attribute(("isDerived", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isReadOnly")
+            {
+                elem_start.push_attribute(("isReadOnly", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isParallel")
+            {
+                elem_start.push_attribute(("isParallel", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isUnique")
+            {
+                elem_start.push_attribute(("isUnique", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isOrdered")
+            {
+                elem_start.push_attribute(("isOrdered", if *v { "true" } else { "false" }));
+            }
             if let Some(super::super::model::PropertyValue::Boolean(v)) =
                 element.properties.get("isComposite")
             {
                 elem_start.push_attribute(("isComposite", if *v { "true" } else { "false" }));
+            }
+            if let Some(super::super::model::PropertyValue::Boolean(v)) =
+                element.properties.get("isStandard")
+            {
+                elem_start.push_attribute(("isStandard", if *v { "true" } else { "false" }));
             }
 
             // Documentation body - escape for XML attribute
@@ -848,13 +941,37 @@ mod writer {
             // Other properties
             for (key, value) in &element.properties {
                 let k = key.as_ref();
-                // Skip internal/special properties
-                if k == "isStandard" || k == "isComposite" || k == "href" || k == "href_target_name" 
-                    || k.starts_with("_") {
+                // Skip boolean properties (already written above) and internal properties
+                if k == "isAbstract" || k == "isVariation" || k == "isDerived" || k == "isReadOnly"
+                    || k == "isParallel" || k == "isStandard" || k == "isComposite" 
+                    || k == "isUnique" || k == "isOrdered"
+                    || k == "href" || k == "href_target_name" || k.starts_with("_") {
                     continue;
                 }
                 if let super::super::model::PropertyValue::String(s) = value {
                     elem_start.push_attribute((k, s.as_ref()));
+                }
+            }
+        }
+
+        /// Write namespace attributes for the root element.
+        /// Uses declared_namespaces from metadata if available (for roundtrip fidelity),
+        /// otherwise writes both kerml and sysml namespaces as defaults.
+        fn write_namespace_attrs(elem_start: &mut BytesStart, model: &Model) {
+            let ns = &model.metadata.declared_namespaces;
+            
+            if ns.is_empty() {
+                // No namespace info - write both as defaults
+                elem_start.push_attribute(("xmlns:kerml", namespace::KERML));
+                elem_start.push_attribute(("xmlns:sysml", namespace::SYSML));
+            } else {
+                // Write only the namespaces that were declared in original (preserve order)
+                // Note: HashMap doesn't preserve order, but for xmlns declarations order doesn't matter semantically
+                if let Some(uri) = ns.get("kerml") {
+                    elem_start.push_attribute(("xmlns:kerml", uri.as_str()));
+                }
+                if let Some(uri) = ns.get("sysml") {
+                    elem_start.push_attribute(("xmlns:sysml", uri.as_str()));
                 }
             }
         }
@@ -874,6 +991,7 @@ mod writer {
             match kind {
                 ElementKind::NamespaceImport => "importedNamespace",
                 ElementKind::MembershipImport => "importedMembership",
+                ElementKind::Membership => "memberElement",
                 ElementKind::Specialization => "superclassifier",
                 ElementKind::FeatureTyping => "type",
                 ElementKind::Subsetting | ElementKind::ReferenceSubsetting | ElementKind::CrossSubsetting => "subsettedFeature",
@@ -891,8 +1009,20 @@ mod writer {
             element: &Element,
         ) -> Result<(), InterchangeError> {
             if let Some(super::super::model::PropertyValue::String(href)) = element.properties.get("href") {
-                let href_elem_name = Self::href_element_name(element.kind);
-                let mut href_elem = BytesStart::new(href_elem_name);
+                // Use stored tag name if available (for roundtrip), else derive from kind
+                let href_elem_name: String = if let Some(super::super::model::PropertyValue::String(tag)) = element.properties.get("_href_tag") {
+                    tag.to_string()
+                } else {
+                    Self::href_element_name(element.kind).to_string()
+                };
+                
+                let mut href_elem = BytesStart::new(&href_elem_name);
+                
+                // Add xsi:type if stored (for roundtrip)
+                if let Some(super::super::model::PropertyValue::String(xsi_type)) = element.properties.get("_href_xsi_type") {
+                    href_elem.push_attribute(("xsi:type", xsi_type.as_ref()));
+                }
+                
                 href_elem.push_attribute(("href", href.as_ref()));
                 writer
                     .write_event(Event::Empty(href_elem))

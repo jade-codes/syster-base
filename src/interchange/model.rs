@@ -1072,6 +1072,9 @@ pub struct ModelMetadata {
     pub created: Option<String>,
     /// Last modified timestamp.
     pub modified: Option<String>,
+    /// Declared XML namespaces (for roundtrip fidelity).
+    /// Maps prefix -> namespace URI (e.g., "sysml" -> "https://www.omg.org/spec/SysML/20250201").
+    pub declared_namespaces: std::collections::HashMap<String, String>,
 }
 
 #[cfg(test)]
