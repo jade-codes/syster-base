@@ -4,6 +4,7 @@
 // mod tests_expression;  // pest parser tests
 // mod tests_kerml;       // pest parser tests
 // mod tests_kerml_stdlib;  // pest parser tests
+mod tests_error_display;
 mod tests_kerml_ast;
 mod tests_stdlib_kerml;
 mod tests_stdlib_sysml;

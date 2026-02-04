@@ -124,16 +124,259 @@ pub fn kind_to_name(kind: SyntaxKind) -> &'static str {
         SyntaxKind::FAT_ARROW => "'=>'",
         SyntaxKind::DOLLAR => "'$'",
 
-        // Common keywords - extract text from the enum variant name
-        _ => {
-            // For keywords, try to extract a user-friendly name
-            let debug_str = format!("{:?}", kind);
-            if debug_str.ends_with("_KW") {
-                // It's a keyword - return as-is from debug, user will see the raw keyword
-                return "keyword";
-            }
-            "token"
-        }
+        // =====================================================================
+        // Keywords - SysML v2
+        // =====================================================================
+        // Namespace keywords
+        SyntaxKind::PACKAGE_KW => "'package'",
+        SyntaxKind::LIBRARY_KW => "'library'",
+        SyntaxKind::STANDARD_KW => "'standard'",
+        SyntaxKind::NAMESPACE_KW => "'namespace'",
+
+        // Import/visibility
+        SyntaxKind::IMPORT_KW => "'import'",
+        SyntaxKind::ALIAS_KW => "'alias'",
+        SyntaxKind::ALL_KW => "'all'",
+        SyntaxKind::FILTER_KW => "'filter'",
+        SyntaxKind::PRIVATE_KW => "'private'",
+        SyntaxKind::PROTECTED_KW => "'protected'",
+        SyntaxKind::PUBLIC_KW => "'public'",
+
+        // Definition keywords
+        SyntaxKind::DEF_KW => "'def'",
+        SyntaxKind::ABSTRACT_KW => "'abstract'",
+        SyntaxKind::COMPOSITE_KW => "'composite'",
+        SyntaxKind::PORTION_KW => "'portion'",
+        SyntaxKind::VARIATION_KW => "'variation'",
+        SyntaxKind::VARIANT_KW => "'variant'",
+
+        // Structure definitions
+        SyntaxKind::PART_KW => "'part'",
+        SyntaxKind::ATTRIBUTE_KW => "'attribute'",
+        SyntaxKind::ENUMERATION_KW => "'enumeration'",
+        SyntaxKind::ENUM_KW => "'enum'",
+        SyntaxKind::ITEM_KW => "'item'",
+        SyntaxKind::OCCURRENCE_KW => "'occurrence'",
+        SyntaxKind::INDIVIDUAL_KW => "'individual'",
+
+        // Port/connection keywords
+        SyntaxKind::PORT_KW => "'port'",
+        SyntaxKind::CONNECTION_KW => "'connection'",
+        SyntaxKind::INTERFACE_KW => "'interface'",
+        SyntaxKind::BINDING_KW => "'binding'",
+        SyntaxKind::FLOW_KW => "'flow'",
+        SyntaxKind::ALLOCATION_KW => "'allocation'",
+        SyntaxKind::ALLOCATE_KW => "'allocate'",
+
+        // Behavior keywords
+        SyntaxKind::ACTION_KW => "'action'",
+        SyntaxKind::STATE_KW => "'state'",
+        SyntaxKind::TRANSITION_KW => "'transition'",
+        SyntaxKind::ENTRY_KW => "'entry'",
+        SyntaxKind::EXIT_KW => "'exit'",
+        SyntaxKind::DO_KW => "'do'",
+        SyntaxKind::ACCEPT_KW => "'accept'",
+        SyntaxKind::SEND_KW => "'send'",
+        SyntaxKind::PERFORM_KW => "'perform'",
+        SyntaxKind::EXHIBIT_KW => "'exhibit'",
+
+        // Message/event keywords
+        SyntaxKind::MESSAGE_KW => "'message'",
+        SyntaxKind::SNAPSHOT_KW => "'snapshot'",
+        SyntaxKind::TIMESLICE_KW => "'timeslice'",
+        SyntaxKind::FRAME_KW => "'frame'",
+        SyntaxKind::EVENT_KW => "'event'",
+
+        // Control flow
+        SyntaxKind::IF_KW => "'if'",
+        SyntaxKind::ELSE_KW => "'else'",
+        SyntaxKind::THEN_KW => "'then'",
+        SyntaxKind::LOOP_KW => "'loop'",
+        SyntaxKind::WHILE_KW => "'while'",
+        SyntaxKind::UNTIL_KW => "'until'",
+        SyntaxKind::FOR_KW => "'for'",
+        SyntaxKind::FORK_KW => "'fork'",
+        SyntaxKind::JOIN_KW => "'join'",
+        SyntaxKind::MERGE_KW => "'merge'",
+        SyntaxKind::DECIDE_KW => "'decide'",
+        SyntaxKind::FIRST_KW => "'first'",
+        SyntaxKind::DONE_KW => "'done'",
+        SyntaxKind::START_KW => "'start'",
+        SyntaxKind::TERMINATE_KW => "'terminate'",
+        SyntaxKind::PARALLEL_KW => "'parallel'",
+        SyntaxKind::ASSIGN_KW => "'assign'",
+        SyntaxKind::CONNECT_KW => "'connect'",
+
+        // Action-specific
+        SyntaxKind::BIND_KW => "'bind'",
+        SyntaxKind::NEW_KW => "'new'",
+        SyntaxKind::AFTER_KW => "'after'",
+        SyntaxKind::AT_KW => "'at'",
+        SyntaxKind::WHEN_KW => "'when'",
+        SyntaxKind::VIA_KW => "'via'",
+        SyntaxKind::THIS_KW => "'this'",
+
+        // Calculation/constraint
+        SyntaxKind::CALC_KW => "'calc'",
+        SyntaxKind::CONSTRAINT_KW => "'constraint'",
+        SyntaxKind::ASSERT_KW => "'assert'",
+        SyntaxKind::ASSUME_KW => "'assume'",
+        SyntaxKind::REQUIRE_KW => "'require'",
+
+        // Requirement keywords
+        SyntaxKind::REQUIREMENT_KW => "'requirement'",
+        SyntaxKind::SUBJECT_KW => "'subject'",
+        SyntaxKind::OBJECTIVE_KW => "'objective'",
+        SyntaxKind::STAKEHOLDER_KW => "'stakeholder'",
+        SyntaxKind::ACTOR_KW => "'actor'",
+        SyntaxKind::CONCERN_KW => "'concern'",
+        SyntaxKind::SATISFY_KW => "'satisfy'",
+        SyntaxKind::VERIFY_KW => "'verify'",
+
+        // Case keywords
+        SyntaxKind::CASE_KW => "'case'",
+        SyntaxKind::ANALYSIS_KW => "'analysis'",
+        SyntaxKind::VERIFICATION_KW => "'verification'",
+        SyntaxKind::USE_KW => "'use'",
+        SyntaxKind::INCLUDE_KW => "'include'",
+
+        // View keywords
+        SyntaxKind::VIEW_KW => "'view'",
+        SyntaxKind::VIEWPOINT_KW => "'viewpoint'",
+        SyntaxKind::RENDERING_KW => "'rendering'",
+        SyntaxKind::RENDER_KW => "'render'",
+        SyntaxKind::EXPOSE_KW => "'expose'",
+
+        // Metadata
+        SyntaxKind::METACLASS_KW => "'metaclass'",
+        SyntaxKind::METADATA_KW => "'metadata'",
+        SyntaxKind::ABOUT_KW => "'about'",
+
+        // Documentation
+        SyntaxKind::DOC_KW => "'doc'",
+        SyntaxKind::COMMENT_KW => "'comment'",
+        SyntaxKind::LANGUAGE_KW => "'language'",
+        SyntaxKind::LOCALE_KW => "'locale'",
+        SyntaxKind::REP_KW => "'rep'",
+
+        // Relationship keywords
+        SyntaxKind::SPECIALIZES_KW => "'specializes'",
+        SyntaxKind::SUBSETS_KW => "'subsets'",
+        SyntaxKind::REDEFINES_KW => "'redefines'",
+        SyntaxKind::REFERENCES_KW => "'references'",
+        SyntaxKind::TYPED_KW => "'typed'",
+        SyntaxKind::DEFINED_KW => "'defined'",
+        SyntaxKind::BY_KW => "'by'",
+        SyntaxKind::INTERSECTS_KW => "'intersects'",
+        SyntaxKind::UNIONS_KW => "'unions'",
+        SyntaxKind::DISJOINT_KW => "'disjoint'",
+        SyntaxKind::DISJOINING_KW => "'disjoining'",
+        SyntaxKind::CONJUGATES_KW => "'conjugates'",
+        SyntaxKind::CONJUGATE_KW => "'conjugate'",
+        SyntaxKind::DIFFERS_KW => "'differs'",
+        SyntaxKind::CROSSES_KW => "'crosses'",
+        SyntaxKind::INVERSE_KW => "'inverse'",
+        SyntaxKind::CHAINS_KW => "'chains'",
+        SyntaxKind::DIFFERENCES_KW => "'differences'",
+        SyntaxKind::FEATURED_KW => "'featured'",
+        SyntaxKind::FEATURING_KW => "'featuring'",
+        SyntaxKind::INVERTING_KW => "'inverting'",
+        SyntaxKind::OF_KW => "'of'",
+
+        // Standalone relationship keywords
+        SyntaxKind::SPECIALIZATION_KW => "'specialization'",
+        SyntaxKind::SUBCLASSIFIER_KW => "'subclassifier'",
+        SyntaxKind::REDEFINITION_KW => "'redefinition'",
+        SyntaxKind::SUBSET_KW => "'subset'",
+        SyntaxKind::SUBTYPE_KW => "'subtype'",
+        SyntaxKind::TYPING_KW => "'typing'",
+        SyntaxKind::CONJUGATION_KW => "'conjugation'",
+        SyntaxKind::MULTIPLICITY_KW => "'multiplicity'",
+
+        // Feature modifiers
+        SyntaxKind::REF_KW => "'ref'",
+        SyntaxKind::READONLY_KW => "'readonly'",
+        SyntaxKind::DERIVED_KW => "'derived'",
+        SyntaxKind::END_KW => "'end'",
+        SyntaxKind::ORDERED_KW => "'ordered'",
+        SyntaxKind::NONUNIQUE_KW => "'nonunique'",
+        SyntaxKind::DEFAULT_KW => "'default'",
+        SyntaxKind::VAR_KW => "'var'",
+        SyntaxKind::CONST_KW => "'const'",
+        SyntaxKind::CONSTANT_KW => "'constant'",
+        SyntaxKind::MEMBER_KW => "'member'",
+        SyntaxKind::RETURN_KW => "'return'",
+
+        // Direction
+        SyntaxKind::IN_KW => "'in'",
+        SyntaxKind::OUT_KW => "'out'",
+        SyntaxKind::INOUT_KW => "'inout'",
+
+        // Dependency
+        SyntaxKind::DEPENDENCY_KW => "'dependency'",
+        SyntaxKind::FROM_KW => "'from'",
+        SyntaxKind::TO_KW => "'to'",
+
+        // Succession
+        SyntaxKind::SUCCESSION_KW => "'succession'",
+        SyntaxKind::FIRST_KW_2 => "'first'",
+
+        // Boolean/null
+        SyntaxKind::TRUE_KW => "'true'",
+        SyntaxKind::FALSE_KW => "'false'",
+        SyntaxKind::NULL_KW => "'null'",
+
+        // Logical operators
+        SyntaxKind::AND_KW => "'and'",
+        SyntaxKind::OR_KW => "'or'",
+        SyntaxKind::NOT_KW => "'not'",
+        SyntaxKind::XOR_KW => "'xor'",
+        SyntaxKind::IMPLIES_KW => "'implies'",
+
+        // Classification
+        SyntaxKind::HASTYPE_KW => "'hastype'",
+        SyntaxKind::ISTYPE_KW => "'istype'",
+        SyntaxKind::AS_KW => "'as'",
+        SyntaxKind::META_KW => "'meta'",
+
+        // =====================================================================
+        // Keywords - KerML
+        // =====================================================================
+        SyntaxKind::TYPE_KW => "'type'",
+        SyntaxKind::CLASSIFIER_KW => "'classifier'",
+        SyntaxKind::CLASS_KW => "'class'",
+        SyntaxKind::STRUCT_KW => "'struct'",
+        SyntaxKind::DATATYPE_KW => "'datatype'",
+        SyntaxKind::ASSOC_KW => "'assoc'",
+        SyntaxKind::BEHAVIOR_KW => "'behavior'",
+        SyntaxKind::FUNCTION_KW => "'function'",
+        SyntaxKind::PREDICATE_KW => "'predicate'",
+        SyntaxKind::INTERACTION_KW => "'interaction'",
+        SyntaxKind::FEATURE_KW => "'feature'",
+        SyntaxKind::STEP_KW => "'step'",
+        SyntaxKind::EXPR_KW => "'expr'",
+        SyntaxKind::CONNECTOR_KW => "'connector'",
+        SyntaxKind::INV_KW => "'inv'",
+
+        // =====================================================================
+        // Composite nodes - describe the construct
+        // =====================================================================
+        SyntaxKind::SOURCE_FILE => "source file",
+        SyntaxKind::PACKAGE => "package",
+        SyntaxKind::LIBRARY_PACKAGE => "library package",
+        SyntaxKind::NAMESPACE_BODY => "namespace body",
+        SyntaxKind::IMPORT => "import",
+        SyntaxKind::ALIAS_MEMBER => "alias",
+        SyntaxKind::DEFINITION => "definition",
+        SyntaxKind::USAGE => "usage",
+        SyntaxKind::EXPRESSION => "expression",
+        SyntaxKind::QUALIFIED_NAME => "qualified name",
+        SyntaxKind::NAME => "name",
+        SyntaxKind::MULTIPLICITY => "multiplicity",
+        SyntaxKind::MULTIPLICITY_RANGE => "multiplicity range",
+
+        // Fallback for any remaining cases
+        _ => "token",
     }
 }
 

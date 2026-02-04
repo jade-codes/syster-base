@@ -274,6 +274,19 @@ pub trait SysMLParser: ExpressionParser {
 // Helper Functions
 // =============================================================================
 
+/// Emit an error for missing body terminator with context
+fn error_missing_body_terminator<P: SysMLParser>(p: &mut P, context: &str) {
+    let found = if let Some(text) = p.current_token_text() {
+        format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+    } else {
+        "end of file".to_string()
+    };
+    p.error(format!(
+        "expected ';' to end {} or '{{' to start body, found {}",
+        context, found
+    ));
+}
+
 /// Helper to consume a keyword and skip trivia in one call
 fn bump_keyword<P: SysMLParser>(p: &mut P) {
     p.bump();
@@ -587,18 +600,27 @@ pub fn parse_body<P: SysMLParser>(p: &mut P) {
             // Recovery if no progress made
             if p.get_pos() == start_pos && !p.at(SyntaxKind::ERROR) && !p.at(SyntaxKind::R_BRACE) {
                 let got = if let Some(text) = p.current_token_text() {
-                    format!("'{}'", text)
+                    format!("'{}' ({})", text, kind_to_name(p.current_kind()))
                 } else {
                     kind_to_name(p.current_kind()).to_string()
                 };
-                p.error(format!("unexpected {} in body", got));
+                p.error(format!("unexpected {} in definition body—expected a member declaration", got));
                 p.bump();
             }
         }
 
         p.expect(SyntaxKind::R_BRACE);
     } else {
-        p.error("expected ';' or '{'")
+        // Provide more context about what we found
+        let found = if let Some(text) = p.current_token_text() {
+            format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+        } else {
+            "end of file".to_string()
+        };
+        p.error(format!(
+            "expected ';' to end declaration or '{{' to start body, found {}",
+            found
+        ))
     }
 
     p.finish_node();
@@ -709,7 +731,7 @@ pub fn parse_import<P: SysMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "import statement");
     }
 
     p.finish_node();
@@ -743,7 +765,7 @@ pub fn parse_alias<P: SysMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "alias declaration");
     }
 
     p.finish_node();
@@ -756,7 +778,7 @@ fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "declaration");
     }
 }
 
@@ -2773,7 +2795,7 @@ pub fn parse_constraint_body<P: SysMLParser>(p: &mut P) {
 
         p.expect(SyntaxKind::R_BRACE);
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "constraint");
     }
 
     p.finish_node();
@@ -4407,7 +4429,7 @@ fn parse_case_body<P: SysMLParser>(p: &mut P) {
     }
 
     if !p.at(SyntaxKind::L_BRACE) {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "case definition");
         return;
     }
 
@@ -4474,7 +4496,7 @@ fn parse_metadata_body<P: SysMLParser>(p: &mut P) {
     }
 
     if !p.at(SyntaxKind::L_BRACE) {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "metadata definition");
         return;
     }
 
@@ -4785,7 +4807,7 @@ fn parse_requirement_body<P: SysMLParser>(p: &mut P) {
     }
 
     if !p.at(SyntaxKind::L_BRACE) {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "requirement");
         return;
     }
 
@@ -4906,7 +4928,7 @@ pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
 
         p.expect(SyntaxKind::R_BRACE);
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "calc definition");
     }
 
     p.finish_node();

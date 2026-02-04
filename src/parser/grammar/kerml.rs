@@ -186,6 +186,19 @@ pub trait KerMLParser: ExpressionParser {
 // Helper Functions - Common Patterns
 // =============================================================================
 
+/// Emit an error for missing body terminator with context
+fn error_missing_body_terminator<P: KerMLParser>(p: &mut P, context: &str) {
+    let found = if let Some(text) = p.current_token_text() {
+        format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+    } else {
+        "end of file".to_string()
+    };
+    p.error(format!(
+        "expected ';' to end {} or '{{' to start body, found {}",
+        context, found
+    ));
+}
+
 /// Bump current token and skip trivia (used 100+ times)
 #[inline]
 fn bump_and_skip<P: KerMLParser>(p: &mut P) {
@@ -1318,7 +1331,16 @@ pub fn parse_body<P: KerMLParser>(p: &mut P) {
 
         p.expect(SyntaxKind::R_BRACE);
     } else {
-        p.error("expected ';' or '{'")
+        // Provide more context about what we found
+        let found = if let Some(text) = p.current_token_text() {
+            format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+        } else {
+            "end of file".to_string()
+        };
+        p.error(format!(
+            "expected ';' to end declaration or '{{' to start body, found {}",
+            found
+        ))
     }
 
     p.finish_node();
@@ -1572,7 +1594,7 @@ pub fn parse_import<P: KerMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "import statement");
     }
     p.finish_node();
 }
@@ -1630,7 +1652,7 @@ pub fn parse_alias<P: KerMLParser>(p: &mut P) {
     } else if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "alias declaration");
     }
 
     p.finish_node();
@@ -1780,7 +1802,7 @@ pub fn parse_calc_body<P: KerMLParser>(p: &mut P) {
 
         p.expect(SyntaxKind::R_BRACE);
     } else {
-        p.error("expected ';' or '{'");
+        error_missing_body_terminator(p, "calc/function definition");
     }
 
     p.finish_node();
