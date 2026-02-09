@@ -19,7 +19,7 @@
 
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use super::symbols::{HirSymbol, RefKind, SymbolKind, TypeRefKind};
 use crate::base::FileId;
@@ -185,7 +185,7 @@ pub type SymbolIdx = usize;
 /// Symbols are stored in a single vector (`symbols`) and referenced by index
 /// from all other maps. This ensures consistency when symbols are mutated
 /// (e.g., when resolving type references).
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub struct SymbolIndex {
     /// The single source of truth for all symbols.
     symbols: Vec<HirSymbol>,
@@ -213,6 +213,33 @@ pub struct SymbolIndex {
     import_filters: HashMap<Arc<str>, Vec<Arc<str>>>,
     /// Flag to track if parent scope index needs rebuilding.
     parent_index_dirty: bool,
+    /// Cache for SemanticMetadata baseType resolution (with interior mutability for lazy population).
+    /// Maps annotation short name (e.g., "systemdd") -> resolved baseType qualified name (e.g., "AHFProfileLib::SysDD").
+    /// None value means "already looked up, no baseType found".
+    metadata_basetype_cache: RwLock<HashMap<Arc<str>, Option<Arc<str>>>>,
+}
+
+// Manual Clone implementation because RwLock doesn't implement Clone
+impl Clone for SymbolIndex {
+    fn clone(&self) -> Self {
+        Self {
+            symbols: self.symbols.clone(),
+            by_qualified_name: self.by_qualified_name.clone(),
+            by_simple_name: self.by_simple_name.clone(),
+            by_short_name: self.by_short_name.clone(),
+            by_file: self.by_file.clone(),
+            definitions: self.definitions.clone(),
+            visibility_map: self.visibility_map.clone(),
+            by_parent_scope: self.by_parent_scope.clone(),
+            scope_filters: self.scope_filters.clone(),
+            import_filters: self.import_filters.clone(),
+            parent_index_dirty: self.parent_index_dirty,
+            // Clone the cache contents, not the lock
+            metadata_basetype_cache: RwLock::new(
+                self.metadata_basetype_cache.read().unwrap().clone(),
+            ),
+        }
+    }
 }
 
 impl SymbolIndex {
@@ -356,6 +383,9 @@ impl SymbolIndex {
             // Mark parent index as dirty
             self.parent_index_dirty = true;
 
+            // Clear metadata baseType cache since definitions might have changed
+            self.metadata_basetype_cache.write().unwrap().clear();
+
             for &idx in &indices {
                 if let Some(symbol) = self.symbols.get(idx) {
                     let qname = symbol.qualified_name.clone();
@@ -461,6 +491,77 @@ impl SymbolIndex {
                     .collect()
             })
             .unwrap_or_default()
+    }
+
+    /// Get the cached baseType for a SemanticMetadata annotation (e.g., "systemdd" -> "SysDD").
+    /// Returns None if the annotation doesn't resolve to a SemanticMetadata with baseType.
+    /// Uses interior mutability to lazily populate the cache.
+    pub fn get_metadata_basetype(&self, annotation_name: &str) -> Option<Arc<str>> {
+        // Check cache first (read lock)
+        {
+            let cache = self.metadata_basetype_cache.read().unwrap();
+            if let Some(cached) = cache.get(annotation_name) {
+                return cached.clone();
+            }
+        }
+
+        // Not in cache - compute it
+        let result = self.compute_metadata_basetype(annotation_name);
+
+        // Store in cache (write lock, even if None to avoid repeated lookups)
+        self.metadata_basetype_cache
+            .write()
+            .unwrap()
+            .insert(Arc::from(annotation_name), result.clone());
+
+        result
+    }
+
+    /// Compute the baseType for a SemanticMetadata annotation (internal helper).
+    fn compute_metadata_basetype(&self, annotation_name: &str) -> Option<Arc<str>> {
+        use crate::hir::symbols::{RefKind, SymbolKind, TypeRefKind};
+
+        // Look up the metadata definition by short name
+        let metadata_defs = self.lookup_by_short_name(annotation_name);
+
+        // Find a metadata definition (kind = MetadataDefinition or Other since that's what Metaclass becomes)
+        let metadata_def = metadata_defs
+            .iter()
+            .find(|s| matches!(s.kind, SymbolKind::MetadataDefinition | SymbolKind::Other))?;
+
+        // Look for "baseType" feature in this metadata definition
+        let basetype_qname = format!("{}::baseType", metadata_def.qualified_name);
+        let basetype_sym = self.lookup_qualified(&basetype_qname)?;
+
+        // Look for the Expression type_ref - this is the `= value` part
+        for type_ref in &basetype_sym.type_refs {
+            if let TypeRefKind::Simple(tr) = type_ref {
+                if matches!(tr.kind, RefKind::Expression) {
+                    // This is the value expression (e.g., global_systemsdd)
+                    // Try resolved_target first (if already resolved)
+                    if let Some(ref resolved) = tr.resolved_target {
+                        if let Some(value_sym) = self.lookup_qualified(resolved) {
+                            return value_sym.supertypes.first().map(|s| Arc::from(s.as_ref()));
+                        }
+                    }
+                    // Fall back: try to find the target symbol by simple lookup
+                    // The target is in the same scope as the metadata definition, so try looking it up
+                    // in the parent scope (the package where the metadata def is defined)
+                    let parent_scope =
+                        Self::parent_scope(&metadata_def.qualified_name).unwrap_or("");
+                    let target_qname = format!("{}::{}", parent_scope, tr.target);
+                    if let Some(value_sym) = self.lookup_qualified(&target_qname) {
+                        return value_sym.supertypes.first().map(|s| Arc::from(s.as_ref()));
+                    }
+                    // Try direct lookup (might be a fully qualified name)
+                    if let Some(value_sym) = self.lookup_qualified(&tr.target) {
+                        return value_sym.supertypes.first().map(|s| Arc::from(s.as_ref()));
+                    }
+                }
+            }
+        }
+
+        None
     }
 
     /// Debug: Find which scopes contain a name in their visibility map.
@@ -1725,8 +1826,9 @@ impl SymbolIndex {
     /// This ensures that when processing `Shape::tfe` (which inherits from `edges`),
     /// `Shape` has already inherited `edges` from `Path`.
     fn propagate_inherited_members(&mut self) {
-        // Collect all symbols with supertypes, sorted by scope depth (shallowest first)
-        let mut symbols_with_inheritance: Vec<(Arc<str>, Arc<str>, Arc<str>)> = Vec::new();
+        // Collect symbols with their unresolved supertypes and parent scope for later resolution
+        // Format: (qualified_name, parent_scope, unresolved_supertype_name)
+        let mut inheritance_edges: Vec<(Arc<str>, Arc<str>, Arc<str>)> = Vec::new();
 
         for symbol in &self.symbols {
             // Skip symbols that have been removed
@@ -1735,13 +1837,13 @@ impl SymbolIndex {
             }
 
             if !symbol.supertypes.is_empty() {
-                let scope = symbol.qualified_name.clone();
-                let parent_scope: Arc<str> = Self::parent_scope(&scope)
+                let scope = &symbol.qualified_name;
+                let parent_scope: Arc<str> = Self::parent_scope(scope)
                     .map(Arc::from)
                     .unwrap_or_else(|| Arc::from(""));
 
                 for supertype in &symbol.supertypes {
-                    symbols_with_inheritance.push((
+                    inheritance_edges.push((
                         scope.clone(),
                         parent_scope.clone(),
                         supertype.clone(),
@@ -1750,31 +1852,44 @@ impl SymbolIndex {
             }
         }
 
-        // Sort by scope depth (count of "::" separators) - shallowest first
-        symbols_with_inheritance.sort_by_key(|(scope, _, _)| scope.matches("::").count());
+        // Sort edges by scope depth (shallowest first)
+        // This provides a rough topological order for most cases
+        inheritance_edges.sort_by_key(|(scope, _, _)| scope.matches("::").count());
 
-        // Process in order
-        for (scope, parent_scope, supertype) in symbols_with_inheritance {
-            // Resolve the supertype name from the parent scope's context
-            if let Some(resolved) =
-                self.resolve_supertype_for_inheritance(&supertype, &parent_scope)
-            {
-                // Get members from the resolved supertype's visibility
-                let parent_members: Vec<(Arc<str>, Arc<str>)> = self
-                    .visibility_map
-                    .get(&*resolved)
-                    .map(|vis| {
-                        vis.direct_defs
-                            .iter()
-                            .map(|(k, v)| (k.clone(), v.clone()))
-                            .collect()
-                    })
-                    .unwrap_or_default();
+        // Process edges iteratively until no more progress
+        // This handles cyclic dependencies and ensures all resolvable edges are processed
+        let mut max_iterations = 100; // Safety limit
+        let mut made_progress = true;
 
-                // Add to child's visibility
-                if let Some(child_vis) = self.visibility_map.get_mut(&*scope) {
-                    for (name, qname) in parent_members {
-                        child_vis.direct_defs.entry(name).or_insert(qname);
+        while made_progress && max_iterations > 0 {
+            made_progress = false;
+            max_iterations -= 1;
+
+            for (scope, parent_scope, supertype) in &inheritance_edges {
+                // Try to resolve the supertype from the parent scope's context
+                if let Some(resolved) =
+                    self.resolve_supertype_for_inheritance(supertype, parent_scope)
+                {
+                    // Get members from the resolved supertype's visibility
+                    let parent_members: Vec<(Arc<str>, Arc<str>)> = self
+                        .visibility_map
+                        .get(&*resolved)
+                        .map(|vis| {
+                            vis.direct_defs
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.clone()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    // Add to child's visibility if not already present
+                    if let Some(child_vis) = self.visibility_map.get_mut(&**scope) {
+                        for (name, qname) in parent_members {
+                            child_vis.direct_defs.entry(name).or_insert_with(|| {
+                                made_progress = true;
+                                qname
+                            });
+                        }
                     }
                 }
             }
@@ -1880,6 +1995,23 @@ impl SymbolIndex {
             } else {
                 import_name.trim_end_matches("::*")
             };
+
+            // For specific imports like `import KerML::Element`, we need to ensure the
+            // parent package (KerML) has had its imports processed first, so that
+            // Element is visible via KerML's visibility map.
+            // Use a special marker in visited to track scope processing
+            if !is_wildcard && !is_recursive && import_target.contains("::") {
+                if let Some(parent_pkg) = import_target.rsplit_once("::").map(|(p, _)| p) {
+                    // Check if we've already processed this parent
+                    let marker = (Arc::from(parent_pkg), Arc::from("__scope_processed__"));
+                    if !visited.contains(&marker) {
+                        visited.insert(marker);
+                        // Recursively process the parent package first
+                        self.process_imports_recursive(parent_pkg, visited);
+                    }
+                }
+            }
+
             let resolved_target = self.resolve_import_target(scope, import_target);
 
             if is_wildcard || is_recursive {
@@ -2101,6 +2233,16 @@ impl SymbolIndex {
                                 return sym.qualified_name.to_string();
                             }
                         }
+                    }
+                }
+
+                // Check if last_segment is visible via imports in parent's visibility map
+                // This handles transitive public re-exports like:
+                // ISQ has "public import ISQBase::*", so ISQ::DurationValue resolves
+                // to ISQBase::DurationValue via ISQ's visibility map
+                if let Some(vis) = self.visibility_map.get(&parent_qualified as &str) {
+                    if let Some(resolved_qname) = vis.lookup(last_segment) {
+                        return resolved_qname.to_string();
                     }
                 }
             }
@@ -2493,45 +2635,90 @@ impl<'a> Resolver<'a> {
     ///
     /// E.g., if `missionContext: MissionContext` and `MissionContext :> Context`
     /// and `Context` has `spatialCF`, this will find it.
+    ///
+    /// Also handles redefinition chains: if `obj :>> Case::obj` and `Case::obj` has
+    /// type `RequirementCheck`, this will look for members in `RequirementCheck`.
     fn resolve_inherited_member(
         &self,
         usage_sym: &HirSymbol,
         member_name: &str,
     ) -> Option<ResolveResult> {
-        // Get the usage's type from supertypes
-        let type_name = usage_sym.supertypes.first()?;
-
-        // Resolve the type name from the usage's scope
-        // Use direct lookup to avoid recursion
-        let usage_scope = SymbolIndex::parent_scope(&usage_sym.qualified_name).unwrap_or("");
-        let type_sym = self.resolve_without_inheritance(type_name, usage_scope)?;
-
-        // Walk up the type hierarchy looking for the member
-        let mut current_type = type_sym;
+        // Collect all types to search through (handles multiple supertypes and redefinitions)
+        let mut types_to_search: Vec<HirSymbol> = Vec::new();
         let mut visited = std::collections::HashSet::new();
-        visited.insert(current_type.qualified_name.clone());
+        visited.insert(usage_sym.qualified_name.clone());
 
-        loop {
+        // Start by resolving the usage's supertypes
+        let usage_scope = SymbolIndex::parent_scope(&usage_sym.qualified_name).unwrap_or("");
+        for type_name in &usage_sym.supertypes {
+            if let Some(type_sym) = self.resolve_without_inheritance(type_name, usage_scope) {
+                if !visited.contains(&type_sym.qualified_name) {
+                    visited.insert(type_sym.qualified_name.clone());
+                    types_to_search.push(type_sym);
+                }
+            }
+        }
+
+        // Also check SemanticMetadata baseType for metadata annotations
+        // If an element has `#systemdd` annotation, and SysDDMetadata has `baseType = global_systemsdd : SysDD`,
+        // then we should also search in SysDD for inherited members.
+        for annotation in &usage_sym.metadata_annotations {
+            if let Some(basetype_qname) =
+                self.resolve_semantic_metadata_basetype(annotation, usage_scope)
+            {
+                if let Some(basetype_sym) =
+                    self.resolve_without_inheritance(&basetype_qname, usage_scope)
+                {
+                    if !visited.contains(&basetype_sym.qualified_name) {
+                        visited.insert(basetype_sym.qualified_name.clone());
+                        types_to_search.push(basetype_sym);
+                    }
+                }
+            }
+        }
+
+        // Walk through all types, following the hierarchy
+        while let Some(current_type) = types_to_search.pop() {
+            // If current_type is a feature (not a definition), we need to get ITS types
+            // This handles redefinition chains like `obj :>> Case::obj` where Case::obj has type RequirementCheck
+            if !current_type.kind.is_definition() {
+                let feature_scope =
+                    SymbolIndex::parent_scope(&current_type.qualified_name).unwrap_or("");
+                for supertype in &current_type.supertypes {
+                    if let Some(super_sym) =
+                        self.resolve_without_inheritance(supertype, feature_scope)
+                    {
+                        if !visited.contains(&super_sym.qualified_name) {
+                            visited.insert(super_sym.qualified_name.clone());
+                            types_to_search.push(super_sym);
+                        }
+                    }
+                }
+                continue; // Don't look for members in usages, only in their types
+            }
+
             // Check if current_type defines this member
             let member_qname = format!("{}::{}", current_type.qualified_name, member_name);
             if let Some(member_sym) = self.index.lookup_qualified(&member_qname) {
                 return Some(ResolveResult::Found(member_sym.clone()));
             }
 
-            // Move up to parent type (via supertypes)
-            let parent_type_name = current_type.supertypes.first()?;
+            // Add parent types to search queue
             let parent_scope =
                 SymbolIndex::parent_scope(&current_type.qualified_name).unwrap_or("");
-            let parent_type = self.resolve_without_inheritance(parent_type_name, parent_scope)?;
-
-            // Cycle detection
-            if visited.contains(&parent_type.qualified_name) {
-                return None;
+            for parent_type_name in &current_type.supertypes {
+                if let Some(parent_type) =
+                    self.resolve_without_inheritance(parent_type_name, parent_scope)
+                {
+                    if !visited.contains(&parent_type.qualified_name) {
+                        visited.insert(parent_type.qualified_name.clone());
+                        types_to_search.push(parent_type);
+                    }
+                }
             }
-            visited.insert(parent_type.qualified_name.clone());
-
-            current_type = parent_type;
         }
+
+        None
     }
 
     /// Resolve a name without checking inherited members (to avoid recursion).
@@ -2572,6 +2759,20 @@ impl<'a> Resolver<'a> {
 
         // Fall back to exact qualified match
         self.index.lookup_qualified(name).cloned()
+    }
+
+    /// Resolve the baseType from a SemanticMetadata definition (uses cached lookup).
+    /// Given an annotation name like "systemdd", returns the baseType's type (e.g., "SysDD").
+    /// This implements SysML v2 SemanticMetadata where annotated elements implicitly specialize baseType's type.
+    fn resolve_semantic_metadata_basetype(
+        &self,
+        annotation_name: &str,
+        _starting_scope: &str,
+    ) -> Option<String> {
+        // Use the cached lookup in SymbolIndex
+        self.index
+            .get_metadata_basetype(annotation_name)
+            .map(|s| s.to_string())
     }
 
     /// Resolve a qualified path without inheritance check (to avoid recursion).
@@ -2720,7 +2921,12 @@ mod tests {
         let mut index = SymbolIndex::new();
         index.add_file(
             FileId::new(0),
-            vec![make_symbol("Car", "Vehicle::Car", SymbolKind::PartDefinition, 0)],
+            vec![make_symbol(
+                "Car",
+                "Vehicle::Car",
+                SymbolKind::PartDefinition,
+                0,
+            )],
         );
 
         let resolver = Resolver::new(&index);

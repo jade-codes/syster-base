@@ -1444,46 +1444,63 @@ impl NormalizedUsage {
                     (None, None, None, None)
                 }
             } else {
-                let usage_name = usage.name();
-                if usage_name.is_some() {
-                    // Explicit name present
+                // Check for multiple names (e.g., `end self2 [1] feature sameThing: Anything`)
+                // In this case, the first name is the identification/short name,
+                // and the second name (after 'feature' keyword) is the actual feature name.
+                let all_names = usage.names();
+                if all_names.len() >= 2 {
+                    // Multiple names: first is identification, second is feature name
+                    // This handles KerML patterns like: end self2 [1] feature sameThing: ...
+                    let identification = &all_names[0];
+                    let feature_name = &all_names[1];
                     (
-                        usage_name.as_ref().and_then(|n| n.text()),
-                        usage_name
-                            .as_ref()
-                            .and_then(|n| n.short_name())
-                            .and_then(|sn| sn.text()),
-                        usage_name.as_ref().map(|n| n.syntax().text_range()),
-                        usage_name
-                            .and_then(|n| n.short_name())
-                            .map(|sn| sn.syntax().text_range()),
+                        feature_name.text(),
+                        identification.text(), // The first name becomes the short_name
+                        feature_name.syntax().text_range().into(),
+                        Some(identification.syntax().text_range()),
                     )
                 } else {
-                    // No explicit name - check for shorthand redefines (`:>> name`)
-                    // In SysML, `:>> name` is equivalent to naming the element with `name`
-                    // and adding a redefines relationship to the parent's `name` feature.
-                    // This ONLY applies to the `:>>` operator, NOT the `redefines` keyword.
-                    let redefines_name = usage.specializations().find_map(|spec| {
-                        // Only consider shorthand redefines (:>>), not keyword (redefines)
-                        if spec.is_shorthand_redefines() {
-                            spec.target().and_then(|t| {
-                                let target_str = t.to_string();
-                                // Only use simple names (not qualified names like A::B)
-                                if !target_str.contains("::") && !target_str.contains('.') {
-                                    Some((target_str, t.syntax().text_range()))
-                                } else {
-                                    None
-                                }
-                            })
-                        } else {
-                            None
-                        }
-                    });
-
-                    if let Some((name, range)) = redefines_name {
-                        (Some(name), None, Some(range), None)
+                    let usage_name = usage.name();
+                    if usage_name.is_some() {
+                        // Explicit name present
+                        (
+                            usage_name.as_ref().and_then(|n| n.text()),
+                            usage_name
+                                .as_ref()
+                                .and_then(|n| n.short_name())
+                                .and_then(|sn| sn.text()),
+                            usage_name.as_ref().map(|n| n.syntax().text_range()),
+                            usage_name
+                                .and_then(|n| n.short_name())
+                                .map(|sn| sn.syntax().text_range()),
+                        )
                     } else {
-                        (None, None, None, None)
+                        // No explicit name - check for shorthand redefines (`:>> name`)
+                        // In SysML, `:>> name` is equivalent to naming the element with `name`
+                        // and adding a redefines relationship to the parent's `name` feature.
+                        // This ONLY applies to the `:>>` operator, NOT the `redefines` keyword.
+                        let redefines_name = usage.specializations().find_map(|spec| {
+                            // Only consider shorthand redefines (:>>), not keyword (redefines)
+                            if spec.is_shorthand_redefines() {
+                                spec.target().and_then(|t| {
+                                    let target_str = t.to_string();
+                                    // Only use simple names (not qualified names like A::B)
+                                    if !target_str.contains("::") && !target_str.contains('.') {
+                                        Some((target_str, t.syntax().text_range()))
+                                    } else {
+                                        None
+                                    }
+                                })
+                            } else {
+                                None
+                            }
+                        });
+
+                        if let Some((name, range)) = redefines_name {
+                            (Some(name), None, Some(range), None)
+                        } else {
+                            (None, None, None, None)
+                        }
                     }
                 }
             };

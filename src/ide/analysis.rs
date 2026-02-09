@@ -340,6 +340,42 @@ impl AnalysisHost {
         self.file_path_map.get(&file_id).map(PathBuf::from)
     }
 
+    /// Get semantic diagnostics for a specific file.
+    ///
+    /// Returns a list of diagnostics (errors and warnings) found during semantic analysis.
+    pub fn diagnostics(&self, file_id: FileId) -> Vec<crate::hir::Diagnostic> {
+        crate::hir::check_file(&self.symbol_index, file_id)
+    }
+
+    /// Get all semantic diagnostics for all loaded files.
+    ///
+    /// Returns a map from file path to diagnostics for that file.
+    pub fn all_diagnostics(&self) -> HashMap<String, Vec<crate::hir::Diagnostic>> {
+        let mut result = HashMap::new();
+        for (path, &file_id) in &self.file_id_map {
+            let diags = self.diagnostics(file_id);
+            if !diags.is_empty() {
+                result.insert(path.clone(), diags);
+            }
+        }
+        result
+    }
+
+    /// Get all semantic errors (severity = Error) for all loaded files.
+    ///
+    /// Returns a vec of (file_path, diagnostic) pairs for errors only.
+    pub fn all_errors(&self) -> Vec<(String, crate::hir::Diagnostic)> {
+        let mut result = Vec::new();
+        for (path, &file_id) in &self.file_id_map {
+            for diag in self.diagnostics(file_id) {
+                if diag.severity == crate::hir::Severity::Error {
+                    result.push((path.clone(), diag));
+                }
+            }
+        }
+        result
+    }
+
     /// Get the file_id_map (for compatibility during migration).
     pub fn file_id_map(&self) -> &HashMap<String, FileId> {
         &self.file_id_map

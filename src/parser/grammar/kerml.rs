@@ -329,6 +329,50 @@ fn looks_like_qualified_name_before<P: KerMLParser>(p: &P, target_kinds: &[Synta
     }
 }
 
+/// Returns true if we see: name (possibly qualified with :: or .) followed by target_kind
+/// Unlike looks_like_qualified_name_before, this returns true for both simple and qualified names.
+/// Used for binding patterns where `binding payload = target` has `payload` as a direct endpoint.
+fn looks_like_name_then<P: KerMLParser>(p: &P, target_kind: SyntaxKind) -> bool {
+    if !p.at_name_token() {
+        return false;
+    }
+
+    let mut peek_idx = 1;
+
+    loop {
+        // Skip trivia to get next meaningful token
+        let mut kind = p.peek_kind(peek_idx);
+        while kind.is_trivia() {
+            peek_idx += 1;
+            kind = p.peek_kind(peek_idx);
+        }
+
+        if kind == SyntaxKind::DOT || kind == SyntaxKind::COLON_COLON {
+            peek_idx += 1;
+
+            // Skip trivia after qualifier
+            kind = p.peek_kind(peek_idx);
+            while kind.is_trivia() {
+                peek_idx += 1;
+                kind = p.peek_kind(peek_idx);
+            }
+
+            // Expect a name after qualifier
+            if is_name_kind(kind) {
+                peek_idx += 1;
+                continue;
+            } else {
+                return false;
+            }
+        } else if kind == target_kind {
+            // Found target keyword
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
 // =============================================================================
 // KerML File Entry Point
 // =============================================================================
@@ -2578,8 +2622,24 @@ fn parse_binding_or_succession_impl<P: KerMLParser>(p: &mut P) {
     let parsed_name = if should_parse_first_pattern(p, is_succession) {
         false // FIRST indicates direct endpoint syntax
     } else {
-        let looks_like_direct =
-            looks_like_qualified_name_before(p, &[SyntaxKind::EQ, SyntaxKind::THEN_KW]);
+        // For successions: `succession X then Y` should NOT parse X as the identification
+        // X is a direct endpoint reference. Only parse as identification if there's something
+        // else between the name and 'then' (like typing, specialization, etc.)
+        //
+        // For bindings: `binding payload = target` should NOT parse `payload` as identification
+        // `payload` is the source endpoint. Only parse as identification if there's something
+        // else between the name and '=' (like typing, or another name for bind keyword)
+        let looks_like_direct = if is_succession {
+            // Check if the pattern is simply `name then` (direct endpoint)
+            // vs `name : Type then` or `name someName then` (has identification)
+            let next_after_name = p.peek_kind(1);
+            next_after_name == SyntaxKind::THEN_KW
+        } else {
+            // For bindings: check if the name is followed by `=` (after skipping optional qualifiers)
+            // `binding payload = target` -> direct endpoint (payload is source)
+            // `binding myName bind x = y` -> myName is identification, x is source
+            looks_like_name_then(p, SyntaxKind::EQ)
+        };
         parse_binding_succession_prefix(p, looks_like_direct)
     };
 

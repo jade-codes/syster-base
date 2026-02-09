@@ -203,7 +203,12 @@ fn test_feature_chain_with_subsetting() {
     index.add_file(
         FileId::new(0),
         vec![
-            make_symbol("Polyhedron", "Polyhedron", SymbolKind::ItemDefinition, vec![]),
+            make_symbol(
+                "Polyhedron",
+                "Polyhedron",
+                SymbolKind::ItemDefinition,
+                vec![],
+            ),
             make_symbol("edges", "Polyhedron::edges", SymbolKind::ItemUsage, vec![]),
             make_symbol(
                 "vertices",
@@ -218,7 +223,12 @@ fn test_feature_chain_with_subsetting() {
     index.add_file(
         FileId::new(1),
         vec![
-            make_symbol("Shape", "Shape", SymbolKind::ItemDefinition, vec!["Polyhedron"]),
+            make_symbol(
+                "Shape",
+                "Shape",
+                SymbolKind::ItemDefinition,
+                vec!["Polyhedron"],
+            ),
             make_symbol("tfe", "Shape::tfe", SymbolKind::ItemUsage, vec!["edges"]),
         ],
     );

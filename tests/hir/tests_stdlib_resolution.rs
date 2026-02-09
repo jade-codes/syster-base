@@ -474,3 +474,389 @@ mod unicode_names {
         assert_no_errors(source);
     }
 }
+
+// =============================================================================
+// SYSML LIBRARY FALSE POSITIVES - SPECIFIC ISSUES FROM STDLIB
+// =============================================================================
+// These tests reproduce specific errors found when parsing sysml.library/
+
+mod sysml_library_false_positives {
+    use super::*;
+
+    fn get_diagnostics_for_kerml(source: &str) -> Vec<Diagnostic> {
+        let (mut host, file_id) = analysis_from_kerml(source);
+        let analysis = host.analysis();
+        check_file(analysis.symbol_index(), file_id)
+    }
+
+    fn get_errors_for_kerml(source: &str) -> Vec<Diagnostic> {
+        get_diagnostics_for_kerml(source)
+            .into_iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect()
+    }
+
+    fn assert_no_kerml_errors(source: &str) {
+        let errors = get_errors_for_kerml(source);
+        assert!(
+            errors.is_empty(),
+            "Expected no errors, but got {} errors:\n{}",
+            errors.len(),
+            errors
+                .iter()
+                .map(|e| format!("  - {}", e.message))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    /// Succession references should not be treated as new definitions.
+    /// Pattern from ControlPerformances.kerml: `succession body then untilDecision;`
+    /// The `body` here is a REFERENCE to the `in body` feature, not a new definition.
+    ///
+    /// BUG: E0004 duplicate definition: 'body' is already defined
+    /// Location: ControlPerformances.kerml:128:14
+    #[test]
+    fn test_succession_reference_not_duplicate() {
+        let source = r#"
+            package Test {
+                behavior LoopPerformance {
+                    in body : Anything;
+                    step untilDecision : Anything;
+                    succession body then untilDecision;
+                }
+            }
+        "#;
+        // Debug: dump all symbols to understand what's being created
+        let (mut host, file_id) = analysis_from_kerml(source);
+        let analysis = host.analysis();
+        let symbols = analysis.symbol_index().symbols_in_file(file_id);
+        eprintln!("=== Symbols ===");
+        for sym in &symbols {
+            eprintln!(
+                "  {} ({:?}) at L{}",
+                sym.qualified_name, sym.kind, sym.start_line
+            );
+        }
+        eprintln!("=== End Symbols ===");
+
+        assert_no_kerml_errors(source);
+    }
+
+    /// Same-named steps in different behaviors are not duplicates.
+    /// Pattern from OccurrenceFunctions.kerml: `removeStep` in both removeOld and removeOldAt
+    ///
+    /// BUG: E0004 duplicate definition: 'removeStep' is already defined
+    /// Location: OccurrenceFunctions.kerml:126:22 and :148:22
+    #[test]
+    fn test_same_step_name_different_behaviors() {
+        let source = r#"
+            package Test {
+                behavior removeOld {
+                    step removeStep : Anything;
+                }
+                behavior removeOldAt {
+                    step removeStep : Anything;
+                }
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// Transitive wildcard imports should resolve through re-exporting packages.
+    /// Pattern from StateSpaceRepresentation.sysml: `import ISQ::DurationValue;`
+    /// where ISQ has `public import ISQBase::*;` and ISQBase defines DurationValue.
+    ///
+    /// BUG: E0001 undefined reference: 'DurationValue'
+    /// Location: StateSpaceRepresentation.sysml:19:9
+    #[test]
+    fn test_transitive_wildcard_import_resolution() {
+        let source = r#"
+            package ISQBase {
+                attribute def DurationValue;
+            }
+            package ISQ {
+                public import ISQBase::*;
+            }
+            package Test {
+                private import ISQ::DurationValue;
+                attribute duration : DurationValue;
+            }
+        "#;
+        assert_no_errors(source);
+    }
+
+    /// Qualified feature chain references should resolve through inheritance.
+    /// Pattern from Links.kerml: `SelfLink::sameThing`
+    ///
+    /// BUG: E0001 undefined reference: 'SelfLink::sameThing'
+    /// Location: Links.kerml:64:21
+    #[test]
+    fn test_qualified_feature_chain_inherited() {
+        let source = r#"
+            package Test {
+                struct SelfLink {
+                    feature sameThing : Anything;
+                }
+                struct Link :> SelfLink {
+                    feature myRef subsets SelfLink::sameThing;
+                }
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// KerML metaobject references should resolve.
+    /// Pattern from Metaobjects.kerml: references to `Element`, `Type` as metaobjects.
+    ///
+    /// BUG: E0001 undefined reference: 'Element', 'Type'
+    /// Location: Metaobjects.kerml:21,30,44
+    #[test]
+    fn test_kerml_metaobject_references() {
+        let source = r#"
+            package KerML {
+                metaclass Element;
+                metaclass Type :> Element;
+            }
+            package Metaobjects {
+                import KerML::*;
+                struct Metaobject {
+                    feature element : Element;
+                    feature mytype : Type;
+                }
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// Redefinitions within nested contexts should not be duplicates.
+    /// Pattern from Transfers.kerml: `source` and `self` in Transfer contexts.
+    ///
+    /// BUG: E0004 duplicate definition: 'source', 'self' already defined
+    /// Location: Transfers.kerml:166-167
+    #[test]
+    fn test_nested_redefines_not_duplicate() {
+        let source = r#"
+            package Base {
+                struct Transfer {
+                    end source : Anything;
+                }
+            }
+            package Test {
+                import Base::*;
+                struct SendTransfer :> Transfer {
+                    end source :>> Transfer::source;
+                }
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+}
+
+// =============================================================================
+// MULTI-LEVEL TRANSITIVE PUBLIC IMPORTS (KerML::Element pattern)
+// =============================================================================
+// KerML has: public import Kernel::*
+// Kernel has: public import Core::*
+// Core has: public import Root::*
+// Root defines Element
+
+mod multi_level_transitive_imports {
+    use super::*;
+
+    fn get_kerml_diagnostics(source: &str) -> Vec<Diagnostic> {
+        let (mut host, file_id) = analysis_from_kerml(source);
+        let analysis = host.analysis();
+        check_file(analysis.symbol_index(), file_id)
+    }
+
+    fn assert_no_kerml_errors(source: &str) {
+        let errors: Vec<_> = get_kerml_diagnostics(source)
+            .into_iter()
+            .filter(|d| d.severity == Severity::Error)
+            .collect();
+        assert!(
+            errors.is_empty(),
+            "Expected no errors, but got {} errors:\n{}",
+            errors.len(),
+            errors
+                .iter()
+                .map(|e| format!("  - {}", e.message))
+                .collect::<Vec<_>>()
+                .join("\n")
+        );
+    }
+
+    /// Test that single-level public re-export works
+    #[test]
+    fn test_single_level_public_reexport() {
+        let source = r#"
+            package Root {
+                class Element;
+            }
+            package Outer {
+                public import Root::*;
+            }
+            package Test {
+                import Outer::Element;
+                class MyClass :> Element;
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// Test that two-level public re-export works
+    #[test]
+    fn test_two_level_public_reexport() {
+        let source = r#"
+            package Root {
+                class Element;
+            }
+            package Core {
+                public import Root::*;
+            }
+            package Outer {
+                public import Core::*;
+            }
+            package Test {
+                import Outer::Element;
+                class MyClass :> Element;
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// Test that three-level public re-export works (KerML pattern)
+    #[test]
+    fn test_three_level_public_reexport() {
+        let source = r#"
+            package Root {
+                class Element;
+                class Type;
+            }
+            package Core {
+                public import Root::*;
+            }
+            package Kernel {
+                public import Core::*;
+            }
+            package KerML {
+                public import Kernel::*;
+            }
+            package Metaobjects {
+                private import KerML::Element;
+                private import KerML::Type;
+                class Metaobject {
+                    feature annotatedElement : Element;
+                }
+            }
+        "#;
+        assert_no_kerml_errors(source);
+    }
+
+    /// Test visibility map directly for transitive imports
+    #[test]
+    fn test_visibility_map_has_transitive_imports() {
+        let source = r#"
+            package Root {
+                class Element;
+            }
+            package Core {
+                public import Root::*;
+            }
+            package Outer {
+                public import Core::*;
+            }
+        "#;
+        let (mut host, _file_id) = analysis_from_kerml(source);
+        let analysis = host.analysis();
+        let index = analysis.symbol_index();
+
+        // Check that Outer has Element in its visibility
+        let outer_vis = index
+            .visibility_for_scope("Outer")
+            .expect("Outer should have visibility");
+        let element_in_outer = outer_vis.lookup("Element");
+        assert!(
+            element_in_outer.is_some(),
+            "Element should be visible in Outer via transitive import. Got: {:?}",
+            outer_vis.imports().collect::<Vec<_>>()
+        );
+        assert_eq!(element_in_outer.unwrap().as_ref(), "Root::Element");
+    }
+
+    /// Test that inherited members are visible through the inheritance chain
+    #[test]
+    fn test_inherited_members_across_packages() {
+        let source = r#"
+            package Occurrences {
+                class Occurrence {
+                    feature startShot : Occurrence;
+                    feature endShot : Occurrence;
+                }
+            }
+            package Performances {
+                private import Occurrences::*;
+                behavior Performance specializes Occurrence { }
+            }
+            package ControlPerformances {
+                private import Performances::*;
+                behavior DecisionPerformance specializes Performance { }
+            }
+            package StatePerformances {
+                private import ControlPerformances::*;
+                behavior StatePerformance specializes DecisionPerformance { }
+            }
+        "#;
+        let (mut host, _file_id) = analysis_from_kerml(source);
+        let analysis = host.analysis();
+        let index = analysis.symbol_index();
+
+        // Check StatePerformance visibility
+        let sp_vis = index
+            .visibility_for_scope("StatePerformances::StatePerformance")
+            .expect("StatePerformance should have visibility");
+
+        eprintln!(
+            "StatePerformance direct_defs: {:?}",
+            sp_vis.direct_defs().collect::<Vec<_>>()
+        );
+        eprintln!(
+            "StatePerformance imports: {:?}",
+            sp_vis.imports().collect::<Vec<_>>()
+        );
+
+        // Check DecisionPerformance visibility
+        if let Some(dp_vis) = index.visibility_for_scope("ControlPerformances::DecisionPerformance")
+        {
+            eprintln!(
+                "DecisionPerformance direct_defs: {:?}",
+                dp_vis.direct_defs().collect::<Vec<_>>()
+            );
+        }
+
+        // Check Performance visibility
+        if let Some(p_vis) = index.visibility_for_scope("Performances::Performance") {
+            eprintln!(
+                "Performance direct_defs: {:?}",
+                p_vis.direct_defs().collect::<Vec<_>>()
+            );
+        }
+
+        // Check Occurrence visibility
+        if let Some(o_vis) = index.visibility_for_scope("Occurrences::Occurrence") {
+            eprintln!(
+                "Occurrence direct_defs: {:?}",
+                o_vis.direct_defs().collect::<Vec<_>>()
+            );
+        }
+
+        // startShot should be inherited from Occurrence via Performance via DecisionPerformance
+        let startshot = sp_vis.lookup("startShot");
+        assert!(
+            startshot.is_some(),
+            "startShot should be visible in StatePerformance via inheritance. Direct defs: {:?}",
+            sp_vis.direct_defs().collect::<Vec<_>>()
+        );
+    }
+}

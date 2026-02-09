@@ -5,6 +5,40 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.2-alpha] - 2026-02-09
+
+### Fixed
+
+- **Semantic Analysis False Positives**: Fixed 21 false positive errors in stdlib and examples
+  - Skip anonymous elements (`<anonymous-*>`, `#*`) in duplicate definition detection
+  - Fixed `TransitionUsage::name()` to not return accept payload names as transition names
+  - Don't propagate anonymous type_refs to Package symbols
+  - Added `Redefines` to supertypes filter for proper redefinition inheritance
+  - Fixed `resolve_inherited_member` to follow redefinition chains correctly
+  - Added implicit supertypes for usage kinds (Part→Parts::Part, Item→Items::Item, etc.)
+  - Implemented SemanticMetadata `baseType` resolution for metadata annotations like `#systemdd`
+
+### Added
+
+- **AnalysisHost Diagnostics API**: New methods for semantic diagnostics
+  - `diagnostics(file_id)` - Get diagnostics for a specific file
+  - `all_diagnostics()` - Get all diagnostics grouped by file path
+  - `all_errors()` - Get errors as `(path, diagnostic)` pairs
+
+- **SemanticMetadata baseType Cache**: Cached resolution for metadata annotation inheritance
+  - Thread-safe `RwLock` cache in `SymbolIndex` for baseType lookups
+  - Automatic cache invalidation when files are removed
+
+- **Semantic Analysis Tests**: New tests for example files
+  - Individual tests for Arrowhead Framework, Simple Vehicle, Analysis Examples, etc.
+  - Uses `AnalysisHost` API for cleaner test code
+
+### Changed
+
+- **Performance**: Added caching for SemanticMetadata baseType resolution
+  - Lazy population with `RwLock` for thread safety
+  - Avoids repeated lookups for the same annotation
+
 ## [0.3.1-alpha] - 2026-02-04
 
 ### Added

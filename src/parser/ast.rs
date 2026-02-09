@@ -1126,6 +1126,13 @@ impl Usage {
         self.0.children().find_map(Name::cast)
     }
 
+    /// Get all Name nodes within this usage.
+    /// For `end self2 [1] feature sameThing: ...`, returns both `self2` and `sameThing`.
+    /// This helps handle cases where the identification and feature name differ.
+    pub fn names(&self) -> Vec<Name> {
+        self.0.children().filter_map(Name::cast).collect()
+    }
+
     pub fn typing(&self) -> Option<Typing> {
         self.0.children().find_map(Typing::cast)
     }
@@ -1624,9 +1631,34 @@ impl FromToTarget {
 ast_node!(TransitionUsage, TRANSITION_USAGE);
 
 impl TransitionUsage {
-    /// Get the transition name (if named)
+    /// Get the transition name (if explicitly named before 'first' keyword)
+    /// e.g., `transition T first S1 then S2` returns Some(T)
+    /// but `transition first S1 accept s then S2` returns None (s is the accept payload, not the name)
     pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
+        use crate::parser::SyntaxKind;
+        // Only return a NAME that appears before FIRST_KW, ACCEPT_KW, or other transition body keywords
+        for child in self.0.children_with_tokens() {
+            match &child {
+                rowan::NodeOrToken::Token(t) => {
+                    // If we hit first/accept/then/do/if/via before finding a name, there's no name
+                    match t.kind() {
+                        SyntaxKind::FIRST_KW
+                        | SyntaxKind::ACCEPT_KW
+                        | SyntaxKind::THEN_KW
+                        | SyntaxKind::DO_KW
+                        | SyntaxKind::IF_KW
+                        | SyntaxKind::VIA_KW => return None,
+                        _ => {}
+                    }
+                }
+                rowan::NodeOrToken::Node(n) => {
+                    if let Some(name) = Name::cast(n.clone()) {
+                        return Some(name);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Get all specializations (source and target states)

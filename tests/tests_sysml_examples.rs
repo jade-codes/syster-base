@@ -428,3 +428,113 @@ example_test!(
     example_sysml_spec_annex_a,
     "Vehicle Example/SysML v2 Spec Annex A SimpleVehicleModel.sysml"
 );
+
+// =============================================================================
+// SEMANTIC ANALYSIS TESTS
+// =============================================================================
+//
+// These tests verify that example files have zero semantic errors (undefined
+// references, duplicate definitions, etc.) when analyzed with the standard library.
+//
+// Note: For comprehensive semantic false-positive testing, see tests_semantic_false_positives.rs
+// which tests both stdlib and all examples together.
+
+use syster::ide::AnalysisHost;
+use syster::project::StdLibLoader;
+
+fn get_stdlib_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("sysml.library")
+}
+
+/// Create an AnalysisHost with stdlib loaded
+fn create_host_with_stdlib() -> AnalysisHost {
+    let mut host = AnalysisHost::new();
+    let stdlib_dir = get_stdlib_dir();
+    if stdlib_dir.exists() {
+        let mut loader = StdLibLoader::with_path(stdlib_dir);
+        let _ = loader.ensure_loaded_into_host(&mut host);
+    }
+    host
+}
+
+/// Load all .sysml files from a directory into the host
+fn load_example_dir(host: &mut AnalysisHost, dir: &Path) {
+    if !dir.exists() {
+        return;
+    }
+    for entry in walkdir::WalkDir::new(dir).into_iter().flatten() {
+        let path = entry.path();
+        if path
+            .extension()
+            .is_some_and(|e| e == "sysml" || e == "kerml")
+        {
+            if let Ok(content) = std::fs::read_to_string(path) {
+                host.set_file_content(&path.to_string_lossy(), &content);
+            }
+        }
+    }
+    // Rebuild to process all files
+    host.rebuild_index();
+}
+
+/// Get errors only for files in a specific directory (not stdlib)
+fn get_errors_for_dir(host: &AnalysisHost, dir: &Path) -> Vec<(String, syster::hir::Diagnostic)> {
+    host.all_errors()
+        .into_iter()
+        .filter(|(path, _)| Path::new(path).starts_with(dir))
+        .collect()
+}
+
+macro_rules! semantic_example_test {
+    ($name:ident, $dir:expr) => {
+        #[test]
+        fn $name() {
+            let examples_dir = get_examples_dir();
+            let target_dir = examples_dir.join($dir);
+
+            if !target_dir.exists() {
+                eprintln!("⏭️  Skipping {}: not found", $dir);
+                return;
+            }
+
+            let mut host = create_host_with_stdlib();
+            load_example_dir(&mut host, &target_dir);
+
+            let errors = get_errors_for_dir(&host, &target_dir);
+            let file_count = host
+                .file_id_map()
+                .keys()
+                .filter(|p| Path::new(*p).starts_with(&target_dir))
+                .count();
+
+            if errors.is_empty() {
+                eprintln!("✓ {}: {} files, 0 semantic errors", $dir, file_count);
+            } else {
+                for (path, diag) in &errors {
+                    let rel = Path::new(path)
+                        .file_name()
+                        .unwrap_or_default()
+                        .to_string_lossy();
+                    eprintln!(
+                        "  {}:{}:{}: {}",
+                        rel,
+                        diag.start_line + 1,
+                        diag.start_col + 1,
+                        diag.message
+                    );
+                }
+                panic!("{}: expected 0 errors, found {}", $dir, errors.len());
+            }
+        }
+    };
+}
+
+// Individual example semantic tests
+semantic_example_test!(
+    test_arrowhead_framework_semantic,
+    "Arrowhead Framework Example"
+);
+semantic_example_test!(test_simple_vehicle_semantic, "Simple Vehicle Example");
+semantic_example_test!(test_vehicle_example_semantic, "Vehicle Example");
+semantic_example_test!(test_analysis_examples_semantic, "Analysis Examples");
+semantic_example_test!(test_metadata_examples_semantic, "Metadata Examples");

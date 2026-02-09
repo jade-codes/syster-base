@@ -580,6 +580,17 @@ impl<'a> SemanticChecker<'a> {
             if symbol.kind == SymbolKind::Import || symbol.kind == SymbolKind::Alias {
                 continue;
             }
+            // Skip anonymous elements - they have synthetic names like <anonymous-dependency>
+            // and multiple anonymous elements with the same synthetic name are allowed
+            if symbol.name.starts_with('<') && symbol.name.ends_with('>') {
+                continue;
+            }
+            // Skip elements whose qualified name contains anonymous parent segments
+            // (e.g., parameters inside anonymous transitions like `<:>>foo#1@L26>::s`)
+            // Anonymous segments have format `<...#N@LNN>`
+            if symbol.qualified_name.contains("<") && symbol.qualified_name.contains("#") {
+                continue;
+            }
             by_qname
                 .entry(symbol.qualified_name.as_ref())
                 .or_default()

@@ -307,6 +307,43 @@ fn skip_trivia_lookahead<P: SysMLParser>(p: &P, mut lookahead: usize) -> usize {
     lookahead
 }
 
+/// Helper to peek past a name (possibly qualified with ::) and check if the following token is `target`
+/// This is used to distinguish between:
+/// - `binding myName bind x = y` (myName is identification)
+/// - `binding payload = target` (payload is bind source, not identification)
+fn peek_past_name_for<P: SysMLParser>(p: &P, target: SyntaxKind) -> bool {
+    let mut lookahead = 0;
+    lookahead = skip_trivia_lookahead(p, lookahead);
+
+    // We know we're at a name token, skip it
+    if p.peek_kind(lookahead) == SyntaxKind::IDENT {
+        lookahead += 1;
+    } else {
+        return false;
+    }
+
+    // Handle qualified names (A::B::C) and dotted chains (a.b.c)
+    loop {
+        lookahead = skip_trivia_lookahead(p, lookahead);
+        let next = p.peek_kind(lookahead);
+
+        if next == SyntaxKind::COLON_COLON || next == SyntaxKind::DOT {
+            lookahead += 1;
+            lookahead = skip_trivia_lookahead(p, lookahead);
+            if p.peek_kind(lookahead) == SyntaxKind::IDENT {
+                lookahead += 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    lookahead = skip_trivia_lookahead(p, lookahead);
+    p.peek_kind(lookahead) == target
+}
+
 /// Helper to peek past optional identifier and get next significant token
 fn peek_past_optional_name<P: SysMLParser>(p: &P, mut lookahead: usize) -> (usize, SyntaxKind) {
     lookahead = skip_trivia_lookahead(p, lookahead);
@@ -4028,12 +4065,21 @@ pub fn parse_binding_or_succession<P: SysMLParser>(p: &mut P) {
             p.skip_trivia();
             parsed_name = true;
         }
-    // Optional identification (name) - but check for 'bind' after name for binding
+    // Optional identification (name) - but NOT for binding `name = target` pattern
+    // In `binding payload = target`, `payload` is the source endpoint, not the name
     } else if p.at_name_token() && !p.at(SyntaxKind::FIRST_KW) && !p.at(SyntaxKind::BIND_KW) {
-        // Only parse identification if it's not 'first' keyword or 'bind' keyword
-        p.parse_identification();
-        p.skip_trivia();
-        parsed_name = true;
+        // For bindings, check if token after name is '=' - if so, it's the source endpoint
+        // For successions, check if token after name is 'then' - if so, it's the source endpoint
+        // Peek ahead: name might be qualified (A::B) so look for EQ/THEN_KW after names
+        let is_binding_source = !is_succession && peek_past_name_for(p, SyntaxKind::EQ);
+        let is_succession_source = is_succession && peek_past_name_for(p, SyntaxKind::THEN_KW);
+
+        if !is_binding_source && !is_succession_source {
+            // It's an identification, not a source endpoint
+            p.parse_identification();
+            p.skip_trivia();
+            parsed_name = true;
+        }
     }
 
     // Check for 'bind' keyword AFTER optional identification

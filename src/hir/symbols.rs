@@ -538,12 +538,12 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowConnectionUsage,
             NormalizedUsageKind::Transition => Self::TransitionUsage,
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage,    // Connection endpoints are like ports
-            NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
-            NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
-            NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
+            NormalizedUsageKind::End => Self::PortUsage,      // Connection endpoints are like ports
+            NormalizedUsageKind::Fork => Self::ActionUsage,   // Fork nodes are action usages
+            NormalizedUsageKind::Join => Self::ActionUsage,   // Join nodes are action usages
+            NormalizedUsageKind::Merge => Self::ActionUsage,  // Merge nodes are action usages
             NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
-            NormalizedUsageKind::Feature => Self::PartUsage, // KerML features map to part usage
+            NormalizedUsageKind::Feature => Self::PartUsage,  // KerML features map to part usage
             NormalizedUsageKind::View => Self::ViewUsage,
             NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
             NormalizedUsageKind::Rendering => Self::RenderingUsage,
@@ -666,10 +666,10 @@ impl SymbolKind {
             NormalizedUsageKind::Flow => Self::FlowConnectionUsage,
             NormalizedUsageKind::Transition => Self::TransitionUsage,
             NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage,    // Connection endpoints are like ports
-            NormalizedUsageKind::Fork => Self::ActionUsage, // Fork nodes are action usages
-            NormalizedUsageKind::Join => Self::ActionUsage, // Join nodes are action usages
-            NormalizedUsageKind::Merge => Self::ActionUsage, // Merge nodes are action usages
+            NormalizedUsageKind::End => Self::PortUsage,      // Connection endpoints are like ports
+            NormalizedUsageKind::Fork => Self::ActionUsage,   // Fork nodes are action usages
+            NormalizedUsageKind::Join => Self::ActionUsage,   // Join nodes are action usages
+            NormalizedUsageKind::Merge => Self::ActionUsage,  // Merge nodes are action usages
             NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
             NormalizedUsageKind::View => Self::ViewUsage,
             NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
@@ -1049,15 +1049,26 @@ fn implicit_supertype_for_def_kind(kind: NormalizedDefKind) -> Option<&'static s
 
 /// Get the implicit supertype for a usage kind based on SysML kernel library.
 /// In SysML, usages implicitly specialize their kernel metaclass base type:
+/// - `part x` implicitly specializes `Parts::Part`
+/// - `item x` implicitly specializes `Items::Item`
 /// - `message x` implicitly specializes `Flows::Message`
 /// - `flow x` implicitly specializes `Flows::Flow`
 /// - etc.
 fn implicit_supertype_for_usage_kind(kind: NormalizedUsageKind) -> Option<&'static str> {
     match kind {
+        NormalizedUsageKind::Part => Some("Parts::Part"),
+        NormalizedUsageKind::Item => Some("Items::Item"),
+        NormalizedUsageKind::Action => Some("Actions::Action"),
+        NormalizedUsageKind::State => Some("States::StateAction"),
         NormalizedUsageKind::Flow => Some("Flows::Message"),
         NormalizedUsageKind::Connection => Some("Connections::Connection"),
         NormalizedUsageKind::Interface => Some("Interfaces::Interface"),
         NormalizedUsageKind::Allocation => Some("Allocations::Allocation"),
+        NormalizedUsageKind::Requirement => Some("Requirements::RequirementCheck"),
+        NormalizedUsageKind::Constraint => Some("Constraints::ConstraintCheck"),
+        NormalizedUsageKind::Calculation => Some("Calculations::Calculation"),
+        NormalizedUsageKind::Port => Some("Ports::Port"),
+        NormalizedUsageKind::Attribute => Some("Attributes::AttributeValue"),
         _ => None,
     }
 }
@@ -1250,21 +1261,25 @@ fn extract_from_normalized_usage(
             // Attach ONLY type refs (not feature refs) to parent for anonymous usages
             // Feature refs (Redefines, Subsets, Specializes) need inheritance context
             // that the parent doesn't have
+            // Also skip packages - they shouldn't have type_refs from their anonymous children
             if !type_refs.is_empty() {
                 if let Some(parent) = symbols
                     .iter_mut()
                     .rev()
                     .find(|s| s.qualified_name.as_ref() == ctx.prefix)
                 {
-                    // Only extend TypedBy refs - feature refs would cause false "undefined reference" errors
-                    let typing_refs: Vec<_> = type_refs
-                        .iter()
-                        .filter(
-                            |tr| matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy),
-                        )
-                        .cloned()
-                        .collect();
-                    parent.type_refs.extend(typing_refs);
+                    // Skip packages - they shouldn't inherit type_refs from anonymous children
+                    if parent.kind != SymbolKind::Package {
+                        // Only extend TypedBy refs - feature refs would cause false "undefined reference" errors
+                        let typing_refs: Vec<_> = type_refs
+                            .iter()
+                            .filter(
+                                |tr| matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy),
+                            )
+                            .cloned()
+                            .collect();
+                        parent.type_refs.extend(typing_refs);
+                    }
                 }
             }
 
@@ -1446,6 +1461,7 @@ fn extract_from_normalized_usage(
     // - TypedBy: explicit type annotation (`: Type`)
     // - Subsets: subset relationship (`:>` on usages)
     // - Specializes: specialization (`:>` can also be specializes in some contexts)
+    // - Redefines: redefinition (`:>>` on usages) - needed for inherited member lookup
     let mut supertypes: Vec<Arc<str>> = usage
         .relationships
         .iter()
@@ -1455,6 +1471,7 @@ fn extract_from_normalized_usage(
                 NormalizedRelKind::TypedBy
                     | NormalizedRelKind::Subsets
                     | NormalizedRelKind::Specializes
+                    | NormalizedRelKind::Redefines
             )
         })
         .map(|r| Arc::from(r.target.as_str().as_ref()))
@@ -1497,14 +1514,11 @@ fn extract_from_normalized_usage(
         }
     }
 
-    // Add implicit supertypes from SysML kernel library if not already specialized
-    // This models the implicit inheritance: message → Message, flow → Flow, etc.
-    if let Some(implicit) = implicit_supertype_for_usage_kind(usage.kind) {
-        // Only add if no explicit specialization of this type
-        if !supertypes
-            .iter()
-            .any(|s| s.contains("Message") || s.contains("Flow"))
-        {
+    // Add implicit supertypes from SysML kernel library if no explicit supertypes present
+    // This models the implicit inheritance: part → Parts::Part, item → Items::Item, etc.
+    // Only add if no explicit type/specialization (otherwise we rely on that)
+    if supertypes.is_empty() {
+        if let Some(implicit) = implicit_supertype_for_usage_kind(usage.kind) {
             supertypes.push(Arc::from(implicit));
         }
     }
