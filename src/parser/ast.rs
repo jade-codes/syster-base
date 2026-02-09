@@ -214,6 +214,32 @@ macro_rules! source_target_pair {
     };
 }
 
+/// Macro to generate a method that maps token kinds to enum variants.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     token_to_enum_method!(direction, Direction, [
+///         IN_KW => In,
+///         OUT_KW => Out,
+///         INOUT_KW => InOut,
+///     ]);
+/// }
+/// ```
+macro_rules! token_to_enum_method {
+    ($name:ident, $enum_type:ident, [$($token:ident => $variant:ident),+ $(,)?]) => {
+        pub fn $name(&self) -> Option<$enum_type> {
+            for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
+                match token.kind() {
+                    $(SyntaxKind::$token => return Some($enum_type::$variant),)+
+                    _ => {}
+                }
+            }
+            None
+        }
+    };
+}
+
 /// Helper to collect prefix metadata from preceding siblings.
 ///
 /// PREFIX_METADATA nodes precede definitions/usages in the source.
@@ -877,50 +903,44 @@ impl Definition {
     has_token_method!(is_variation, VARIATION_KW, "variation part def V {}");
     has_token_method!(is_individual, INDIVIDUAL_KW, "individual part def Earth;");
 
-    pub fn definition_kind(&self) -> Option<DefinitionKind> {
-        for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
-            match token.kind() {
-                SyntaxKind::PART_KW => return Some(DefinitionKind::Part),
-                SyntaxKind::ATTRIBUTE_KW => return Some(DefinitionKind::Attribute),
-                SyntaxKind::PORT_KW => return Some(DefinitionKind::Port),
-                SyntaxKind::ITEM_KW => return Some(DefinitionKind::Item),
-                SyntaxKind::ACTION_KW => return Some(DefinitionKind::Action),
-                SyntaxKind::STATE_KW => return Some(DefinitionKind::State),
-                SyntaxKind::CONSTRAINT_KW => return Some(DefinitionKind::Constraint),
-                SyntaxKind::REQUIREMENT_KW => return Some(DefinitionKind::Requirement),
-                SyntaxKind::CASE_KW => return Some(DefinitionKind::Case),
-                SyntaxKind::CALC_KW => return Some(DefinitionKind::Calc),
-                SyntaxKind::CONNECTION_KW => return Some(DefinitionKind::Connection),
-                SyntaxKind::INTERFACE_KW => return Some(DefinitionKind::Interface),
-                SyntaxKind::ALLOCATION_KW => return Some(DefinitionKind::Allocation),
-                SyntaxKind::FLOW_KW => return Some(DefinitionKind::Flow),
-                SyntaxKind::VIEW_KW => return Some(DefinitionKind::View),
-                SyntaxKind::VIEWPOINT_KW => return Some(DefinitionKind::Viewpoint),
-                SyntaxKind::RENDERING_KW => return Some(DefinitionKind::Rendering),
-                SyntaxKind::METADATA_KW => return Some(DefinitionKind::Metadata),
-                SyntaxKind::OCCURRENCE_KW => return Some(DefinitionKind::Occurrence),
-                SyntaxKind::ENUM_KW => return Some(DefinitionKind::Enum),
-                SyntaxKind::ANALYSIS_KW => return Some(DefinitionKind::Analysis),
-                SyntaxKind::VERIFICATION_KW => return Some(DefinitionKind::Verification),
-                SyntaxKind::USE_KW => return Some(DefinitionKind::UseCase),
-                SyntaxKind::CONCERN_KW => return Some(DefinitionKind::Concern),
-                // KerML definition keywords
-                SyntaxKind::CLASS_KW => return Some(DefinitionKind::Class),
-                SyntaxKind::STRUCT_KW => return Some(DefinitionKind::Struct),
-                SyntaxKind::ASSOC_KW => return Some(DefinitionKind::Assoc),
-                SyntaxKind::BEHAVIOR_KW => return Some(DefinitionKind::Behavior),
-                SyntaxKind::FUNCTION_KW => return Some(DefinitionKind::Function),
-                SyntaxKind::PREDICATE_KW => return Some(DefinitionKind::Predicate),
-                SyntaxKind::INTERACTION_KW => return Some(DefinitionKind::Interaction),
-                SyntaxKind::DATATYPE_KW => return Some(DefinitionKind::Datatype),
-                SyntaxKind::CLASSIFIER_KW => return Some(DefinitionKind::Classifier),
-                SyntaxKind::TYPE_KW => return Some(DefinitionKind::Type),
-                SyntaxKind::METACLASS_KW => return Some(DefinitionKind::Metaclass),
-                _ => {}
-            }
-        }
-        None
-    }
+    token_to_enum_method!(definition_kind, DefinitionKind, [
+        PART_KW => Part,
+        ATTRIBUTE_KW => Attribute,
+        PORT_KW => Port,
+        ITEM_KW => Item,
+        ACTION_KW => Action,
+        STATE_KW => State,
+        CONSTRAINT_KW => Constraint,
+        REQUIREMENT_KW => Requirement,
+        CASE_KW => Case,
+        CALC_KW => Calc,
+        CONNECTION_KW => Connection,
+        INTERFACE_KW => Interface,
+        ALLOCATION_KW => Allocation,
+        FLOW_KW => Flow,
+        VIEW_KW => View,
+        VIEWPOINT_KW => Viewpoint,
+        RENDERING_KW => Rendering,
+        METADATA_KW => Metadata,
+        OCCURRENCE_KW => Occurrence,
+        ENUM_KW => Enum,
+        ANALYSIS_KW => Analysis,
+        VERIFICATION_KW => Verification,
+        USE_KW => UseCase,
+        CONCERN_KW => Concern,
+        // KerML definition keywords
+        CLASS_KW => Class,
+        STRUCT_KW => Struct,
+        ASSOC_KW => Assoc,
+        BEHAVIOR_KW => Behavior,
+        FUNCTION_KW => Function,
+        PREDICATE_KW => Predicate,
+        INTERACTION_KW => Interaction,
+        DATATYPE_KW => Datatype,
+        CLASSIFIER_KW => Classifier,
+        TYPE_KW => Type,
+        METACLASS_KW => Metaclass,
+    ]);
 
     first_child_method!(name, Name);
     children_method!(specializations, Specialization);
@@ -1026,17 +1046,11 @@ impl Usage {
     has_token_method!(is_nonunique, NONUNIQUE_KW, "nonunique attribute scores : Integer[*];");
     has_token_method!(is_portion, PORTION_KW, "portion part fuelLoad : Fuel;");
 
-    pub fn direction(&self) -> Option<Direction> {
-        for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
-            match token.kind() {
-                SyntaxKind::IN_KW => return Some(Direction::In),
-                SyntaxKind::OUT_KW => return Some(Direction::Out),
-                SyntaxKind::INOUT_KW => return Some(Direction::InOut),
-                _ => {}
-            }
-        }
-        None
-    }
+    token_to_enum_method!(direction, Direction, [
+        IN_KW => In,
+        OUT_KW => Out,
+        INOUT_KW => InOut,
+    ]);
 
     /// Get multiplicity bounds [lower..upper] from the usage.
     /// Returns (lower, upper) where None means unbounded (*).
@@ -1233,35 +1247,30 @@ impl Usage {
     has_token_method!(is_assume, ASSUME_KW, "assume constraint c;");
     has_token_method!(is_require, REQUIRE_KW, "require constraint c;");
 
-    pub fn usage_kind(&self) -> Option<UsageKind> {
-        for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
-            match token.kind() {
-                SyntaxKind::PART_KW => return Some(UsageKind::Part),
-                SyntaxKind::ATTRIBUTE_KW => return Some(UsageKind::Attribute),
-                SyntaxKind::PORT_KW => return Some(UsageKind::Port),
-                SyntaxKind::ITEM_KW => return Some(UsageKind::Item),
-                SyntaxKind::ACTION_KW => return Some(UsageKind::Action),
-                SyntaxKind::STATE_KW => return Some(UsageKind::State),
-                SyntaxKind::CONSTRAINT_KW => return Some(UsageKind::Constraint),
-                SyntaxKind::REQUIREMENT_KW => return Some(UsageKind::Requirement),
-                SyntaxKind::CASE_KW => return Some(UsageKind::Case),
-                SyntaxKind::CALC_KW => return Some(UsageKind::Calc),
-                SyntaxKind::CONNECTION_KW => return Some(UsageKind::Connection),
-                SyntaxKind::INTERFACE_KW => return Some(UsageKind::Interface),
-                SyntaxKind::ALLOCATION_KW => return Some(UsageKind::Allocation),
-                SyntaxKind::FLOW_KW | SyntaxKind::MESSAGE_KW => return Some(UsageKind::Flow),
-                SyntaxKind::OCCURRENCE_KW => return Some(UsageKind::Occurrence),
-                SyntaxKind::REF_KW => return Some(UsageKind::Ref),
-                // KerML usage keywords
-                SyntaxKind::FEATURE_KW => return Some(UsageKind::Feature),
-                SyntaxKind::STEP_KW => return Some(UsageKind::Step),
-                SyntaxKind::EXPR_KW => return Some(UsageKind::Expr),
-                SyntaxKind::CONNECTOR_KW => return Some(UsageKind::Connector),
-                _ => {}
-            }
-        }
-        None
-    }
+    token_to_enum_method!(usage_kind, UsageKind, [
+        PART_KW => Part,
+        ATTRIBUTE_KW => Attribute,
+        PORT_KW => Port,
+        ITEM_KW => Item,
+        ACTION_KW => Action,
+        STATE_KW => State,
+        CONSTRAINT_KW => Constraint,
+        REQUIREMENT_KW => Requirement,
+        CASE_KW => Case,
+        CALC_KW => Calc,
+        CONNECTION_KW => Connection,
+        INTERFACE_KW => Interface,
+        ALLOCATION_KW => Allocation,
+        FLOW_KW => Flow,
+        MESSAGE_KW => Flow,
+        OCCURRENCE_KW => Occurrence,
+        REF_KW => Ref,
+        // KerML usage keywords
+        FEATURE_KW => Feature,
+        STEP_KW => Step,
+        EXPR_KW => Expr,
+        CONNECTOR_KW => Connector,
+    ]);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1382,25 +1391,19 @@ impl Typing {
 ast_node!(Specialization, SPECIALIZATION);
 
 impl Specialization {
-    pub fn kind(&self) -> Option<SpecializationKind> {
-        for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
-            match token.kind() {
-                SyntaxKind::COLON_GT => return Some(SpecializationKind::Specializes),
-                SyntaxKind::COLON_GT_GT => return Some(SpecializationKind::Redefines),
-                SyntaxKind::COLON_COLON_GT => return Some(SpecializationKind::FeatureChain),
-                SyntaxKind::SPECIALIZES_KW => return Some(SpecializationKind::Specializes),
-                SyntaxKind::SUBSETS_KW => return Some(SpecializationKind::Subsets),
-                SyntaxKind::REDEFINES_KW => return Some(SpecializationKind::Redefines),
-                SyntaxKind::REFERENCES_KW => return Some(SpecializationKind::References),
-                SyntaxKind::TILDE => return Some(SpecializationKind::Conjugates),
-                SyntaxKind::FROM_KW => return Some(SpecializationKind::FeatureChain),
-                SyntaxKind::TO_KW => return Some(SpecializationKind::FeatureChain),
-                SyntaxKind::CHAINS_KW => return Some(SpecializationKind::FeatureChain),
-                _ => {}
-            }
-        }
-        None
-    }
+    token_to_enum_method!(kind, SpecializationKind, [
+        COLON_GT => Specializes,
+        COLON_GT_GT => Redefines,
+        COLON_COLON_GT => FeatureChain,
+        SPECIALIZES_KW => Specializes,
+        SUBSETS_KW => Subsets,
+        REDEFINES_KW => Redefines,
+        REFERENCES_KW => References,
+        TILDE => Conjugates,
+        FROM_KW => FeatureChain,
+        TO_KW => FeatureChain,
+        CHAINS_KW => FeatureChain,
+    ]);
 
     /// Check if this is a shorthand redefines (`:>>`) vs keyword (`redefines`)
     /// Returns true for `:>> name`, false for `redefines name`
@@ -1491,26 +1494,8 @@ impl TransitionUsage {
 
     source_target_pair!(source, target, specializations, Specialization);
 
-    /// Get the accept payload name (the second NAME if present, after ACCEPT_KW)
-    /// e.g., in `accept ignitionCmd:IgnitionCmd`, returns the Name for `ignitionCmd`
-    pub fn accept_payload_name(&self) -> Option<Name> {
-        use crate::parser::SyntaxKind;
-        let mut found_accept = false;
-        for child in self.0.children_with_tokens() {
-            match &child {
-                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::ACCEPT_KW => {
-                    found_accept = true;
-                }
-                rowan::NodeOrToken::Node(n) if found_accept => {
-                    if let Some(name) = Name::cast(n.clone()) {
-                        return Some(name);
-                    }
-                }
-                _ => {}
-            }
-        }
-        None
-    }
+    child_after_keyword_method!(accept_payload_name, Name, ACCEPT_KW,
+        "Get the accept payload name (e.g., `ignitionCmd` in `accept ignitionCmd:IgnitionCmd`).");
 
     first_child_method!(accept_typing, Typing);
 
