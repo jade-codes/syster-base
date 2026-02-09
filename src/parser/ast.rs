@@ -6,6 +6,92 @@
 use super::syntax_kind::SyntaxKind;
 use super::{SyntaxNode, SyntaxToken};
 
+// ============================================================================
+// Helper utilities for reducing code duplication
+// ============================================================================
+
+/// Check if a syntax node has a direct child token of the specified kind.
+///
+/// This is a common pattern used throughout the AST to check for modifier keywords
+/// like `abstract`, `ref`, `readonly`, etc.
+///
+/// # Example
+/// ```ignore
+/// // Instead of:
+/// self.0.children_with_tokens()
+///     .filter_map(|e| e.into_token())
+///     .any(|t| t.kind() == SyntaxKind::ABSTRACT_KW)
+///
+/// // Use:
+/// has_token(&self.0, SyntaxKind::ABSTRACT_KW)
+/// ```
+#[inline]
+fn has_token(node: &SyntaxNode, kind: SyntaxKind) -> bool {
+    node.children_with_tokens()
+        .filter_map(|e| e.into_token())
+        .any(|t| t.kind() == kind)
+}
+
+/// Macro to generate boolean property methods that check for a specific token kind.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     has_token_method!(is_abstract, ABSTRACT_KW, "abstract part def P {}");
+///     has_token_method!(is_ref, REF_KW, "ref part p;");
+/// }
+/// ```
+macro_rules! has_token_method {
+    ($name:ident, $kind:ident) => {
+        #[doc = concat!("Check if this node has the `", stringify!($kind), "` token.")]
+        pub fn $name(&self) -> bool {
+            has_token(&self.0, SyntaxKind::$kind)
+        }
+    };
+    ($name:ident, $kind:ident, $example:literal) => {
+        #[doc = concat!("Check if this node has the `", stringify!($kind), "` token (e.g., `", $example, "`).")]
+        pub fn $name(&self) -> bool {
+            has_token(&self.0, SyntaxKind::$kind)
+        }
+    };
+}
+
+/// Macro to generate a method that finds the first child of a specific AST type.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     first_child_method!(name, Name);
+///     first_child_method!(body, NamespaceBody);
+/// }
+/// ```
+macro_rules! first_child_method {
+    ($name:ident, $type:ident) => {
+        #[doc = concat!("Get the first `", stringify!($type), "` child of this node.")]
+        pub fn $name(&self) -> Option<$type> {
+            self.0.children().find_map($type::cast)
+        }
+    };
+}
+
+/// Macro to generate a method that returns an iterator over children of a specific AST type.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     children_method!(specializations, Specialization);
+///     children_method!(members, NamespaceMember);
+/// }
+/// ```
+macro_rules! children_method {
+    ($name:ident, $type:ident) => {
+        #[doc = concat!("Get all `", stringify!($type), "` children of this node.")]
+        pub fn $name(&self) -> impl Iterator<Item = $type> + '_ {
+            self.0.children().filter_map($type::cast)
+        }
+    };
+}
+
 /// Trait for AST nodes that wrap a SyntaxNode
 pub trait AstNode: Sized {
     fn can_cast(kind: SyntaxKind) -> bool;
@@ -324,14 +410,8 @@ impl AstNode for NamespaceMember {
 ast_node!(Package, PACKAGE);
 
 impl Package {
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
-
+    first_child_method!(name, Name);
+    first_child_method!(body, NamespaceBody);
     pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
         self.body()
             .into_iter()
@@ -342,20 +422,9 @@ impl Package {
 ast_node!(LibraryPackage, LIBRARY_PACKAGE);
 
 impl LibraryPackage {
-    pub fn is_standard(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::STANDARD_KW)
-    }
-
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    has_token_method!(is_standard, STANDARD_KW, "standard library package P {}");
+    first_child_method!(name, Name);
+    first_child_method!(body, NamespaceBody);
 }
 
 ast_node!(NamespaceBody, NAMESPACE_BODY);
@@ -393,26 +462,14 @@ impl NamespaceBody {
 ast_node!(Import, IMPORT);
 
 impl Import {
-    /// Check if this is an 'import all'
-    pub fn is_all(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ALL_KW)
-    }
+    has_token_method!(is_all, ALL_KW, "import all P::*");
 
     /// Get the qualified name being imported
     pub fn target(&self) -> Option<QualifiedName> {
         self.0.children().find_map(QualifiedName::cast)
     }
 
-    /// Check if this is a wildcard import (::*)
-    pub fn is_wildcard(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::STAR)
-    }
+    has_token_method!(is_wildcard, STAR, "import P::*");
 
     /// Check if this is a recursive import (::**)
     pub fn is_recursive(&self) -> bool {
@@ -445,13 +502,7 @@ impl Import {
     pub fn is_public(&self) -> bool {
         // PUBLIC_KW may be a sibling (before the IMPORT node) rather than a child
         // Check both inside and before
-        let has_inside = self
-            .0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::PUBLIC_KW);
-
-        if has_inside {
+        if has_token(&self.0, SyntaxKind::PUBLIC_KW) {
             return true;
         }
 
@@ -475,18 +526,13 @@ impl Import {
         false
     }
 
-    /// Get the filter package if present
-    pub fn filter(&self) -> Option<FilterPackage> {
-        self.0.children().find_map(FilterPackage::cast)
-    }
+    first_child_method!(filter, FilterPackage);
 }
 
 ast_node!(FilterPackage, FILTER_PACKAGE);
 
 impl FilterPackage {
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 
     /// Get all filter targets (for multiple filters like [@A][@B])
     pub fn targets(&self) -> Vec<QualifiedName> {
@@ -501,13 +547,8 @@ impl FilterPackage {
 ast_node!(Alias, ALIAS_MEMBER);
 
 impl Alias {
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(name, Name);
+    first_child_method!(target, QualifiedName);
 }
 
 // ============================================================================
@@ -592,9 +633,7 @@ impl Dependency {
 ast_node!(ElementFilter, ELEMENT_FILTER_MEMBER);
 
 impl ElementFilter {
-    pub fn expression(&self) -> Option<Expression> {
-        self.0.children().find_map(Expression::cast)
-    }
+    first_child_method!(expression, Expression);
 
     /// Extract metadata references from the filter expression.
     /// For `filter @Safety;` returns ["Safety"]
@@ -649,23 +688,9 @@ impl ElementFilter {
 ast_node!(Comment, COMMENT_ELEMENT);
 
 impl Comment {
-    /// Get the comment name if present
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the about target(s) - references after the 'about' keyword
-    pub fn about_targets(&self) -> impl Iterator<Item = QualifiedName> + '_ {
-        self.0.children().filter_map(QualifiedName::cast)
-    }
-
-    /// Check if this comment has an about clause
-    pub fn has_about(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ABOUT_KW)
-    }
+    first_child_method!(name, Name);
+    children_method!(about_targets, QualifiedName);
+    has_token_method!(has_about, ABOUT_KW, "doc /* text */ about x");
 }
 
 // ============================================================================
@@ -675,10 +700,7 @@ impl Comment {
 ast_node!(MetadataUsage, METADATA_USAGE);
 
 impl MetadataUsage {
-    /// Get the metadata type target (e.g., `Rationale` in `@Rationale about ...`)
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 
     /// Get the about target(s) - references after the 'about' keyword
     /// e.g., `@Rationale about vehicle::engine` returns [vehicle::engine]
@@ -688,18 +710,8 @@ impl MetadataUsage {
         self.0.children().filter_map(QualifiedName::cast).skip(1)
     }
 
-    /// Check if this metadata has an about clause
-    pub fn has_about(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ABOUT_KW)
-    }
-
-    /// Get the body of the metadata (for nested metadata definitions)
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    has_token_method!(has_about, ABOUT_KW, "@Rationale about x");
+    first_child_method!(body, NamespaceBody);
 }
 
 // ============================================================================
@@ -736,30 +748,9 @@ impl PrefixMetadata {
 ast_node!(Definition, DEFINITION);
 
 impl Definition {
-    pub fn is_abstract(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ABSTRACT_KW)
-    }
-
-    pub fn is_variation(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::VARIATION_KW)
-    }
-
-    /// Check if this is an individual definition.
-    /// Per SysML v2 Spec: `individual` indicates a definition that classifies
-    /// exactly one instance (a singleton).
-    /// e.g., `individual part def Earth;`
-    pub fn is_individual(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::INDIVIDUAL_KW)
-    }
+    has_token_method!(is_abstract, ABSTRACT_KW, "abstract part def P {}");
+    has_token_method!(is_variation, VARIATION_KW, "variation part def V {}");
+    has_token_method!(is_individual, INDIVIDUAL_KW, "individual part def Earth;");
 
     pub fn definition_kind(&self) -> Option<DefinitionKind> {
         for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
@@ -806,23 +797,10 @@ impl Definition {
         None
     }
 
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
-        self.0.children().filter_map(Specialization::cast)
-    }
-
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
-
-    /// Get the constraint body (for constraint def, calc def, etc.)
-    /// These use CONSTRAINT_BODY instead of NAMESPACE_BODY for their members
-    pub fn constraint_body(&self) -> Option<ConstraintBody> {
-        self.0.children().find_map(ConstraintBody::cast)
-    }
+    first_child_method!(name, Name);
+    children_method!(specializations, Specialization);
+    first_child_method!(body, NamespaceBody);
+    first_child_method!(constraint_body, ConstraintBody);
 
     /// Get members from the definition's body.
     /// This is a convenience method that calls `body()?.members()`.
@@ -927,132 +905,20 @@ impl AstNode for Usage {
 }
 
 impl Usage {
-    pub fn is_ref(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::REF_KW)
-    }
-
-    pub fn is_readonly(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::READONLY_KW)
-    }
-
-    pub fn is_derived(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::DERIVED_KW)
-    }
-
-    pub fn is_abstract(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ABSTRACT_KW)
-    }
-
-    pub fn is_variation(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::VARIATION_KW)
-    }
-
-    /// Check if this feature has the `var` modifier indicating mutability.
-    /// Per SysML v2 Spec §7.3.3.6: "var" indicates a feature whose values can change.
-    /// e.g., `var feature annotatedElement : Element[1..*]`
-    pub fn is_var(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::VAR_KW)
-    }
-
-    /// Check if this feature has the `all` keyword for universal quantification.
-    /// Per SysML v2 Spec §7.3.3.4: "all" indicates sufficient/complete coverage.
-    /// e.g., `feature all instances : C[*]`
-    pub fn is_all(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ALL_KW)
-    }
-
-    pub fn is_parallel(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::PARALLEL_KW)
-    }
-
-    /// Check if this is an individual usage.
-    /// Per SysML v2 Spec: `individual` indicates a usage that represents
-    /// exactly one instance (a singleton).
-    /// e.g., `individual part earth : Earth;`
-    pub fn is_individual(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::INDIVIDUAL_KW)
-    }
-
-    /// Check if this is an end feature.
-    /// Per SysML v2 Spec §7.3.4.3: `end` indicates a feature that represents
-    /// an end of a connector or association.
-    /// e.g., `end part wheel : Wheel[4];`
-    pub fn is_end(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::END_KW)
-    }
-
-    /// Check if this feature has a default value binding.
-    /// Per SysML v2 Spec: `default` indicates the feature provides a default value.
-    /// e.g., `attribute def Color { default attribute rgb : RGB; }`
-    pub fn is_default(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::DEFAULT_KW)
-    }
-
-    /// Check if this feature is ordered.
-    /// Per SysML v2 Spec §7.3.3.3: `ordered` indicates that multiple values
-    /// of the feature have a defined sequence.
-    /// e.g., `part ordered wheels : Wheel[4];`
-    pub fn is_ordered(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ORDERED_KW)
-    }
-
-    /// Check if this feature is nonunique.
-    /// Per SysML v2 Spec §7.3.3.3: `nonunique` indicates that multiple values
-    /// of the feature may be duplicates (not unique).
-    /// e.g., `attribute nonunique scores : Integer[*];`
-    pub fn is_nonunique(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::NONUNIQUE_KW)
-    }
-
-    /// Check if this is a portion usage.
-    /// Per SysML v2 Spec: `portion` indicates that the usage represents
-    /// a portion/slice of the containing occurrence.
-    /// e.g., `portion part fuelLoad : Fuel;`
-    pub fn is_portion(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::PORTION_KW)
-    }
+    has_token_method!(is_ref, REF_KW, "ref part p;");
+    has_token_method!(is_readonly, READONLY_KW, "readonly attribute x;");
+    has_token_method!(is_derived, DERIVED_KW, "derived attribute x;");
+    has_token_method!(is_abstract, ABSTRACT_KW, "abstract part p;");
+    has_token_method!(is_variation, VARIATION_KW, "variation part p;");
+    has_token_method!(is_var, VAR_KW, "var attribute x;");
+    has_token_method!(is_all, ALL_KW, "feature all instances : C[*]");
+    has_token_method!(is_parallel, PARALLEL_KW, "parallel action a;");
+    has_token_method!(is_individual, INDIVIDUAL_KW, "individual part earth : Earth;");
+    has_token_method!(is_end, END_KW, "end part wheel : Wheel[4];");
+    has_token_method!(is_default, DEFAULT_KW, "default attribute rgb : RGB;");
+    has_token_method!(is_ordered, ORDERED_KW, "ordered part wheels : Wheel[4];");
+    has_token_method!(is_nonunique, NONUNIQUE_KW, "nonunique attribute scores : Integer[*];");
+    has_token_method!(is_portion, PORTION_KW, "portion part fuelLoad : Fuel;");
 
     pub fn direction(&self) -> Option<Direction> {
         for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
@@ -1198,9 +1064,7 @@ impl Usage {
         result
     }
 
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
+    first_child_method!(name, Name);
 
     /// Get all Name nodes within this usage.
     /// For `end self2 [1] feature sameThing: ...`, returns both `self2` and `sameThing`.
@@ -1209,9 +1073,7 @@ impl Usage {
         self.0.children().filter_map(Name::cast).collect()
     }
 
-    pub fn typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
+    first_child_method!(typing, Typing);
 
     /// Get the "of Type" qualified name for messages/items
     /// e.g., `message sendCmd of SensedSpeed` -> returns "SensedSpeed" QualifiedName
@@ -1233,106 +1095,25 @@ impl Usage {
         None
     }
 
-    pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
-        self.0.children().filter_map(Specialization::cast)
-    }
+    children_method!(specializations, Specialization);
+    first_child_method!(body, NamespaceBody);
+    first_child_method!(value_expression, Expression);
+    first_child_method!(from_to_clause, FromToClause);
+    first_child_method!(transition_usage, TransitionUsage);
+    first_child_method!(succession, Succession);
+    first_child_method!(perform_action_usage, PerformActionUsage);
+    first_child_method!(accept_action_usage, AcceptActionUsage);
+    first_child_method!(send_action_usage, SendActionUsage);
+    first_child_method!(requirement_verification, RequirementVerification);
+    first_child_method!(connect_usage, ConnectUsage);
+    first_child_method!(constraint_body, ConstraintBody);
+    first_child_method!(connector_part, ConnectorPart);
+    first_child_method!(binding_connector, BindingConnector);
 
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
-
-    /// Get the value expression (after `=`) if present
-    pub fn value_expression(&self) -> Option<Expression> {
-        self.0.children().find_map(Expression::cast)
-    }
-
-    /// Get the from-to clause for message/flow usages
-    pub fn from_to_clause(&self) -> Option<FromToClause> {
-        self.0.children().find_map(FromToClause::cast)
-    }
-
-    /// Get the nested transition usage (for transition statements)
-    pub fn transition_usage(&self) -> Option<TransitionUsage> {
-        self.0.children().find_map(TransitionUsage::cast)
-    }
-
-    /// Get the nested succession usage (for first/then statements)  
-    pub fn succession(&self) -> Option<Succession> {
-        self.0.children().find_map(Succession::cast)
-    }
-
-    /// Get the nested perform action usage (for perform statements)
-    pub fn perform_action_usage(&self) -> Option<PerformActionUsage> {
-        self.0.children().find_map(PerformActionUsage::cast)
-    }
-
-    /// Get the nested accept action usage (for accept statements)
-    pub fn accept_action_usage(&self) -> Option<AcceptActionUsage> {
-        self.0.children().find_map(AcceptActionUsage::cast)
-    }
-
-    /// Get the nested send action usage (for send statements)
-    pub fn send_action_usage(&self) -> Option<SendActionUsage> {
-        self.0.children().find_map(SendActionUsage::cast)
-    }
-
-    /// Get the nested requirement verification (for satisfy/verify statements)
-    pub fn requirement_verification(&self) -> Option<RequirementVerification> {
-        self.0.children().find_map(RequirementVerification::cast)
-    }
-
-    /// Get the nested connect usage (for connect statements)
-    pub fn connect_usage(&self) -> Option<ConnectUsage> {
-        self.0.children().find_map(ConnectUsage::cast)
-    }
-
-    /// Get the connector part directly (for connection usages with inline connect)
-    /// e.g., `connection multicausation connect ( cause1 ::> causer1 )`
-    pub fn connector_part(&self) -> Option<ConnectorPart> {
-        self.0.children().find_map(ConnectorPart::cast)
-    }
-
-    /// Get the nested binding connector (for bind statements)
-    pub fn binding_connector(&self) -> Option<BindingConnector> {
-        self.0.children().find_map(BindingConnector::cast)
-    }
-
-    /// Get the constraint body (for constraint usages)
-    pub fn constraint_body(&self) -> Option<ConstraintBody> {
-        self.0.children().find_map(ConstraintBody::cast)
-    }
-
-    /// Check if this usage has exhibit keyword
-    pub fn is_exhibit(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::EXHIBIT_KW)
-    }
-
-    /// Check if this usage has include keyword
-    pub fn is_include(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::INCLUDE_KW)
-    }
-
-    /// Check if this usage has allocate keyword
-    pub fn is_allocate(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ALLOCATE_KW)
-    }
-
-    /// Check if this usage has flow keyword
-    pub fn is_flow(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::FLOW_KW)
-    }
+    has_token_method!(is_exhibit, EXHIBIT_KW, "exhibit state s;");
+    has_token_method!(is_include, INCLUDE_KW, "include use case u;");
+    has_token_method!(is_allocate, ALLOCATE_KW, "allocate x to y;");
+    has_token_method!(is_flow, FLOW_KW, "flow x to y;");
 
     /// Get direct flow endpoints for flows without `from` keyword.
     /// Pattern: `flow X.Y to A.B` returns (Some(X.Y), Some(A.B))
@@ -1375,29 +1156,9 @@ impl Usage {
         (source, target)
     }
 
-    /// Check if this usage has assert keyword
-    pub fn is_assert(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ASSERT_KW)
-    }
-
-    /// Check if this usage has assume keyword
-    pub fn is_assume(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ASSUME_KW)
-    }
-
-    /// Check if this usage has require keyword  
-    pub fn is_require(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::REQUIRE_KW)
-    }
+    has_token_method!(is_assert, ASSERT_KW, "assert constraint c;");
+    has_token_method!(is_assume, ASSUME_KW, "assume constraint c;");
+    has_token_method!(is_require, REQUIRE_KW, "require constraint c;");
 
     pub fn usage_kind(&self) -> Option<UsageKind> {
         for token in self.0.children_with_tokens().filter_map(|e| e.into_token()) {
@@ -1469,9 +1230,7 @@ pub enum Direction {
 ast_node!(Name, NAME);
 
 impl Name {
-    pub fn short_name(&self) -> Option<ShortName> {
-        self.0.children().find_map(ShortName::cast)
-    }
+    first_child_method!(short_name, ShortName);
 
     pub fn text(&self) -> Option<String> {
         // Get the identifier token (including contextual keywords used as names)
@@ -1585,11 +1344,7 @@ impl QualifiedName {
     /// Uses '::' for namespace paths, '.' for feature chains
     fn to_string_inner(&self) -> String {
         // Check if this is a feature chain (uses '.' separator) or namespace path (uses '::')
-        let has_dot = self
-            .0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::DOT);
+        let has_dot = has_token(&self.0, SyntaxKind::DOT);
 
         let separator = if has_dot { "." } else { "::" };
         self.segments().join(separator)
@@ -1609,9 +1364,7 @@ impl std::fmt::Display for QualifiedName {
 ast_node!(Typing, TYPING);
 
 impl Typing {
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 }
 
 ast_node!(Specialization, SPECIALIZATION);
@@ -1640,15 +1393,10 @@ impl Specialization {
     /// Check if this is a shorthand redefines (`:>>`) vs keyword (`redefines`)
     /// Returns true for `:>> name`, false for `redefines name`
     pub fn is_shorthand_redefines(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::COLON_GT_GT)
+        has_token(&self.0, SyntaxKind::COLON_GT_GT)
     }
 
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1671,33 +1419,20 @@ pub enum SpecializationKind {
 ast_node!(FromToClause, FROM_TO_CLAUSE);
 
 impl FromToClause {
-    /// Get the source reference (e.g., `driver.turnVehicleOn`)
-    pub fn source(&self) -> Option<FromToSource> {
-        self.0.children().find_map(FromToSource::cast)
-    }
-
-    /// Get the target reference (e.g., `vehicle.trigger1`)
-    pub fn target(&self) -> Option<FromToTarget> {
-        self.0.children().find_map(FromToTarget::cast)
-    }
+    first_child_method!(source, FromToSource);
+    first_child_method!(target, FromToTarget);
 }
 
 ast_node!(FromToSource, FROM_TO_SOURCE);
 
 impl FromToSource {
-    /// Get the qualified name (which may be a feature chain like `a.b.c`)
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 }
 
 ast_node!(FromToTarget, FROM_TO_TARGET);
 
 impl FromToTarget {
-    /// Get the qualified name (which may be a feature chain like `a.b.c`)
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(target, QualifiedName);
 }
 
 // ============================================================================
@@ -1773,10 +1508,7 @@ impl TransitionUsage {
         None
     }
 
-    /// Get typing for the accept payload (e.g., `:IgnitionCmd`)
-    pub fn accept_typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
+    first_child_method!(accept_typing, Typing);
 
     /// Get the 'via' target for the accept trigger
     /// e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`
@@ -1807,30 +1539,16 @@ impl TransitionUsage {
 ast_node!(PerformActionUsage, PERFORM_ACTION_USAGE);
 
 impl PerformActionUsage {
-    /// Get the perform action name (if named, e.g., `perform action startVehicle`)
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the typing (e.g., `: GetOutOfVehicle` in `perform action x : GetOutOfVehicle`)
-    pub fn typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
-
-    /// Get all specializations (includes the performed action and redefines)
-    pub fn specializations(&self) -> impl Iterator<Item = Specialization> + '_ {
-        self.0.children().filter_map(Specialization::cast)
-    }
+    first_child_method!(name, Name);
+    first_child_method!(typing, Typing);
+    children_method!(specializations, Specialization);
 
     /// Get the performed action (first specialization, the action being performed)
     pub fn performed(&self) -> Option<Specialization> {
         self.specializations().next()
     }
 
-    /// Get the body of the perform action
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(body, NamespaceBody);
 }
 
 // ============================================================================
@@ -1845,15 +1563,8 @@ impl AcceptActionUsage {
         self.0.children().find_map(Name::cast)
     }
 
-    /// Get the trigger expression (what's being accepted)
-    pub fn trigger(&self) -> Option<Expression> {
-        self.0.children().find_map(Expression::cast)
-    }
-
-    /// Get the qualified name if accepting a named signal
-    pub fn accepted(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    first_child_method!(trigger, Expression);
+    first_child_method!(accepted, QualifiedName);
 
     /// Get the 'via' target port (the QualifiedName after VIA_KW)
     /// e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`
@@ -1883,15 +1594,8 @@ impl AcceptActionUsage {
 ast_node!(SendActionUsage, SEND_ACTION_USAGE);
 
 impl SendActionUsage {
-    /// Get the payload expression (what's being sent)
-    pub fn payload(&self) -> Option<Expression> {
-        self.0.children().find_map(Expression::cast)
-    }
-
-    /// Get qualified names (for via/to targets)
-    pub fn qualified_names(&self) -> impl Iterator<Item = QualifiedName> + '_ {
-        self.0.children().filter_map(QualifiedName::cast)
-    }
+    first_child_method!(payload, Expression);
+    children_method!(qualified_names, QualifiedName);
 }
 
 // ============================================================================
@@ -1901,20 +1605,9 @@ impl SendActionUsage {
 ast_node!(ForLoopActionUsage, FOR_LOOP_ACTION_USAGE);
 
 impl ForLoopActionUsage {
-    /// Get the loop variable name (e.g., `n` in `for n : Integer`)
-    pub fn variable_name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the typing relationship (the type of the loop variable)
-    pub fn typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
-
-    /// Get the body of the for loop
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(variable_name, Name);
+    first_child_method!(typing, Typing);
+    first_child_method!(body, NamespaceBody);
 
     /// Get members from the loop body
     pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
@@ -1959,10 +1652,7 @@ impl WhileLoopActionUsage {
         self.0.descendants().filter_map(Expression::cast)
     }
 
-    /// Get the body of the while loop
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(body, NamespaceBody);
 
     /// Get members from the loop body
     pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
@@ -1993,15 +1683,8 @@ impl StateSubaction {
             .map(|t| t.kind())
     }
 
-    /// Get the name of the action (if named)
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the body if present
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(name, Name);
+    first_child_method!(body, NamespaceBody);
 
     /// Check if this is an 'entry' subaction
     pub fn is_entry(&self) -> bool {
@@ -2043,15 +1726,8 @@ impl ControlNode {
             .map(|t| t.kind())
     }
 
-    /// Get the name of the control node (if named)
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the body if present
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(name, Name);
+    first_child_method!(body, NamespaceBody);
 
     /// Check if this is a 'fork' node
     pub fn is_fork(&self) -> bool {
@@ -2081,42 +1757,12 @@ impl ControlNode {
 ast_node!(RequirementVerification, REQUIREMENT_VERIFICATION);
 
 impl RequirementVerification {
-    /// Check if this is a 'satisfy' (vs 'verify')
-    pub fn is_satisfy(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::SATISFY_KW)
-    }
-
-    /// Check if this is a 'verify' (vs 'satisfy')
-    pub fn is_verify(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::VERIFY_KW)
-    }
-
-    /// Check if negated ('not satisfy')
-    pub fn is_negated(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::NOT_KW)
-    }
-
-    /// Check if asserted ('assert satisfy')
-    pub fn is_asserted(&self) -> bool {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .any(|t| t.kind() == SyntaxKind::ASSERT_KW)
-    }
-
-    /// Get the requirement being satisfied/verified (the first QualifiedName)
-    pub fn requirement(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
+    has_token_method!(is_satisfy, SATISFY_KW, "satisfy requirement R;");
+    has_token_method!(is_verify, VERIFY_KW, "verify requirement R;");
+    has_token_method!(is_negated, NOT_KW, "not satisfy requirement R;");
+    has_token_method!(is_asserted, ASSERT_KW, "assert satisfy requirement R;");
+    first_child_method!(requirement, QualifiedName);
+    first_child_method!(typing, Typing);
 
     /// Get the 'by' target (the QualifiedName after BY_KW)
     /// e.g., `vehicle_b` in `satisfy R by vehicle_b`
@@ -2137,11 +1783,6 @@ impl RequirementVerification {
         }
         None
     }
-
-    /// Get the typing if present
-    pub fn typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
 }
 
 // ============================================================================
@@ -2151,20 +1792,9 @@ impl RequirementVerification {
 ast_node!(Connector, CONNECTOR);
 
 impl Connector {
-    /// Get the name
-    pub fn name(&self) -> Option<Name> {
-        self.0.children().find_map(Name::cast)
-    }
-
-    /// Get the typing clause (e.g., `:Link` in `connector :Link`)
-    pub fn typing(&self) -> Option<Typing> {
-        self.0.children().find_map(Typing::cast)
-    }
-
-    /// Get the connector part (contains ends)
-    pub fn connector_part(&self) -> Option<ConnectorPart> {
-        self.0.children().find_map(ConnectorPart::cast)
-    }
+    first_child_method!(name, Name);
+    first_child_method!(typing, Typing);
+    first_child_method!(connector_part, ConnectorPart);
 
     /// Get connector endpoints directly
     /// Returns iterator over connector ends for `from ... to ...` or `connect ... to ...`
@@ -2186,10 +1816,7 @@ impl Connector {
         from_part.into_iter().chain(direct)
     }
 
-    /// Get the namespace body
-    pub fn body(&self) -> Option<NamespaceBody> {
-        self.0.children().find_map(NamespaceBody::cast)
-    }
+    first_child_method!(body, NamespaceBody);
 }
 
 // ============================================================================
@@ -2199,19 +1826,13 @@ impl Connector {
 ast_node!(ConnectUsage, CONNECT_USAGE);
 
 impl ConnectUsage {
-    /// Get the connector part (contains ends)
-    pub fn connector_part(&self) -> Option<ConnectorPart> {
-        self.0.children().find_map(ConnectorPart::cast)
-    }
+    first_child_method!(connector_part, ConnectorPart);
 }
 
 ast_node!(ConnectorPart, CONNECTOR_PART);
 
 impl ConnectorPart {
-    /// Get all connector ends
-    pub fn ends(&self) -> impl Iterator<Item = ConnectorEnd> + '_ {
-        self.0.children().filter_map(ConnectorEnd::cast)
-    }
+    children_method!(ends, ConnectorEnd);
 
     /// Get source end (first)
     pub fn source(&self) -> Option<ConnectorEnd> {
@@ -2309,10 +1930,7 @@ impl ConnectorEnd {
 ast_node!(BindingConnector, BINDING_CONNECTOR);
 
 impl BindingConnector {
-    /// Get all qualified names (source and target)
-    pub fn qualified_names(&self) -> impl Iterator<Item = QualifiedName> + '_ {
-        self.0.children().filter_map(QualifiedName::cast)
-    }
+    children_method!(qualified_names, QualifiedName);
 
     /// Get source (first qualified name)
     pub fn source(&self) -> Option<QualifiedName> {
@@ -2332,10 +1950,7 @@ impl BindingConnector {
 ast_node!(Succession, SUCCESSION);
 
 impl Succession {
-    /// Get all items in the succession
-    pub fn items(&self) -> impl Iterator<Item = SuccessionItem> + '_ {
-        self.0.children().filter_map(SuccessionItem::cast)
-    }
+    children_method!(items, SuccessionItem);
 
     /// Get the first item (source)
     pub fn source(&self) -> Option<SuccessionItem> {
@@ -2347,25 +1962,14 @@ impl Succession {
         self.items().nth(1)
     }
 
-    /// Get inline usages directly inside the succession (not wrapped in SUCCESSION_ITEM)
-    /// These come from `then action a { ... }` style successions
-    pub fn inline_usages(&self) -> impl Iterator<Item = Usage> + '_ {
-        self.0.children().filter_map(Usage::cast)
-    }
+    children_method!(inline_usages, Usage);
 }
 
 ast_node!(SuccessionItem, SUCCESSION_ITEM);
 
 impl SuccessionItem {
-    /// Get the qualified name reference (for simple succession like `then start`)
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.0.children().find_map(QualifiedName::cast)
-    }
-
-    /// Get the inline usage (for succession with inline definition like `then action a { ... }`)
-    pub fn usage(&self) -> Option<Usage> {
-        self.0.children().find_map(Usage::cast)
-    }
+    first_child_method!(target, QualifiedName);
+    first_child_method!(usage, Usage);
 }
 
 // ============================================================================
@@ -2375,16 +1979,8 @@ impl SuccessionItem {
 ast_node!(ConstraintBody, CONSTRAINT_BODY);
 
 impl ConstraintBody {
-    /// Get the expression inside the constraint body
-    pub fn expression(&self) -> Option<Expression> {
-        self.0.children().find_map(Expression::cast)
-    }
-
-    /// Get the namespace members inside the constraint body (for satisfy/verify blocks)
-    /// e.g., `satisfy R { requirement x :>> y { ... } }` - the nested requirement is a member
-    pub fn members(&self) -> impl Iterator<Item = NamespaceMember> + '_ {
-        self.0.children().filter_map(NamespaceMember::cast)
-    }
+    first_child_method!(expression, Expression);
+    children_method!(members, NamespaceMember);
 }
 
 // ============================================================================
