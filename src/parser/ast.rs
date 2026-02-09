@@ -1879,39 +1879,24 @@ impl Expression {
         // Look for pattern: NEW_KW followed by QUALIFIED_NAME then ARGUMENT_LIST
         let children: Vec<_> = node.children_with_tokens().collect();
 
-        let mut i = 0;
-        while i < children.len() {
-            // Check for NEW_KW token
-            if let Some(token) = children[i].as_token() {
-                if token.kind() == SyntaxKind::NEW_KW {
-                    // Find the type name (QUALIFIED_NAME after new)
-                    let mut type_name = None;
-                    for child in children.iter().skip(i + 1) {
-                        if let Some(qn_node) = child.as_node() {
-                            if qn_node.kind() == SyntaxKind::QUALIFIED_NAME {
-                                type_name = Some(qn_node.text().to_string());
-                                break;
-                            }
-                        }
-                    }
+        for (i, child) in children.iter().enumerate() {
+            if child.as_token().map(|t| t.kind()) == Some(SyntaxKind::NEW_KW) {
+                // Find the type name and argument list after NEW_KW
+                let rest = &children[i + 1..];
+                let type_name = rest.iter()
+                    .filter_map(|c| c.as_node())
+                    .find(|n| n.kind() == SyntaxKind::QUALIFIED_NAME)
+                    .map(|n| n.text().to_string());
 
-                    // Find ARGUMENT_LIST and extract named arguments
-                    if let Some(type_name) = type_name {
-                        for child in children.iter().skip(i + 1) {
-                            if let Some(arg_list_node) = child.as_node() {
-                                if arg_list_node.kind() == SyntaxKind::ARGUMENT_LIST {
-                                    self.extract_named_args_from_list(
-                                        arg_list_node,
-                                        &type_name,
-                                        results,
-                                    );
-                                }
-                            }
-                        }
+                if let Some(type_name) = type_name {
+                    for arg_list in rest.iter()
+                        .filter_map(|c| c.as_node())
+                        .filter(|n| n.kind() == SyntaxKind::ARGUMENT_LIST)
+                    {
+                        self.extract_named_args_from_list(arg_list, &type_name, results);
                     }
                 }
             }
-            i += 1;
         }
 
         // Recurse into child nodes
@@ -1926,77 +1911,53 @@ impl Expression {
         type_name: &str,
         results: &mut Vec<(String, String, rowan::TextRange)>,
     ) {
-        // Nested ARGUMENT_LIST nodes contain the actual arguments
-        for child in arg_list.children() {
-            if child.kind() == SyntaxKind::ARGUMENT_LIST {
-                // Check for pattern: IDENT EQ ...
-                let tokens: Vec<_> = child.children_with_tokens().collect();
+        for child in arg_list.children().filter(|c| c.kind() == SyntaxKind::ARGUMENT_LIST) {
+            // Look for IDENT followed by EQ (named argument pattern)
+            let tokens: Vec<_> = child.children_with_tokens().collect();
 
-                // Look for IDENT followed by EQ (named argument pattern)
-                for (idx, elem) in tokens.iter().enumerate() {
-                    if let Some(token) = elem.as_token() {
-                        if token.kind() == SyntaxKind::IDENT {
-                            // Check if next non-whitespace is EQ
-                            for next_elem in tokens.iter().skip(idx + 1) {
-                                if let Some(next_token) = next_elem.as_token() {
-                                    if next_token.kind() == SyntaxKind::WHITESPACE {
-                                        continue;
-                                    }
-                                    if next_token.kind() == SyntaxKind::EQ {
-                                        // Found named argument!
-                                        results.push((
-                                            type_name.to_string(),
-                                            token.text().to_string(),
-                                            token.text_range(),
-                                        ));
-                                    }
-                                    break;
-                                }
-                            }
-                        }
+            for (idx, elem) in tokens.iter().enumerate() {
+                if let Some(token) = elem.as_token().filter(|t| t.kind() == SyntaxKind::IDENT) {
+                    // Check if next non-whitespace is EQ
+                    let has_eq = tokens[idx + 1..].iter()
+                        .filter_map(|e| e.as_token())
+                        .find(|t| t.kind() != SyntaxKind::WHITESPACE)
+                        .map(|t| t.kind() == SyntaxKind::EQ)
+                        .unwrap_or(false);
+
+                    if has_eq {
+                        results.push((type_name.to_string(), token.text().to_string(), token.text_range()));
                     }
                 }
-
-                // Recurse into nested argument lists
-                self.extract_named_args_from_list(&child, type_name, results);
             }
+
+            // Recurse into nested argument lists
+            self.extract_named_args_from_list(&child, type_name, results);
         }
     }
 
     fn collect_feature_chains(&self, node: &SyntaxNode, chains: &mut Vec<FeatureChainRef>) {
-        // Check if this node is a QUALIFIED_NAME (which represents a feature chain)
         if node.kind() == SyntaxKind::QUALIFIED_NAME {
-            let mut parts = Vec::new();
-            for child in node.children_with_tokens() {
-                if let rowan::NodeOrToken::Token(token) = child {
-                    if token.kind() == SyntaxKind::IDENT {
-                        parts.push((token.text().to_string(), token.text_range()));
-                    }
-                }
-            }
+            let parts: Vec<_> = node.children_with_tokens()
+                .filter_map(|c| c.into_token())
+                .filter(|t| t.kind() == SyntaxKind::IDENT)
+                .map(|t| (t.text().to_string(), t.text_range()))
+                .collect();
+
             if !parts.is_empty() {
-                let full_range = node.text_range();
-                chains.push(FeatureChainRef { parts, full_range });
+                chains.push(FeatureChainRef { parts, full_range: node.text_range() });
             }
-            return; // Don't recurse into QUALIFIED_NAME, we've handled it
+            return;
         }
 
-        // Check for bare identifier tokens that are not inside a QUALIFIED_NAME
-        // This handles cases like `[n]` in multiplicities where `n` is just an IDENT
         for child in node.children_with_tokens() {
-            match &child {
-                rowan::NodeOrToken::Token(token) if token.kind() == SyntaxKind::IDENT => {
-                    // Found a bare identifier - treat as a single-part chain
-                    let parts = vec![(token.text().to_string(), token.text_range())];
+            match child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
                     chains.push(FeatureChainRef {
-                        parts,
-                        full_range: token.text_range(),
+                        parts: vec![(t.text().to_string(), t.text_range())],
+                        full_range: t.text_range(),
                     });
                 }
-                rowan::NodeOrToken::Node(child_node) => {
-                    // Recurse into child nodes
-                    self.collect_feature_chains(child_node, chains);
-                }
+                rowan::NodeOrToken::Node(n) => self.collect_feature_chains(&n, chains),
                 _ => {}
             }
         }
@@ -2005,15 +1966,11 @@ impl Expression {
     fn collect_references(&self, node: &SyntaxNode, refs: &mut Vec<(String, rowan::TextRange)>) {
         for child in node.children_with_tokens() {
             match child {
-                rowan::NodeOrToken::Token(token) => {
-                    if token.kind() == SyntaxKind::IDENT {
-                        refs.push((token.text().to_string(), token.text_range()));
-                    }
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
+                    refs.push((t.text().to_string(), t.text_range()));
                 }
-                rowan::NodeOrToken::Node(child_node) => {
-                    // Recurse into child nodes
-                    self.collect_references(&child_node, refs);
-                }
+                rowan::NodeOrToken::Node(n) => self.collect_references(&n, refs),
+                _ => {}
             }
         }
     }
