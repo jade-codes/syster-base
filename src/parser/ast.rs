@@ -10,6 +10,29 @@ use super::{SyntaxNode, SyntaxToken};
 // Helper utilities for reducing code duplication
 // ============================================================================
 
+/// Check if a token kind is an identifier or contextual keyword that can be used as a name.
+#[inline]
+fn is_name_token(kind: SyntaxKind) -> bool {
+    matches!(
+        kind,
+        SyntaxKind::IDENT
+            | SyntaxKind::START_KW
+            | SyntaxKind::END_KW
+            | SyntaxKind::DONE_KW
+            | SyntaxKind::THIS_KW
+    )
+}
+
+/// Strip surrounding single quotes from unrestricted names like `'My Name'`.
+#[inline]
+fn strip_unrestricted_name(text: &str) -> String {
+    if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
+        text[1..text.len() - 1].to_string()
+    } else {
+        text.to_string()
+    }
+}
+
 /// Check if a syntax node has a direct child token of the specified kind.
 ///
 /// This is a common pattern used throughout the AST to check for modifier keywords
@@ -141,6 +164,52 @@ macro_rules! body_members_method {
             self.body()
                 .into_iter()
                 .flat_map(|body| body.members().collect::<Vec<_>>())
+        }
+    };
+}
+
+/// Macro to generate a method that finds the first matching token from a set of kinds.
+///
+/// Returns `Option<SyntaxKind>` of the matched token.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     find_token_kind_method!(kind, [ENTRY_KW, DO_KW, EXIT_KW], "Get the subaction kind.");
+/// }
+/// ```
+macro_rules! find_token_kind_method {
+    ($name:ident, [$($kind:ident),+ $(,)?], $doc:literal) => {
+        #[doc = $doc]
+        pub fn $name(&self) -> Option<SyntaxKind> {
+            self.0
+                .children_with_tokens()
+                .filter_map(|e| e.into_token())
+                .find(|t| matches!(t.kind(), $(SyntaxKind::$kind)|+))
+                .map(|t| t.kind())
+        }
+    };
+}
+
+/// Macro to generate source/target pair methods from an iterator method.
+///
+/// Usage:
+/// ```ignore
+/// impl MyStruct {
+///     children_method!(items, Item);
+///     source_target_pair!(source, target, items, Item);
+/// }
+/// ```
+macro_rules! source_target_pair {
+    ($source:ident, $target:ident, $iter_method:ident, $type:ident) => {
+        #[doc = concat!("Get the first `", stringify!($type), "` (source).")]
+        pub fn $source(&self) -> Option<$type> {
+            self.$iter_method().next()
+        }
+
+        #[doc = concat!("Get the second `", stringify!($type), "` (target).")]
+        pub fn $target(&self) -> Option<$type> {
+            self.$iter_method().nth(1)
         }
     };
 }
@@ -1241,16 +1310,7 @@ impl Name {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .find(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::IDENT
-                        | SyntaxKind::START_KW
-                        | SyntaxKind::END_KW
-                        | SyntaxKind::DONE_KW
-                        | SyntaxKind::THIS_KW
-                )
-            })
+            .find(|t| is_name_token(t.kind()))
             .map(|t| t.text().to_string())
     }
 }
@@ -1262,25 +1322,8 @@ impl ShortName {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .find(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::IDENT
-                        | SyntaxKind::START_KW
-                        | SyntaxKind::END_KW
-                        | SyntaxKind::DONE_KW
-                )
-            })
-            .map(|t| {
-                let text = t.text();
-                // Strip surrounding quotes from unrestricted names like '+'
-                // This matches the behavior of QualifiedName::segments()
-                if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
-                    text[1..text.len() - 1].to_string()
-                } else {
-                    text.to_string()
-                }
-            })
+            .find(|t| is_name_token(t.kind()))
+            .map(|t| strip_unrestricted_name(t.text()))
     }
 }
 
@@ -1293,25 +1336,8 @@ impl QualifiedName {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .filter(|t| {
-                // Include IDENT and contextual keywords that can be used as names
-                matches!(
-                    t.kind(),
-                    SyntaxKind::IDENT
-                        | SyntaxKind::START_KW
-                        | SyntaxKind::END_KW
-                        | SyntaxKind::DONE_KW
-                )
-            })
-            .map(|t| {
-                let text = t.text();
-                // Strip surrounding quotes from unrestricted names like 'My Name'
-                if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
-                    text[1..text.len() - 1].to_string()
-                } else {
-                    text.to_string()
-                }
-            })
+            .filter(|t| is_name_token(t.kind()))
+            .map(|t| strip_unrestricted_name(t.text()))
             .collect()
     }
 
@@ -1321,26 +1347,8 @@ impl QualifiedName {
         self.0
             .children_with_tokens()
             .filter_map(|e| e.into_token())
-            .filter(|t| {
-                // Include IDENT and contextual keywords that can be used as names
-                matches!(
-                    t.kind(),
-                    SyntaxKind::IDENT
-                        | SyntaxKind::START_KW
-                        | SyntaxKind::END_KW
-                        | SyntaxKind::DONE_KW
-                )
-            })
-            .map(|t| {
-                let text = t.text();
-                // Strip surrounding quotes from unrestricted names like 'My Name'
-                let stripped = if text.starts_with('\'') && text.ends_with('\'') && text.len() > 1 {
-                    text[1..text.len() - 1].to_string()
-                } else {
-                    text.to_string()
-                };
-                (stripped, t.text_range())
-            })
+            .filter(|t| is_name_token(t.kind()))
+            .map(|t| (strip_unrestricted_name(t.text()), t.text_range()))
             .collect()
     }
 
@@ -1481,15 +1489,7 @@ impl TransitionUsage {
         self.0.children().filter_map(Specialization::cast)
     }
 
-    /// Get the source state (first specialization, before 'then')
-    pub fn source(&self) -> Option<Specialization> {
-        self.specializations().next()
-    }
-
-    /// Get the target state (second specialization, after 'then')
-    pub fn target(&self) -> Option<Specialization> {
-        self.specializations().nth(1)
-    }
+    source_target_pair!(source, target, specializations, Specialization);
 
     /// Get the accept payload name (the second NAME if present, after ACCEPT_KW)
     /// e.g., in `accept ignitionCmd:IgnitionCmd`, returns the Name for `ignitionCmd`
@@ -1626,19 +1626,8 @@ impl WhileLoopActionUsage {
 ast_node!(StateSubaction, STATE_SUBACTION);
 
 impl StateSubaction {
-    /// Get the state subaction kind (entry, do, or exit)
-    pub fn kind(&self) -> Option<SyntaxKind> {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .find(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::ENTRY_KW | SyntaxKind::DO_KW | SyntaxKind::EXIT_KW
-                )
-            })
-            .map(|t| t.kind())
-    }
+    find_token_kind_method!(kind, [ENTRY_KW, DO_KW, EXIT_KW],
+        "Get the state subaction kind (entry, do, or exit).");
 
     first_child_method!(name, Name);
     first_child_method!(body, NamespaceBody);
@@ -1655,22 +1644,8 @@ impl StateSubaction {
 ast_node!(ControlNode, CONTROL_NODE);
 
 impl ControlNode {
-    /// Get the control node kind (fork, join, merge, or decide)
-    pub fn kind(&self) -> Option<SyntaxKind> {
-        self.0
-            .children_with_tokens()
-            .filter_map(|e| e.into_token())
-            .find(|t| {
-                matches!(
-                    t.kind(),
-                    SyntaxKind::FORK_KW
-                        | SyntaxKind::JOIN_KW
-                        | SyntaxKind::MERGE_KW
-                        | SyntaxKind::DECIDE_KW
-                )
-            })
-            .map(|t| t.kind())
-    }
+    find_token_kind_method!(kind, [FORK_KW, JOIN_KW, MERGE_KW, DECIDE_KW],
+        "Get the control node kind (fork, join, merge, or decide).");
 
     first_child_method!(name, Name);
     first_child_method!(body, NamespaceBody);
@@ -1747,16 +1722,7 @@ ast_node!(ConnectorPart, CONNECTOR_PART);
 
 impl ConnectorPart {
     children_method!(ends, ConnectorEnd);
-
-    /// Get source end (first)
-    pub fn source(&self) -> Option<ConnectorEnd> {
-        self.ends().next()
-    }
-
-    /// Get target end (second)
-    pub fn target(&self) -> Option<ConnectorEnd> {
-        self.ends().nth(1)
-    }
+    source_target_pair!(source, target, ends, ConnectorEnd);
 }
 
 // ConnectorEnd can be either CONNECTION_END (KerML) or CONNECTOR_END (SysML)
@@ -1845,16 +1811,7 @@ ast_node!(BindingConnector, BINDING_CONNECTOR);
 
 impl BindingConnector {
     children_method!(qualified_names, QualifiedName);
-
-    /// Get source (first qualified name)
-    pub fn source(&self) -> Option<QualifiedName> {
-        self.qualified_names().next()
-    }
-
-    /// Get target (second qualified name)
-    pub fn target(&self) -> Option<QualifiedName> {
-        self.qualified_names().nth(1)
-    }
+    source_target_pair!(source, target, qualified_names, QualifiedName);
 }
 
 // ============================================================================
@@ -1865,17 +1822,7 @@ ast_node!(Succession, SUCCESSION);
 
 impl Succession {
     children_method!(items, SuccessionItem);
-
-    /// Get the first item (source)
-    pub fn source(&self) -> Option<SuccessionItem> {
-        self.items().next()
-    }
-
-    /// Get the second item (target)
-    pub fn target(&self) -> Option<SuccessionItem> {
-        self.items().nth(1)
-    }
-
+    source_target_pair!(source, target, items, SuccessionItem);
     children_method!(inline_usages, Usage);
 }
 
