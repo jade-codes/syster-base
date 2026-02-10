@@ -5,6 +5,15 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.3-alpha] - 2026-02-10
+
+### Fixed
+
+- **Feature Chain Hover Resolution**: Fixed hover/goto-definition for feature chains like `takePicture.focus` in perform/exhibit/include statements
+  - Include domain-specific relationships (Performs, Exhibits, Includes, Satisfies, Asserts, Verifies) in supertypes extraction for usages
+  - Recursively follow type chains when resolved type is a usage (not definition) to find member definitions
+  - Fixes cases like `perform action takePicture :> TakePicture` where hovering on `.focus` now correctly resolves to `TakePicture::focus`
+
 ## [Unreleased]
 
 ### Changed

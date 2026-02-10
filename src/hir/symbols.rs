@@ -1498,6 +1498,8 @@ fn extract_from_normalized_usage(
     // - Subsets: subset relationship (`:>` on usages)
     // - Specializes: specialization (`:>` can also be specializes in some contexts)
     // - Redefines: redefinition (`:>>` on usages) - needed for inherited member lookup
+    // - Performs/Exhibits/Includes/etc.: domain-specific relationships that establish type context
+    //   e.g., `perform takePicture :> TakePicture` - the performed action defines the type hierarchy
     let mut supertypes: Vec<Arc<str>> = usage
         .relationships
         .iter()
@@ -1508,6 +1510,12 @@ fn extract_from_normalized_usage(
                     | NormalizedRelKind::Subsets
                     | NormalizedRelKind::Specializes
                     | NormalizedRelKind::Redefines
+                    | NormalizedRelKind::Performs
+                    | NormalizedRelKind::Exhibits
+                    | NormalizedRelKind::Includes
+                    | NormalizedRelKind::Satisfies
+                    | NormalizedRelKind::Asserts
+                    | NormalizedRelKind::Verifies
             )
         })
         .map(|r| Arc::from(r.target.as_str().as_ref()))

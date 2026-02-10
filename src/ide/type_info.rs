@@ -169,12 +169,30 @@ fn resolve_member_of_symbol(
 
 /// Resolve a member name within the type of a symbol.
 /// e.g., for `fuelTank : FuelTank`, looking up `mass` should find `FuelTank::mass`
+///
+/// This function follows the full type chain - if the resolved type is itself a usage,
+/// it recursively follows that usage's type until reaching a definition.
 fn resolve_member_in_type(
     index: &SymbolIndex,
     symbol: &HirSymbol,
     member_name: &str,
 ) -> Option<HirSymbol> {
+    resolve_member_in_type_with_visited(index, symbol, member_name, &mut std::collections::HashSet::new())
+}
+
+/// Internal implementation with cycle detection.
+fn resolve_member_in_type_with_visited(
+    index: &SymbolIndex,
+    symbol: &HirSymbol,
+    member_name: &str,
+    visited: &mut std::collections::HashSet<String>,
+) -> Option<HirSymbol> {
     use crate::hir::RelationshipKind;
+
+    // Cycle detection
+    if !visited.insert(symbol.qualified_name.to_string()) {
+        return None;
+    }
 
     // Get the type of the symbol from:
     // 1. supertypes (the first one is usually the type)
@@ -242,6 +260,20 @@ fn resolve_member_in_type(
                 ResolveResult::NotFound => None,
             }
         })?;
+
+    // If the type_symbol is itself a usage (not a definition), we need to follow
+    // its type chain to find where members are actually defined.
+    // E.g., for `perform takePicture :> PictureTaking::takePicture`, the takePicture usage
+    // has type TakePicture (an action def), and that's where `focus` is defined.
+    if type_symbol.kind.is_usage() {
+        // First check if the member is directly defined in this usage (nested member)
+        let direct_child = format!("{}::{}", type_symbol.qualified_name, member_name);
+        if let Some(sym) = index.lookup_qualified(&direct_child).cloned() {
+            return Some(sym);
+        }
+        // Recursively follow the type chain
+        return resolve_member_in_type_with_visited(index, &type_symbol, member_name, visited);
+    }
 
     // The member should be qualified as TypeName::memberName
     let member_qualified = format!("{}::{}", type_symbol.qualified_name, member_name);
