@@ -1084,11 +1084,19 @@ impl Usage {
     has_token_method!(is_var, VAR_KW, "var attribute x;");
     has_token_method!(is_all, ALL_KW, "feature all instances : C[*]");
     has_token_method!(is_parallel, PARALLEL_KW, "parallel action a;");
-    has_token_method!(is_individual, INDIVIDUAL_KW, "individual part earth : Earth;");
+    has_token_method!(
+        is_individual,
+        INDIVIDUAL_KW,
+        "individual part earth : Earth;"
+    );
     has_token_method!(is_end, END_KW, "end part wheel : Wheel[4];");
     has_token_method!(is_default, DEFAULT_KW, "default attribute rgb : RGB;");
     has_token_method!(is_ordered, ORDERED_KW, "ordered part wheels : Wheel[4];");
-    has_token_method!(is_nonunique, NONUNIQUE_KW, "nonunique attribute scores : Integer[*];");
+    has_token_method!(
+        is_nonunique,
+        NONUNIQUE_KW,
+        "nonunique attribute scores : Integer[*];"
+    );
     has_token_method!(is_portion, PORTION_KW, "portion part fuelLoad : Fuel;");
 
     token_to_enum_method!(direction, Direction, [
@@ -1218,8 +1226,12 @@ impl Usage {
 
     first_child_method!(typing, Typing);
 
-    child_after_keyword_method!(of_type, QualifiedName, OF_KW,
-        "Get the 'of Type' qualified name for messages/items (e.g., `message sendCmd of SensedSpeed`).");
+    child_after_keyword_method!(
+        of_type,
+        QualifiedName,
+        OF_KW,
+        "Get the 'of Type' qualified name for messages/items (e.g., `message sendCmd of SensedSpeed`)."
+    );
 
     children_method!(specializations, Specialization);
     first_child_method!(body, NamespaceBody);
@@ -1520,13 +1532,21 @@ impl TransitionUsage {
     children_method!(specializations, Specialization);
     source_target_pair!(source, target, specializations, Specialization);
 
-    child_after_keyword_method!(accept_payload_name, Name, ACCEPT_KW,
-        "Get the accept payload name (e.g., `ignitionCmd` in `accept ignitionCmd:IgnitionCmd`).");
+    child_after_keyword_method!(
+        accept_payload_name,
+        Name,
+        ACCEPT_KW,
+        "Get the accept payload name (e.g., `ignitionCmd` in `accept ignitionCmd:IgnitionCmd`)."
+    );
 
     first_child_method!(accept_typing, Typing);
 
-    child_after_keyword_method!(accept_via, QualifiedName, VIA_KW,
-        "Get the 'via' target for the accept trigger (e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`).");
+    child_after_keyword_method!(
+        accept_via,
+        QualifiedName,
+        VIA_KW,
+        "Get the 'via' target for the accept trigger (e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`)."
+    );
 }
 
 // ============================================================================
@@ -1559,8 +1579,12 @@ impl AcceptActionUsage {
     first_child_method!(trigger, Expression);
     first_child_method!(accepted, QualifiedName);
 
-    child_after_keyword_method!(via, QualifiedName, VIA_KW,
-        "Get the 'via' target port (e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`).");
+    child_after_keyword_method!(
+        via,
+        QualifiedName,
+        VIA_KW,
+        "Get the 'via' target port (e.g., `ignitionCmdPort` in `accept ignitionCmd via ignitionCmdPort`)."
+    );
 }
 
 // ============================================================================
@@ -1594,7 +1618,11 @@ impl ForLoopActionUsage {
 ast_node!(IfActionUsage, IF_ACTION_USAGE);
 
 impl IfActionUsage {
-    descendants_method!(expressions, Expression, "Get descendant expressions (condition and then/else targets).");
+    descendants_method!(
+        expressions,
+        Expression,
+        "Get descendant expressions (condition and then/else targets)."
+    );
     children_method!(qualified_names, QualifiedName);
     first_child_method!(body, NamespaceBody);
 }
@@ -1606,7 +1634,11 @@ impl IfActionUsage {
 ast_node!(WhileLoopActionUsage, WHILE_LOOP_ACTION_USAGE);
 
 impl WhileLoopActionUsage {
-    descendants_method!(expressions, Expression, "Get descendant expressions (condition).");
+    descendants_method!(
+        expressions,
+        Expression,
+        "Get descendant expressions (condition)."
+    );
     first_child_method!(body, NamespaceBody);
     body_members_method!();
 }
@@ -1618,8 +1650,11 @@ impl WhileLoopActionUsage {
 ast_node!(StateSubaction, STATE_SUBACTION);
 
 impl StateSubaction {
-    find_token_kind_method!(kind, [ENTRY_KW, DO_KW, EXIT_KW],
-        "Get the state subaction kind (entry, do, or exit).");
+    find_token_kind_method!(
+        kind,
+        [ENTRY_KW, DO_KW, EXIT_KW],
+        "Get the state subaction kind (entry, do, or exit)."
+    );
 
     first_child_method!(name, Name);
     first_child_method!(body, NamespaceBody);
@@ -1636,8 +1671,11 @@ impl StateSubaction {
 ast_node!(ControlNode, CONTROL_NODE);
 
 impl ControlNode {
-    find_token_kind_method!(kind, [FORK_KW, JOIN_KW, MERGE_KW, DECIDE_KW],
-        "Get the control node kind (fork, join, merge, or decide).");
+    find_token_kind_method!(
+        kind,
+        [FORK_KW, JOIN_KW, MERGE_KW, DECIDE_KW],
+        "Get the control node kind (fork, join, merge, or decide)."
+    );
 
     first_child_method!(name, Name);
     first_child_method!(body, NamespaceBody);
@@ -1662,8 +1700,12 @@ impl RequirementVerification {
     first_child_method!(requirement, QualifiedName);
     first_child_method!(typing, Typing);
 
-    child_after_keyword_method!(by_target, QualifiedName, BY_KW,
-        "Get the 'by' target (e.g., `vehicle_b` in `satisfy R by vehicle_b`).");
+    child_after_keyword_method!(
+        by_target,
+        QualifiedName,
+        BY_KW,
+        "Get the 'by' target (e.g., `vehicle_b` in `satisfy R by vehicle_b`)."
+    );
 }
 
 // ============================================================================
@@ -1757,7 +1799,10 @@ impl ConnectorEnd {
     /// For simple patterns like `comp.lugNutPort`, returns `comp.lugNutPort`.
     pub fn target(&self) -> Option<QualifiedName> {
         if let Some((ref_node, has_references)) = self.end_reference_info() {
-            let qns: Vec<_> = ref_node.children().filter_map(QualifiedName::cast).collect();
+            let qns: Vec<_> = ref_node
+                .children()
+                .filter_map(QualifiedName::cast)
+                .collect();
             // If there's a ::> or references keyword, return the second QN (the target)
             // Otherwise return the first/only QN
             if has_references && qns.len() > 1 {
@@ -1879,13 +1924,15 @@ impl Expression {
             if child.as_token().map(|t| t.kind()) == Some(SyntaxKind::NEW_KW) {
                 // Find the type name and argument list after NEW_KW
                 let rest = &children[i + 1..];
-                let type_name = rest.iter()
+                let type_name = rest
+                    .iter()
                     .filter_map(|c| c.as_node())
                     .find(|n| n.kind() == SyntaxKind::QUALIFIED_NAME)
                     .map(|n| n.text().to_string());
 
                 if let Some(type_name) = type_name {
-                    for arg_list in rest.iter()
+                    for arg_list in rest
+                        .iter()
                         .filter_map(|c| c.as_node())
                         .filter(|n| n.kind() == SyntaxKind::ARGUMENT_LIST)
                     {
@@ -1907,21 +1954,29 @@ impl Expression {
         type_name: &str,
         results: &mut Vec<(String, String, rowan::TextRange)>,
     ) {
-        for child in arg_list.children().filter(|c| c.kind() == SyntaxKind::ARGUMENT_LIST) {
+        for child in arg_list
+            .children()
+            .filter(|c| c.kind() == SyntaxKind::ARGUMENT_LIST)
+        {
             // Look for IDENT followed by EQ (named argument pattern)
             let tokens: Vec<_> = child.children_with_tokens().collect();
 
             for (idx, elem) in tokens.iter().enumerate() {
                 if let Some(token) = elem.as_token().filter(|t| t.kind() == SyntaxKind::IDENT) {
                     // Check if next non-whitespace is EQ
-                    let has_eq = tokens[idx + 1..].iter()
+                    let has_eq = tokens[idx + 1..]
+                        .iter()
                         .filter_map(|e| e.as_token())
                         .find(|t| t.kind() != SyntaxKind::WHITESPACE)
                         .map(|t| t.kind() == SyntaxKind::EQ)
                         .unwrap_or(false);
 
                     if has_eq {
-                        results.push((type_name.to_string(), token.text().to_string(), token.text_range()));
+                        results.push((
+                            type_name.to_string(),
+                            token.text().to_string(),
+                            token.text_range(),
+                        ));
                     }
                 }
             }
@@ -1933,14 +1988,18 @@ impl Expression {
 
     fn collect_feature_chains(&self, node: &SyntaxNode, chains: &mut Vec<FeatureChainRef>) {
         if node.kind() == SyntaxKind::QUALIFIED_NAME {
-            let parts: Vec<_> = node.children_with_tokens()
+            let parts: Vec<_> = node
+                .children_with_tokens()
                 .filter_map(|c| c.into_token())
                 .filter(|t| t.kind() == SyntaxKind::IDENT)
                 .map(|t| (t.text().to_string(), t.text_range()))
                 .collect();
 
             if !parts.is_empty() {
-                chains.push(FeatureChainRef { parts, full_range: node.text_range() });
+                chains.push(FeatureChainRef {
+                    parts,
+                    full_range: node.text_range(),
+                });
             }
             return;
         }
