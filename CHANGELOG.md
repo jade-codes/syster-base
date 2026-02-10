@@ -5,7 +5,7 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.3.2-alpha] - 2026-02-09
+## [0.3.2-alpha] - 2026-02-10
 
 ### Fixed
 
@@ -34,6 +34,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Uses `AnalysisHost` API for cleaner test code
 
 ### Changed
+
+- **AST Code Deduplication** (Issue #13): Reduced code duplication in `ast.rs`
+  - Added 11 declarative macros: `has_token_method!`, `first_child_method!`, `children_method!`, `children_vec_method!`, `descendants_method!`, `child_after_keyword_method!`, `body_members_method!`, `find_token_kind_method!`, `source_target_pair!`, `token_to_enum_method!`, `prefix_metadata_method!`
+  - Added 6 helper functions: `is_name_token()`, `strip_unrestricted_name()`, `has_token()`, `find_name_token()`, `split_at_keyword()`, `collect_prefix_metadata()`
+  - Consolidated `ConnectorEnd::target()` and `endpoint_name()` with shared `end_reference_info()` helper
+  - Eliminated ~200+ lines of duplicated boilerplate while maintaining full test coverage
 
 - **Performance**: Added caching for SemanticMetadata baseType resolution
   - Lazy population with `RwLock` for thread safety
