@@ -895,6 +895,7 @@ impl SymbolIndex {
         // Pass 2: Resolve chain subsequent parts (can now use resolved types from pass 1)
         for (sym_idx, trk_idx, part_idx, target, chain_context, _ref_kind) in pass2_work {
             let symbol_qname = self.symbols[sym_idx].qualified_name.clone();
+
             let resolved = self.resolve_type_ref_cached(
                 &symbol_qname,
                 &target,
@@ -1176,7 +1177,10 @@ impl SymbolIndex {
             // Here `leftDiffPort` is a member of the usage, not the Differential definition.
             //
             // Strategy: First try to find member in the symbol's own scope (nested members),
-            // then fall back to the type scope (inherited members).
+            // then fall back to the type scope (inherited members),
+            // then check subsetted/specialized features (for combined type+subset patterns).
+
+            let current_sym = self.lookup_qualified(&current_sym_qname);
 
             let member_sym = {
                 // Try 1: Look for nested member directly in the current symbol
@@ -1184,9 +1188,17 @@ impl SymbolIndex {
                     sym
                 } else if current_sym_qname != current_type_scope {
                     // Try 2: Look in the type scope (inherited members)
-                    self.find_member_in_scope(&current_type_scope, part)?
+                    if let Some(sym) = self.find_member_in_scope(&current_type_scope, part) {
+                        sym
+                    } else {
+                        // Try 3: Look in subsetted/specialized scopes
+                        // This handles patterns like `cf : Surface :> faces` where
+                        // TypedBy is Surface but `edges` comes from `faces`
+                        self.find_member_in_subsetting_chain(current_sym, part)?
+                    }
                 } else {
-                    return None;
+                    // sym_qname == type_scope: try subsetting chain
+                    self.find_member_in_subsetting_chain(current_sym, part)?
                 }
             };
 
@@ -1200,6 +1212,111 @@ impl SymbolIndex {
             current_type_scope = self.get_member_lookup_scope(&member_sym, scope);
         }
 
+        None
+    }
+
+    /// Find a member by searching through the symbol's Subsets/Specializes chain.
+    /// This handles patterns like `cf : Surface :> faces` where the member is in `faces`.
+    fn find_member_in_subsetting_chain(
+        &self,
+        sym: Option<&HirSymbol>,
+        member_name: &str,
+    ) -> Option<HirSymbol> {
+        let mut visited = HashSet::new();
+        self.find_member_in_subsetting_chain_internal(sym, member_name, &mut visited)
+    }
+
+    fn find_member_in_subsetting_chain_internal(
+        &self,
+        sym: Option<&HirSymbol>,
+        member_name: &str,
+        visited: &mut HashSet<Arc<str>>,
+    ) -> Option<HirSymbol> {
+        let sym = sym?;
+
+        // Cycle detection
+        if !visited.insert(sym.qualified_name.clone()) {
+            return None;
+        }
+
+        for trk in &sym.type_refs {
+            for tr in trk.as_refs() {
+                // Check Subsets, Specializes, and Redefines
+                if tr.kind != crate::hir::symbols::RefKind::Subsets
+                    && tr.kind != crate::hir::symbols::RefKind::Specializes
+                    && tr.kind != crate::hir::symbols::RefKind::Redefines
+                {
+                    continue;
+                }
+
+                if let Some(ref resolved) = tr.resolved_target {
+                    // Handle circular references - symbol redefines itself
+                    // This happens with `item :>> faces` where faces resolves to the same symbol
+                    // We need to find the original feature in the parent's supertypes
+                    if resolved.as_ref() == sym.qualified_name.as_ref() {
+                        // Find the original feature in parent's supertypes
+                        if let Some(original) =
+                            self.find_original_feature_in_parent(&sym.qualified_name, &tr.target)
+                        {
+                            // Look for the member in the original feature
+                            if let Some(found) =
+                                self.find_member_in_scope(&original.qualified_name, member_name)
+                            {
+                                return Some(found);
+                            }
+                            // Recursively check original's subsetting chain
+                            if let Some(found) = self.find_member_in_subsetting_chain_internal(
+                                Some(&original),
+                                member_name,
+                                visited,
+                            ) {
+                                return Some(found);
+                            }
+                        }
+                        continue;
+                    }
+
+                    // Look for the member in this subsetted/specialized scope
+                    if let Some(found) = self.find_member_in_scope(resolved, member_name) {
+                        return Some(found);
+                    }
+
+                    // If not found, recursively check the target's subsetting chain
+                    if let Some(target_sym) = self.lookup_qualified(resolved) {
+                        if let Some(found) = self.find_member_in_subsetting_chain_internal(
+                            Some(target_sym),
+                            member_name,
+                            visited,
+                        ) {
+                            return Some(found);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Find the original feature definition in parent's supertypes.
+    /// Used when a symbol redefines/subsets itself.
+    fn find_original_feature_in_parent(
+        &self,
+        sym_qname: &str,
+        feature_name: &str,
+    ) -> Option<HirSymbol> {
+        let parent_scope = Self::parent_scope(sym_qname)?;
+        let parent_sym = self.lookup_qualified(parent_scope)?;
+
+        for supertype in &parent_sym.supertypes {
+            if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
+                if let Some(original) =
+                    self.find_member_in_scope(&super_sym.qualified_name, feature_name)
+                {
+                    return Some(original);
+                }
+            }
+        }
         None
     }
 
@@ -1248,6 +1365,25 @@ impl SymbolIndex {
             }
         }
 
+        // For perform actions (anonymous usages with name like `<perform:...>`), the performed action
+        // is the first type_ref with kind=Other. Its resolved_target is where members live.
+        // This handles: `perform ActionTree::providePower redefines providePower` where
+        // members of this perform come from ActionTree::providePower (NOT the ProvidePower definition).
+        // IMPORTANT: Use the USAGE (ActionTree::providePower) not the type definition (ProvidePower).
+        if sym.name.starts_with("<perform:") {
+            for trk in &sym.type_refs {
+                for tr in trk.as_refs() {
+                    if tr.kind == crate::hir::symbols::RefKind::Other {
+                        if let Some(ref resolved) = tr.resolved_target {
+                            // Return the performed action USAGE directly - it's where nested members are
+                            // Don't follow to its type definition!
+                            return resolved.clone();
+                        }
+                    }
+                }
+            }
+        }
+
         // For interface endpoints: check for ::> (References) relationships
         // These indicate the endpoint is a proxy for another scope where members live.
         // E.g., `connect lugNutPort ::> wheel1.lugNutCompositePort` means members
@@ -1258,11 +1394,58 @@ impl SymbolIndex {
                     // Check if this is a References chain
                     if let Some(first_part) = chain.parts.first() {
                         if first_part.kind == crate::hir::symbols::RefKind::References {
-                            // This is a ::> chain - follow the last resolved part
+                            // This is a ::> chain - try to resolve it fully
+                            // First, try using pre-resolved last part
                             if let Some(last_part) = chain.parts.last() {
                                 if let Some(ref resolved) = last_part.resolved_target {
+                                    // The resolved target is where members might be defined.
+                                    // For usages with nested children (redefines), return the usage itself.
+                                    // Otherwise, follow to its type for inherited members.
+                                    //
+                                    // Check if target has direct children by looking at by_parent_scope
+                                    let has_children = self
+                                        .by_parent_scope
+                                        .get(resolved)
+                                        .map(|v| !v.is_empty())
+                                        .unwrap_or(false);
+                                    if has_children {
+                                        return resolved.clone();
+                                    }
+
+                                    if let Some(target_sym) = self.lookup_qualified(resolved) {
+                                        let target_scope = self
+                                            .get_member_lookup_scope(target_sym, resolution_scope);
+                                        return target_scope;
+                                    }
                                     return resolved.clone();
                                 }
+                            }
+                            // Fallback: If last part isn't resolved yet (common during Pass 2 of resolution),
+                            // resolve the chain on-the-fly
+                            let chain_parts: Vec<Arc<str>> =
+                                chain.parts.iter().map(|p| p.target.clone()).collect();
+                            let sym_scope = Self::parent_scope(&sym.qualified_name).unwrap_or("");
+                            if let Some(resolved) = self.resolve_feature_chain_member(
+                                sym_scope,
+                                &chain_parts,
+                                chain_parts.len() - 1,
+                            ) {
+                                // Check if target has direct children - if so, return it directly
+                                let has_children = self
+                                    .by_parent_scope
+                                    .get(&*resolved)
+                                    .map(|v| !v.is_empty())
+                                    .unwrap_or(false);
+                                if has_children {
+                                    return resolved;
+                                }
+                                // Follow to target's type
+                                if let Some(target_sym) = self.lookup_qualified(&resolved) {
+                                    let target_scope =
+                                        self.get_member_lookup_scope(target_sym, resolution_scope);
+                                    return target_scope;
+                                }
+                                return resolved;
                             }
                         }
                     }
@@ -1273,6 +1456,65 @@ impl SymbolIndex {
                         if let Some(ref resolved) = tr.resolved_target {
                             return resolved.clone();
                         }
+                    }
+                }
+            }
+        }
+
+        // No TypedBy - try to infer type from Subsets, Redefines, or Specializes relationships
+        // This handles patterns like `item tfe :> edges` where we need edges' type
+        // Note: `:>` on usages is parsed as Specializes (not Subsets) in current grammar
+        for trk in &sym.type_refs {
+            for tr in trk.as_refs() {
+                if tr.kind != crate::hir::symbols::RefKind::Subsets
+                    && tr.kind != crate::hir::symbols::RefKind::Redefines
+                    && tr.kind != crate::hir::symbols::RefKind::Specializes
+                {
+                    continue;
+                }
+
+                // Special case: "that" keyword - refers to enclosing feature's type
+                // E.g., `ref item envelopedItem :>> that` in `item envelopingShapes : Item`
+                // means envelopedItem has type Item
+                if tr.target.as_ref() == "that" {
+                    if let Some(parent_scope) = Self::parent_scope(&sym.qualified_name) {
+                        if let Some(parent_sym) = self.lookup_qualified(parent_scope) {
+                            // Recursively get parent's type scope (but not via "that" to avoid loops)
+                            let parent_type =
+                                self.get_member_lookup_scope(parent_sym, resolution_scope);
+                            if parent_type.as_ref() != parent_sym.qualified_name.as_ref() {
+                                return parent_type;
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                // Check if resolved and not circular (resolving to self)
+                if let Some(ref resolved) = tr.resolved_target {
+                    if resolved.as_ref() == sym.qualified_name.as_ref() {
+                        // Circular - this symbol redefines/subsets itself
+                        // This happens with `item :>> faces` where faces resolves to the same symbol
+                        // We need to find the original feature in the parent's supertypes
+                        if let Some(inferred) = self.infer_type_from_parent_feature(
+                            &sym.qualified_name,
+                            &tr.target,
+                            resolution_scope,
+                        ) {
+                            return inferred;
+                        }
+                        continue;
+                    }
+
+                    // Follow the subsetted/redefined feature to get its type
+                    // Use recursion to handle chains like tfe :> edges :>> edges :>> edges : StructuredCurve
+                    if let Some(target_sym) = self.lookup_qualified(resolved) {
+                        // Recursively get the target's type - this will follow Subsets/Redefines chains
+                        let target_type =
+                            self.get_member_lookup_scope(target_sym, resolution_scope);
+                        // Return it even if it's the target itself - let the caller handle it
+                        // The key is that we return the target_type which may have followed chains
+                        return target_type;
                     }
                 }
             }
@@ -1299,6 +1541,37 @@ impl SymbolIndex {
 
         // No type - use the symbol itself as the scope for nested members
         sym.qualified_name.clone()
+    }
+
+    /// Infer type by finding the original feature definition in parent's supertypes.
+    /// Used when a symbol redefines/subsets itself (e.g., `item :>> faces` where faces resolves to self).
+    fn infer_type_from_parent_feature(
+        &self,
+        sym_qname: &str,
+        feature_name: &str,
+        resolution_scope: &str,
+    ) -> Option<Arc<str>> {
+        // Get the parent symbol (containing scope)
+        let parent_scope = Self::parent_scope(sym_qname)?;
+        let parent_sym = self.lookup_qualified(parent_scope)?;
+
+        // Look through parent's supertypes to find the original feature
+        for supertype in &parent_sym.supertypes {
+            // Resolve the supertype name
+            if let Some(super_sym) = self.resolve_with_scope_walk(supertype, parent_scope) {
+                // Look for the feature in this supertype
+                if let Some(original) =
+                    self.find_member_in_scope(&super_sym.qualified_name, feature_name)
+                {
+                    // Get the type of the original feature (recursively)
+                    let original_type = self.get_member_lookup_scope(&original, resolution_scope);
+                    if original_type.as_ref() != original.qualified_name.as_ref() {
+                        return Some(original_type);
+                    }
+                }
+            }
+        }
+        None
     }
 
     /// Find a member within a type scope.
@@ -1870,6 +2143,36 @@ impl SymbolIndex {
                 if let Some(hash_pos) = symbol.name.find('#') {
                     let base_name: Arc<str> = Arc::from(&symbol.name[4..hash_pos]);
                     vis.add_direct(base_name, symbol.qualified_name.clone());
+                }
+            }
+
+            // Register ANONYMOUS symbols with explicit `redefines` relationships under the redefined name.
+            // Pattern: `perform ActionTree::providePower redefines providePower` creates a symbol
+            // named `<perform:ActionTree::providePower#24@L568>` that should be accessible as `providePower`.
+            // IMPORTANT: Only do this for anonymous symbols (name starts with '<') to avoid shadowing
+            // legitimate qualified references in named symbols.
+            if symbol.name.starts_with('<') {
+                for type_ref in &symbol.type_refs {
+                    for tr in type_ref.as_refs() {
+                        if tr.kind == RefKind::Redefines {
+                            // The redefines target is the name we should be visible as
+                            vis.add_direct(tr.target.clone(), symbol.qualified_name.clone());
+                        }
+                    }
+
+                    // For perform actions with chain references like `perform startVehicle.turnVehicleOn`,
+                    // register the LAST part of the chain as the visible name.
+                    // This allows `driver.turnVehicleOn` to find the perform inside driver.
+                    if symbol.name.starts_with("<perform:") {
+                        if let crate::hir::TypeRefKind::Chain(chain) = type_ref {
+                            if let Some(last_part) = chain.parts.last() {
+                                vis.add_direct(
+                                    last_part.target.clone(),
+                                    symbol.qualified_name.clone(),
+                                );
+                            }
+                        }
+                    }
                 }
             }
 

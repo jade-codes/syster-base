@@ -1095,13 +1095,15 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
                 parse_sysml_parameter(p);
             } else if after_return == SyntaxKind::IDENT {
                 let after_that = p.peek_kind(skip_trivia_lookahead(p, lookahead + 1));
-                // If followed by name + colon/typing, it's a parameter declaration
+                // If followed by name + colon/typing/default, it's a parameter declaration
+                // EQ handles: return p = expr; (named result with default value)
                 if after_that == SyntaxKind::COLON
                     || after_that == SyntaxKind::TYPED_KW
                     || after_that == SyntaxKind::L_BRACKET
                     || after_that == SyntaxKind::COLON_GT
                     || after_that == SyntaxKind::COLON_GT_GT
                     || after_that == SyntaxKind::SEMICOLON
+                    || after_that == SyntaxKind::EQ
                 {
                     parse_sysml_parameter(p);
                 } else {
@@ -4926,13 +4928,15 @@ pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
                     parse_usage(p);
                 } else if after_return == SyntaxKind::IDENT {
                     let after_that = p.peek_kind(skip_trivia_lookahead(p, lookahead + 1));
-                    // If followed by name + colon/typing, it's a parameter declaration
+                    // If followed by name + colon/typing/default, it's a parameter declaration
+                    // EQ handles: return p = expr; (named result with default value)
                     if after_that == SyntaxKind::COLON
                         || after_that == SyntaxKind::TYPED_KW
                         || after_that == SyntaxKind::L_BRACKET
                         || after_that == SyntaxKind::COLON_GT
                         || after_that == SyntaxKind::COLON_GT_GT
                         || after_that == SyntaxKind::SEMICOLON
+                        || after_that == SyntaxKind::EQ
                     {
                         parse_usage(p);
                     } else {

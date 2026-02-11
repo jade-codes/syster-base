@@ -57,6 +57,7 @@ fn load_directory_into_index(dir: &Path) -> (SymbolIndex, Vec<(FileId, PathBuf)>
     }
 
     index.ensure_visibility_maps();
+    index.resolve_all_type_refs();
     (index, file_info)
 }
 

@@ -1424,14 +1424,34 @@ fn extract_from_normalized_usage(
 
             // Add parent's TypedBy types so inherited members are visible
             // This handles cases like: `spatialCF: Type { :>> mRefs }` where mRefs is from Type
-            if let Some(parent) = symbols
-                .iter()
-                .rev()
-                .find(|s| s.qualified_name.as_ref() == ctx.prefix)
-            {
-                for supertype in &parent.supertypes {
-                    if !anon_supertypes.contains(supertype) {
-                        anon_supertypes.push(supertype.clone());
+            // But skip this for:
+            // 1. Anonymous scopes that are pure expression containers (inv, etc.)
+            // 2. Connection-like usages (bind, connect, flow, interface) - they're structural, not type hierarchies
+            let is_expression_scope = usage.name.is_none()
+                && usage
+                    .relationships
+                    .iter()
+                    .all(|r| matches!(r.kind, NormalizedRelKind::Expression));
+
+            // Connection kinds shouldn't inherit parent supertypes - they define connections, not type inheritance
+            let is_connection_kind = matches!(
+                usage.kind,
+                NormalizedUsageKind::Connection
+                    | NormalizedUsageKind::Flow
+                    | NormalizedUsageKind::Interface
+                    | NormalizedUsageKind::Allocation
+            );
+
+            if !is_expression_scope && !is_connection_kind {
+                if let Some(parent) = symbols
+                    .iter()
+                    .rev()
+                    .find(|s| s.qualified_name.as_ref() == ctx.prefix)
+                {
+                    for supertype in &parent.supertypes {
+                        if !anon_supertypes.contains(supertype) {
+                            anon_supertypes.push(supertype.clone());
+                        }
                     }
                 }
             }

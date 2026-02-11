@@ -412,6 +412,40 @@ pub enum NormalizedRelKind {
 // Adapters from Rowan AST
 // ============================================================================
 
+/// Extract feature chains from an expression into normalized relationships.
+fn extract_expression_chains(
+    expr: &crate::parser::Expression,
+    relationships: &mut Vec<NormalizedRelationship>,
+) {
+    for chain in expr.feature_chains() {
+        if chain.parts.len() == 1 {
+            let (name, range) = &chain.parts[0];
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::Expression,
+                target: RelTarget::Simple(name.clone()),
+                range: Some(*range),
+            });
+        } else {
+            let parts: Vec<FeatureChainPart> = chain
+                .parts
+                .iter()
+                .map(|(name, range)| FeatureChainPart {
+                    name: name.clone(),
+                    range: Some(*range),
+                })
+                .collect();
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::Expression,
+                target: RelTarget::Chain(FeatureChain {
+                    parts,
+                    range: Some(chain.full_range),
+                }),
+                range: Some(chain.full_range),
+            });
+        }
+    }
+}
+
 /// Helper to create a feature chain or simple target from a qualified name
 fn make_chain_or_simple(target_str: &str, qn: &crate::parser::QualifiedName) -> RelTarget {
     if target_str.contains('.') {
@@ -711,35 +745,37 @@ impl NormalizedDefinition {
 
         // Extract expression references from ALL expressions in this definition
         // (e.g., constraint def bodies)
+        // IMPORTANT: Only extract expressions that are NOT inside nested scopes
+        // to avoid duplicate extraction - children will extract their own expressions
         for expr in def.descendants::<Expression>() {
-            let chains = expr.feature_chains();
-            for chain in chains {
-                if chain.parts.len() == 1 {
-                    let (name, range) = &chain.parts[0];
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Simple(name.clone()),
-                        range: Some(*range),
-                    });
-                } else {
-                    let parts: Vec<FeatureChainPart> = chain
-                        .parts
-                        .iter()
-                        .map(|(name, range)| FeatureChainPart {
-                            name: name.clone(),
-                            range: Some(*range),
-                        })
-                        .collect();
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(chain.full_range),
-                        }),
-                        range: Some(chain.full_range),
-                    });
+            // Skip expressions that are inside a nested scope
+            let mut is_in_nested_scope = false;
+            let mut ancestor = expr.syntax().parent();
+            let def_syntax = def.syntax();
+            while let Some(ref node) = ancestor {
+                // Stop when we reach our own def node
+                if node.text_range().start() == def_syntax.text_range().start() {
+                    break;
                 }
+                // If we hit any USAGE/DEFINITION before reaching our own node,
+                // this expression belongs to a nested scope
+                let is_boundary = matches!(
+                    node.kind(),
+                    crate::parser::SyntaxKind::NAMESPACE_BODY
+                        | crate::parser::SyntaxKind::USAGE
+                        | crate::parser::SyntaxKind::DEFINITION
+                );
+                if is_boundary {
+                    is_in_nested_scope = true;
+                    break;
+                }
+                ancestor = node.parent();
             }
+            if is_in_nested_scope {
+                continue;
+            }
+
+            extract_expression_chains(&expr, &mut relationships);
         }
 
         // Extract prefix metadata (#name) as Meta relationships
@@ -912,39 +948,41 @@ impl NormalizedUsage {
             }
         }
 
-        // Extract expression references from ALL expressions in this usage
-        // This covers: value expressions, constraint bodies, and any other nested expressions
+        // Extract expression references from expressions in this usage
+        // IMPORTANT: Only extract expressions that are NOT inside nested scopes (NAMESPACE_BODY/USAGE)
+        // to avoid duplicate extraction - children will extract their own expressions
         for expr in usage.descendants::<Expression>() {
-            // Use feature_chains() to properly extract chains like `fuelTank.mass`
-            for chain in expr.feature_chains() {
-                if chain.parts.len() == 1 {
-                    // Single identifier - add as Simple
-                    let (name, range) = &chain.parts[0];
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Simple(name.clone()),
-                        range: Some(*range),
-                    });
-                } else {
-                    // Multi-part chain - add as Chain
-                    let parts: Vec<FeatureChainPart> = chain
-                        .parts
-                        .iter()
-                        .map(|(name, range)| FeatureChainPart {
-                            name: name.clone(),
-                            range: Some(*range),
-                        })
-                        .collect();
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(chain.full_range),
-                        }),
-                        range: Some(chain.full_range),
-                    });
+            // Skip expressions that are inside a nested NAMESPACE_BODY or nested USAGE
+            // These will be extracted when processing the child symbol
+            let mut is_in_nested_scope = false;
+            let mut ancestor = expr.syntax().parent();
+            let usage_syntax = usage.syntax();
+            while let Some(ref node) = ancestor {
+                // Stop when we reach our own usage node (check by text_range start position)
+                // Note: end position can differ due to whitespace handling, so just check start
+                if node.text_range().start() == usage_syntax.text_range().start() {
+                    break;
                 }
+                // If we hit a NAMESPACE_BODY or any USAGE/DEFINITION before reaching our own node,
+                // this expression belongs to a nested scope
+                let is_boundary = matches!(
+                    node.kind(),
+                    crate::parser::SyntaxKind::NAMESPACE_BODY
+                        | crate::parser::SyntaxKind::USAGE
+                        | crate::parser::SyntaxKind::DEFINITION
+                );
+                if is_boundary {
+                    is_in_nested_scope = true;
+                    break;
+                }
+                ancestor = node.parent();
             }
+            if is_in_nested_scope {
+                continue;
+            }
+
+            // Use helper to properly extract chains with `that` resolution
+            extract_expression_chains(&expr, &mut relationships);
 
             // Extract named constructor arguments from `new Type(argName = value)` patterns
             // These resolve as Type.argName (feature of the constructed type)
@@ -1538,6 +1576,22 @@ impl NormalizedUsage {
                 }
             };
 
+        // Add implicit typing for transition usages without explicit typing
+        // In SysML, transitions are implicitly typed by TransitionAction
+        // Note: We use None for range since there's no actual source text to highlight
+        if kind == NormalizedUsageKind::Transition {
+            let has_typing = relationships
+                .iter()
+                .any(|r| matches!(r.kind, NormalizedRelKind::TypedBy));
+            if !has_typing {
+                relationships.push(NormalizedRelationship {
+                    kind: NormalizedRelKind::TypedBy,
+                    target: RelTarget::Simple("Actions::TransitionAction".to_string()),
+                    range: None, // Implicit - no source text to highlight
+                });
+            }
+        }
+
         // Add endpoint usages (collected earlier, for named endpoints like `cause1` in `cause1 ::> a`)
         children.extend(endpoint_usages);
 
@@ -1855,6 +1909,20 @@ impl NormalizedUsage {
                 direction: None,
                 multiplicity: None,
             }));
+        }
+
+        // Add implicit typing for transition usages that don't have explicit types
+        // In SysML, transitions are implicitly typed by TransitionAction
+        // Note: We use None for range since there's no actual source text to highlight
+        let has_typing = relationships
+            .iter()
+            .any(|r| matches!(r.kind, NormalizedRelKind::TypedBy));
+        if !has_typing {
+            relationships.push(NormalizedRelationship {
+                kind: NormalizedRelKind::TypedBy,
+                target: RelTarget::Simple("Actions::TransitionAction".to_string()),
+                range: None, // Implicit - no source text to highlight
+            });
         }
 
         Self {
@@ -2433,33 +2501,7 @@ impl NormalizedUsage {
 
         // Extract expression references from condition
         for expr in if_action.expressions() {
-            for chain in expr.feature_chains() {
-                if chain.parts.len() == 1 {
-                    let (name, range) = &chain.parts[0];
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Simple(name.clone()),
-                        range: Some(*range),
-                    });
-                } else {
-                    let parts: Vec<FeatureChainPart> = chain
-                        .parts
-                        .iter()
-                        .map(|(name, range)| FeatureChainPart {
-                            name: name.clone(),
-                            range: Some(*range),
-                        })
-                        .collect();
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(chain.full_range),
-                        }),
-                        range: Some(chain.full_range),
-                    });
-                }
-            }
+            extract_expression_chains(&expr, &mut relationships);
         }
 
         // Extract qualified name references (then/else action targets)
@@ -2512,33 +2554,7 @@ impl NormalizedUsage {
 
         // Extract expression references from condition
         for expr in while_loop.expressions() {
-            for chain in expr.feature_chains() {
-                if chain.parts.len() == 1 {
-                    let (name, range) = &chain.parts[0];
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Simple(name.clone()),
-                        range: Some(*range),
-                    });
-                } else {
-                    let parts: Vec<FeatureChainPart> = chain
-                        .parts
-                        .iter()
-                        .map(|(name, range)| FeatureChainPart {
-                            name: name.clone(),
-                            range: Some(*range),
-                        })
-                        .collect();
-                    relationships.push(NormalizedRelationship {
-                        kind: NormalizedRelKind::Expression,
-                        target: RelTarget::Chain(FeatureChain {
-                            parts,
-                            range: Some(chain.full_range),
-                        }),
-                        range: Some(chain.full_range),
-                    });
-                }
-            }
+            extract_expression_chains(&expr, &mut relationships);
         }
 
         // Add members from the while loop body

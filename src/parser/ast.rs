@@ -1997,7 +1997,7 @@ impl Expression {
                 .children_with_tokens()
                 .filter_map(|c| c.into_token())
                 .filter(|t| t.kind() == SyntaxKind::IDENT)
-                .map(|t| (t.text().to_string(), t.text_range()))
+                .map(|t| (strip_unrestricted_name(t.text()), t.text_range()))
                 .collect();
 
             if !parts.is_empty() {
@@ -2013,7 +2013,7 @@ impl Expression {
             match child {
                 rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
                     chains.push(FeatureChainRef {
-                        parts: vec![(t.text().to_string(), t.text_range())],
+                        parts: vec![(strip_unrestricted_name(t.text()), t.text_range())],
                         full_range: t.text_range(),
                     });
                 }
@@ -2027,7 +2027,7 @@ impl Expression {
         for child in node.children_with_tokens() {
             match child {
                 rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::IDENT => {
-                    refs.push((t.text().to_string(), t.text_range()));
+                    refs.push((strip_unrestricted_name(t.text()), t.text_range()));
                 }
                 rowan::NodeOrToken::Node(n) => self.collect_references(&n, refs),
                 _ => {}

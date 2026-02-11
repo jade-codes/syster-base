@@ -440,7 +440,40 @@ impl<'a> SemanticChecker<'a> {
                             self.referenced.insert(resolved.clone());
                         }
                     }
-                    // Chains are typically feature access paths, don't check as types
+
+                    // Validate unresolved chain parts (when first part resolves)
+                    // Skip if first part didn't resolve (can't validate without context)
+                    if chain
+                        .parts
+                        .first()
+                        .is_some_and(|p| p.resolved_target.is_some())
+                    {
+                        for part in chain.parts.iter().skip(1) {
+                            if part.resolved_target.is_none() {
+                                let name = part.target.as_ref();
+
+                                // Skip `that` keyword - it's a SysML contextual reference
+                                // meaning "the type of the enclosing feature" and cannot
+                                // be resolved as a regular symbol.
+                                if name == "that" {
+                                    continue;
+                                }
+
+                                self.collector.add(
+                                    Diagnostic::error(
+                                        symbol.file,
+                                        part.start_line.saturating_sub(1),
+                                        part.start_col.saturating_sub(1),
+                                        format!("Undefined member '{}' in feature chain", name),
+                                    )
+                                    .with_span(
+                                        part.end_line.saturating_sub(1),
+                                        part.end_col.saturating_sub(1),
+                                    ),
+                                );
+                            }
+                        }
+                    }
                 }
             }
         }

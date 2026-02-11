@@ -952,3 +952,175 @@ fn test_filter_preserves_public_visibility() {
     assert_resolves(analysis.symbol_index(), "Consumer", "publicPart");
     assert_not_found(analysis.symbol_index(), "Consumer", "privatePart");
 }
+
+// =============================================================================
+// FEATURE CHAIN RESOLUTION
+// =============================================================================
+
+#[test]
+fn test_quoted_identifier_chain_resolution() {
+    // Test that quoted identifiers (unrestricted names) resolve correctly in feature chains
+    // This was a bug where the chain extraction didn't strip quotes from the name,
+    // causing lookups to fail (e.g., "'Θ'" vs "Θ" in visibility maps).
+    let source = r#"
+        package ISQ {
+            attribute 'Θ': ScalarValues::Real;
+        }
+        
+        package Test {
+            import ISQ::*;
+            
+            attribute test: ScalarValues::Real = ISQ.'Θ';
+        }
+    "#;
+    let (mut host, _file_id) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+    let index = analysis.symbol_index();
+
+    // Check that the chain resolves both parts
+    let test_sym = index
+        .all_symbols()
+        .find(|s| s.qualified_name.as_ref() == "Test::test")
+        .expect("Should have test symbol");
+
+    for trk in &test_sym.type_refs {
+        if let syster::hir::TypeRefKind::Chain(chain) = trk {
+            // Check that the quoted identifier part resolved
+            let theta_part = chain
+                .parts
+                .iter()
+                .find(|p| p.target.as_ref() == "Θ")
+                .expect("Should have Θ part (quotes stripped)");
+
+            assert!(
+                theta_part.resolved_target.is_some(),
+                "Quoted identifier 'Θ' should resolve to ISQ::Θ"
+            );
+            assert_eq!(
+                theta_part.resolved_target.as_ref().map(|s| s.as_ref()),
+                Some("ISQ::Θ")
+            );
+        }
+    }
+}
+
+#[test]
+fn test_flow_feature_chain_correct_resolution() {
+    // Test that correctly spelled feature chains resolve properly
+    let source = r#"
+        package VehicleDefinitions {
+            port def AxleMountIF { 
+                out transferredTorque;
+            }
+            
+            port def WheelHubIF { 
+                in appliedTorque;
+            }
+            
+            interface def Mounting {
+                end axleMount: AxleMountIF;
+                end hub: WheelHubIF;
+                
+                flow axleMount.transferredTorque to hub.appliedTorque;
+            }
+        }
+    "#;
+    let (mut host, file_id) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+    let index = analysis.symbol_index();
+
+    // Should have no undefined reference errors for correct chains
+    let diags = syster::hir::check_file(index, file_id);
+    let semantic_errors: Vec<_> = diags
+        .iter()
+        .filter(|d| d.message.contains("undefined reference"))
+        .collect();
+    assert!(
+        semantic_errors.is_empty(),
+        "Expected no undefined reference errors, got: {:?}",
+        semantic_errors
+            .iter()
+            .map(|d| &d.message)
+            .collect::<Vec<_>>()
+    );
+}
+#[test]
+fn test_redefines_that_chain_resolution() {
+    // Test pattern from Items.sysml: ref item envelopedItem :>> that
+    // The chain `envelopedItem.outerSpaceDimension` should resolve if `that`
+    // is understood to refer to the containing Item.
+    let source = r#"
+        part def Item {
+            attribute outerSpaceDimension: ScalarValues::Integer;
+            
+            part envelopingShapes: Item[0..*] {
+                ref item envelopedItem :>> that;
+                
+                attribute test = envelopedItem.outerSpaceDimension;
+            }
+        }
+    "#;
+    let (mut host, _file_id) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+    let index = analysis.symbol_index();
+
+    // Find the test attribute
+    let test_sym = index
+        .all_symbols()
+        .find(|s| s.qualified_name.as_ref() == "Item::envelopingShapes::test")
+        .expect("Should have test symbol");
+
+    println!("\n=== Test symbol type_refs ===");
+    for trk in &test_sym.type_refs {
+        if let syster::hir::TypeRefKind::Chain(chain) = trk {
+            for (i, part) in chain.parts.iter().enumerate() {
+                println!(
+                    "  part[{}]: '{}' -> {:?}",
+                    i, part.target, part.resolved_target
+                );
+            }
+        }
+    }
+
+    // Check if outerSpaceDimension resolves
+    let mut found_chain = false;
+    for trk in &test_sym.type_refs {
+        if let syster::hir::TypeRefKind::Chain(chain) = trk {
+            if chain.parts.len() == 2 {
+                found_chain = true;
+                let second_part = &chain.parts[1];
+                println!(
+                    "\nSecond part '{}' resolved: {:?}",
+                    second_part.target,
+                    second_part.resolved_target.is_some()
+                );
+            }
+        }
+    }
+    assert!(found_chain, "Should have found the chain");
+
+    // Run check_file to trigger CHAIN_TRIAGE logging
+    let diags = syster::hir::check_file(index, _file_id);
+    println!("Diagnostics count: {}", diags.len());
+
+    // Debug: print all symbols with expression chains
+    println!("\n=== All symbols with chains ===");
+    for sym in index.all_symbols() {
+        for trk in &sym.type_refs {
+            if let syster::hir::TypeRefKind::Chain(chain) = trk {
+                if chain.parts.len() > 1 {
+                    let parts_str: Vec<_> = chain
+                        .parts
+                        .iter()
+                        .map(|p| format!("{}:{:?}", p.target, p.resolved_target.is_some()))
+                        .collect();
+                    println!(
+                        "  {} has chain: [{}]",
+                        sym.qualified_name,
+                        parts_str.join(", ")
+                    );
+                }
+            }
+        }
+    }
+}
