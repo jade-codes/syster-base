@@ -324,17 +324,17 @@ impl<'a> DecompileContext<'a> {
 
         let relations = format!("{}{}{}", typing, subsetting, redefinition);
 
-        // Filter FeatureValue children from the "has body" check — they are
-        // rendered inline as `= value`, not as nested body members.
-        let has_non_value_children = element.owned_elements.iter().any(|child_id| {
+        // Filter children rendered inline (values and relationships like
+        // FeatureTyping, Specialization, etc.) from the "has body" check.
+        let has_body_children = element.owned_elements.iter().any(|child_id| {
             self.model
                 .get(child_id)
-                .map(|c| c.kind != ElementKind::FeatureValue)
+                .map(|c| !c.kind.is_inline_rendered())
                 .unwrap_or(false)
         });
 
         if let Some(name) = &element.name {
-            if !has_non_value_children && element.documentation.is_none() {
+            if !has_body_children && element.documentation.is_none() {
                 self.write_line(&format!(
                     "{} {}{}{}{};",
                     keyword, short, name, relations, value
@@ -385,11 +385,11 @@ impl<'a> DecompileContext<'a> {
 
         let value = self.format_feature_value(&element.id);
 
-        // Filter FeatureValue children from the "has body" check
-        let has_non_value_children = element.owned_elements.iter().any(|child_id| {
+        // Filter children rendered inline from the "has body" check
+        let has_body_children = element.owned_elements.iter().any(|child_id| {
             self.model
                 .get(child_id)
-                .map(|c| c.kind != ElementKind::FeatureValue)
+                .map(|c| !c.kind.is_inline_rendered())
                 .unwrap_or(false)
         });
 
@@ -410,7 +410,7 @@ impl<'a> DecompileContext<'a> {
                 value,
             );
 
-            if !has_non_value_children && element.documentation.is_none() {
+            if !has_body_children && element.documentation.is_none() {
                 self.write_line(&format!("{};", decl));
             } else {
                 self.write_line(&format!("{} {{", decl));

@@ -304,17 +304,21 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 // Look up target's element_id from qualified name
                 // Try multiple resolution strategies:
                 // 1. Direct lookup (fully qualified)
-                // 2. Same namespace as source (e.g., "Vehicle" -> "Types::Vehicle")
+                // 2. Walk up ancestor namespaces (e.g., for "Label" from
+                //    "Sensor::Thermometer::name", try "Sensor::Thermometer::Label"
+                //    then "Sensor::Label")
                 let target_id = name_to_id
                     .get(hir_rel.target.as_ref())
                     .or_else(|| {
-                        // Try adding source's namespace prefix
-                        if let Some((ns, _)) = symbol.qualified_name.rsplit_once("::") {
-                            let namespaced = format!("{}::{}", ns, hir_rel.target);
-                            name_to_id.get(namespaced.as_str())
-                        } else {
-                            None
+                        let mut ns = symbol.qualified_name.as_ref();
+                        while let Some((parent, _)) = ns.rsplit_once("::") {
+                            let candidate = format!("{}::{}", parent, hir_rel.target);
+                            if let Some(found) = name_to_id.get(candidate.as_str()) {
+                                return Some(found);
+                            }
+                            ns = parent;
                         }
+                        None
                     })
                     .map(|&id| ElementId::new(id))
                     .unwrap_or_else(|| {
@@ -322,8 +326,41 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         ElementId::new(hir_rel.target.as_ref())
                     });
 
-                let relationship = Relationship::new(rel_id, rel_kind, id.clone(), target_id);
+                let relationship =
+                    Relationship::new(rel_id.clone(), rel_kind, id.clone(), target_id.clone());
                 model.add_relationship(relationship);
+
+                // Also create relationship elements as owned children so the
+                // XMI writer emits them (it traverses the element tree, not
+                // model.relationships).
+                let element_kind = match rel_kind {
+                    RelationshipKind::FeatureTyping => Some(ElementKind::FeatureTyping),
+                    RelationshipKind::Specialization => Some(ElementKind::Specialization),
+                    RelationshipKind::Redefinition => Some(ElementKind::Redefinition),
+                    RelationshipKind::Subsetting => Some(ElementKind::Subsetting),
+                    _ => None,
+                };
+                if let Some(ek) = element_kind {
+                    let mut rel_element =
+                        Element::new(rel_id.clone(), ek).with_owner(id.clone());
+                    // Store target as attribute so the XMI writer emits it
+                    // and the reader can reconstruct the relationship
+                    let target_attr = match ek {
+                        ElementKind::FeatureTyping => "type",
+                        ElementKind::Specialization => "general",
+                        ElementKind::Redefinition => "redefinedFeature",
+                        ElementKind::Subsetting => "subsettedFeature",
+                        _ => "target",
+                    };
+                    rel_element.properties.insert(
+                        Arc::from(target_attr),
+                        PropertyValue::String(Arc::from(target_id.as_str())),
+                    );
+                    model.add_element(rel_element);
+                    if let Some(parent) = model.get_mut(&id) {
+                        parent.owned_elements.push(rel_id);
+                    }
+                }
             }
         }
 

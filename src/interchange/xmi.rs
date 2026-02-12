@@ -431,12 +431,27 @@ mod reader {
                     );
                 }
 
-                // Store extra attributes
+                // Store extra attributes, converting typed values for literal elements
                 for (key, value) in extra_attrs {
-                    element.properties.insert(
-                        Arc::from(key.as_str()),
-                        PropertyValue::String(Arc::from(value.as_str())),
-                    );
+                    let prop_value = if key == "value" {
+                        match kind {
+                            ElementKind::LiteralInteger => value
+                                .parse::<i64>()
+                                .map(PropertyValue::Integer)
+                                .unwrap_or(PropertyValue::String(Arc::from(value.as_str()))),
+                            ElementKind::LiteralReal => value
+                                .parse::<f64>()
+                                .map(PropertyValue::Real)
+                                .unwrap_or(PropertyValue::String(Arc::from(value.as_str()))),
+                            ElementKind::LiteralBoolean => {
+                                PropertyValue::Boolean(value == "true")
+                            }
+                            _ => PropertyValue::String(Arc::from(value.as_str())),
+                        }
+                    } else {
+                        PropertyValue::String(Arc::from(value.as_str()))
+                    };
+                    element.properties.insert(Arc::from(key.as_str()), prop_value);
                 }
 
                 // Set owner if we have a parent, and track child order
@@ -1027,8 +1042,20 @@ mod writer {
                 {
                     continue;
                 }
-                if let super::super::model::PropertyValue::String(s) = value {
-                    elem_start.push_attribute((k, s.as_ref()));
+                match value {
+                    super::super::model::PropertyValue::String(s) => {
+                        elem_start.push_attribute((k, s.as_ref()));
+                    }
+                    super::super::model::PropertyValue::Integer(v) => {
+                        elem_start.push_attribute((k, v.to_string().as_str()));
+                    }
+                    super::super::model::PropertyValue::Real(v) => {
+                        elem_start.push_attribute((k, v.to_string().as_str()));
+                    }
+                    super::super::model::PropertyValue::Boolean(b) => {
+                        elem_start.push_attribute((k, if *b { "true" } else { "false" }));
+                    }
+                    _ => {}
                 }
             }
         }

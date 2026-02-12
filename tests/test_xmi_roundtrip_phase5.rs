@@ -367,6 +367,7 @@ package Sensor {
             .all_symbols()
             .map(|s| s.clone())
             .collect();
+
         let model = model_from_symbols(&syms);
         let xmi_bytes = Xmi.write(&model).expect("cycle 1: write XMI");
 

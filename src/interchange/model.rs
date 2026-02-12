@@ -309,6 +309,24 @@ impl ElementKind {
         )
     }
 
+    /// Returns true if this element kind is rendered inline in decompiled
+    /// SysML (as part of the declaration line) rather than as a body member.
+    /// Used to decide whether a usage/feature needs `{ }` braces.
+    pub fn is_inline_rendered(&self) -> bool {
+        matches!(
+            self,
+            Self::FeatureValue
+                | Self::FeatureTyping
+                | Self::Specialization
+                | Self::Redefinition
+                | Self::Subsetting
+                | Self::ReferenceSubsetting
+                | Self::CrossSubsetting
+                | Self::FeatureChaining
+                | Self::Conjugation
+        )
+    }
+
     /// Returns true if this is a SysML (not KerML) element kind.
     /// SysML elements use `declaredName` instead of `name`.
     pub fn is_sysml(&self) -> bool {
