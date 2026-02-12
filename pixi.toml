@@ -3,7 +3,7 @@ authors = ["Fredrick Eisele <fred.eisele@vanderbilt.edu>"]
 channels = ["https://prefix.dev/meso-forge", "conda-forge"]
 name = "syster-base"
 platforms = ["linux-64"]
-version = "0.1.0"
+version = "0.3.6-alpha"
 
 [tasks.check]
 cmd = "cargo clippy --all-targets"
@@ -24,6 +24,10 @@ description = "Format source code"
 [tasks.fmt-check]
 cmd = "cargo fmt -- --check"
 description = "Check source code formatting"
+
+[tasks.sync-version]
+cmd = "VERSION=$(sed -n '/^\\[package\\]/,/^\\[/{s/^version = \"\\(.*\\)\"/\\1/p}' Cargo.toml) && sed -i '/^\\[workspace\\]/,/^\\[/{s/^version = .*/version = \"'\"$VERSION\"'\"/}' pixi.toml"
+description = "Sync pixi.toml version from Cargo.toml"
 
 [dependencies]
 rust = ">=1.85"

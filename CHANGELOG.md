@@ -5,6 +5,20 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.3.6-alpha] - 2026-02-12
+
+### Fixed
+
+- **Attribute Expression Values**: Attribute value assignments (e.g., `attribute name = "temperature-01"`) were parsed but silently dropped from all export formats (YAML, JSON-LD, XMI, AST)
+  - Normalization layer now extracts value expressions via `ValueExpression` enum supporting literal types (integer, real, string, boolean, null) and complex expressions
+  - Added `value` field to `NormalizedUsage` and `HirSymbol`
+  - Interchange model generates `FeatureValue` / `LiteralXxx` pairs per KerML/SysML v2 metamodel; added `LiteralReal` support
+  - Decompilation formats values via `format_feature_value()` across all output modes
+
+### Added
+
+- **Build Tooling**: Added `pixi.toml` to enable development with [Pixi](https://github.com/syster-base/pixi) in addition to `devcontainers`.
+
 ## [0.3.5-alpha] - 2026-02-11
 
 ### Fixed
