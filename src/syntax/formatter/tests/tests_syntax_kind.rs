@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used)]
 
-use crate::syntax::formatter::syntax_kind::{SyntaxKind, SysMLLanguage};
+use crate::parser::{SyntaxKind, SysMLLanguage};
 use crate::syntax::formatter::{FormatOptions, format_async};
 use tokio_util::sync::CancellationToken;
 
@@ -84,9 +84,9 @@ fn assert_roundtrip_conversion(kinds: &[SyntaxKind]) {
 #[test]
 fn test_roundtrip_trivia_tokens() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::Whitespace,
-        SyntaxKind::LineComment,
-        SyntaxKind::BlockComment,
+        SyntaxKind::WHITESPACE,
+        SyntaxKind::LINE_COMMENT,
+        SyntaxKind::BLOCK_COMMENT,
     ]);
 }
 
@@ -94,9 +94,9 @@ fn test_roundtrip_trivia_tokens() {
 #[test]
 fn test_roundtrip_literal_tokens() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::Identifier,
-        SyntaxKind::Number,
-        SyntaxKind::String,
+        SyntaxKind::IDENT,
+        SyntaxKind::INTEGER,
+        SyntaxKind::STRING,
     ]);
 }
 
@@ -104,38 +104,38 @@ fn test_roundtrip_literal_tokens() {
 #[test]
 fn test_roundtrip_punctuation_tokens() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::LBrace,
-        SyntaxKind::RBrace,
-        SyntaxKind::LBracket,
-        SyntaxKind::RBracket,
-        SyntaxKind::LParen,
-        SyntaxKind::RParen,
-        SyntaxKind::Semicolon,
-        SyntaxKind::Colon,
-        SyntaxKind::ColonColon,
-        SyntaxKind::Dot,
-        SyntaxKind::Comma,
-        SyntaxKind::Eq,
-        SyntaxKind::EqEq,
-        SyntaxKind::NotEq,
-        SyntaxKind::Lt,
-        SyntaxKind::Gt,
-        SyntaxKind::LtEq,
-        SyntaxKind::GtEq,
-        SyntaxKind::Arrow,
-        SyntaxKind::At,
-        SyntaxKind::Star,
-        SyntaxKind::Plus,
-        SyntaxKind::Minus,
-        SyntaxKind::Slash,
-        SyntaxKind::Percent,
-        SyntaxKind::Caret,
-        SyntaxKind::Tilde,
-        SyntaxKind::Question,
-        SyntaxKind::Bang,
-        SyntaxKind::Pipe,
-        SyntaxKind::Ampersand,
-        SyntaxKind::Hash,
+        SyntaxKind::L_BRACE,
+        SyntaxKind::R_BRACE,
+        SyntaxKind::L_BRACKET,
+        SyntaxKind::R_BRACKET,
+        SyntaxKind::L_PAREN,
+        SyntaxKind::R_PAREN,
+        SyntaxKind::SEMICOLON,
+        SyntaxKind::COLON,
+        SyntaxKind::COLON_COLON,
+        SyntaxKind::DOT,
+        SyntaxKind::COMMA,
+        SyntaxKind::EQ,
+        SyntaxKind::EQ_EQ,
+        SyntaxKind::BANG_EQ,
+        SyntaxKind::LT,
+        SyntaxKind::GT,
+        SyntaxKind::LT_EQ,
+        SyntaxKind::GT_EQ,
+        SyntaxKind::ARROW,
+        SyntaxKind::AT,
+        SyntaxKind::STAR,
+        SyntaxKind::PLUS,
+        SyntaxKind::MINUS,
+        SyntaxKind::SLASH,
+        SyntaxKind::PERCENT,
+        SyntaxKind::CARET,
+        SyntaxKind::TILDE,
+        SyntaxKind::QUESTION,
+        SyntaxKind::BANG,
+        SyntaxKind::PIPE,
+        SyntaxKind::AMP,
+        SyntaxKind::HASH,
     ]);
 }
 
@@ -143,35 +143,35 @@ fn test_roundtrip_punctuation_tokens() {
 #[test]
 fn test_roundtrip_sysml_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::PackageKw,
-        SyntaxKind::PartKw,
-        SyntaxKind::DefKw,
-        SyntaxKind::ImportKw,
-        SyntaxKind::AttributeKw,
-        SyntaxKind::PortKw,
-        SyntaxKind::ItemKw,
-        SyntaxKind::ActionKw,
-        SyntaxKind::StateKw,
-        SyntaxKind::RequirementKw,
-        SyntaxKind::ConstraintKw,
-        SyntaxKind::ConnectionKw,
-        SyntaxKind::AllocationKw,
-        SyntaxKind::InterfaceKw,
-        SyntaxKind::FlowKw,
-        SyntaxKind::UseCaseKw,
-        SyntaxKind::ViewKw,
-        SyntaxKind::ViewpointKw,
-        SyntaxKind::RenderingKw,
-        SyntaxKind::MetadataKw,
-        SyntaxKind::OccurrenceKw,
-        SyntaxKind::AnalysisKw,
-        SyntaxKind::VerificationKw,
-        SyntaxKind::ConcernKw,
-        SyntaxKind::EnumKw,
-        SyntaxKind::CalcKw,
-        SyntaxKind::CaseKw,
-        SyntaxKind::IndividualKw,
-        SyntaxKind::EndKw,
+        SyntaxKind::PACKAGE_KW,
+        SyntaxKind::PART_KW,
+        SyntaxKind::DEF_KW,
+        SyntaxKind::IMPORT_KW,
+        SyntaxKind::ATTRIBUTE_KW,
+        SyntaxKind::PORT_KW,
+        SyntaxKind::ITEM_KW,
+        SyntaxKind::ACTION_KW,
+        SyntaxKind::STATE_KW,
+        SyntaxKind::REQUIREMENT_KW,
+        SyntaxKind::CONSTRAINT_KW,
+        SyntaxKind::CONNECTION_KW,
+        SyntaxKind::ALLOCATION_KW,
+        SyntaxKind::INTERFACE_KW,
+        SyntaxKind::FLOW_KW,
+        SyntaxKind::USE_KW,
+        SyntaxKind::VIEW_KW,
+        SyntaxKind::VIEWPOINT_KW,
+        SyntaxKind::RENDERING_KW,
+        SyntaxKind::METADATA_KW,
+        SyntaxKind::OCCURRENCE_KW,
+        SyntaxKind::ANALYSIS_KW,
+        SyntaxKind::VERIFICATION_KW,
+        SyntaxKind::CONCERN_KW,
+        SyntaxKind::ENUM_KW,
+        SyntaxKind::CALC_KW,
+        SyntaxKind::CASE_KW,
+        SyntaxKind::INDIVIDUAL_KW,
+        SyntaxKind::END_KW,
     ]);
 }
 
@@ -179,16 +179,16 @@ fn test_roundtrip_sysml_keywords() {
 #[test]
 fn test_roundtrip_sysml_modifier_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::AbstractKw,
-        SyntaxKind::RefKw,
-        SyntaxKind::ConstKw,
-        SyntaxKind::DerivedKw,
-        SyntaxKind::InKw,
-        SyntaxKind::OutKw,
-        SyntaxKind::InoutKw,
-        SyntaxKind::PrivateKw,
-        SyntaxKind::ProtectedKw,
-        SyntaxKind::PublicKw,
+        SyntaxKind::ABSTRACT_KW,
+        SyntaxKind::REF_KW,
+        SyntaxKind::CONST_KW,
+        SyntaxKind::DERIVED_KW,
+        SyntaxKind::IN_KW,
+        SyntaxKind::OUT_KW,
+        SyntaxKind::INOUT_KW,
+        SyntaxKind::PRIVATE_KW,
+        SyntaxKind::PROTECTED_KW,
+        SyntaxKind::PUBLIC_KW,
     ]);
 }
 
@@ -196,11 +196,11 @@ fn test_roundtrip_sysml_modifier_keywords() {
 #[test]
 fn test_roundtrip_sysml_relationship_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::SpecializesKw,
-        SyntaxKind::SubsetsKw,
-        SyntaxKind::RedefinesKw,
-        SyntaxKind::TypedByKw,
-        SyntaxKind::ReferencesKw,
+        SyntaxKind::SPECIALIZES_KW,
+        SyntaxKind::SUBSETS_KW,
+        SyntaxKind::REDEFINES_KW,
+        SyntaxKind::TYPED_KW,
+        SyntaxKind::REFERENCES_KW,
     ]);
 }
 
@@ -208,22 +208,22 @@ fn test_roundtrip_sysml_relationship_keywords() {
 #[test]
 fn test_roundtrip_sysml_action_behavior_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::AssertKw,
-        SyntaxKind::AssumeKw,
-        SyntaxKind::RequireKw,
-        SyntaxKind::PerformKw,
-        SyntaxKind::ExhibitKw,
-        SyntaxKind::IncludeKw,
-        SyntaxKind::SatisfyKw,
-        SyntaxKind::EntryKw,
-        SyntaxKind::ExitKw,
-        SyntaxKind::DoKw,
-        SyntaxKind::ForkKw,
-        SyntaxKind::JoinKw,
-        SyntaxKind::MergeKw,
-        SyntaxKind::DecideKw,
-        SyntaxKind::AcceptKw,
-        SyntaxKind::SendKw,
+        SyntaxKind::ASSERT_KW,
+        SyntaxKind::ASSUME_KW,
+        SyntaxKind::REQUIRE_KW,
+        SyntaxKind::PERFORM_KW,
+        SyntaxKind::EXHIBIT_KW,
+        SyntaxKind::INCLUDE_KW,
+        SyntaxKind::SATISFY_KW,
+        SyntaxKind::ENTRY_KW,
+        SyntaxKind::EXIT_KW,
+        SyntaxKind::DO_KW,
+        SyntaxKind::FORK_KW,
+        SyntaxKind::JOIN_KW,
+        SyntaxKind::MERGE_KW,
+        SyntaxKind::DECIDE_KW,
+        SyntaxKind::ACCEPT_KW,
+        SyntaxKind::SEND_KW,
     ]);
 }
 
@@ -231,18 +231,18 @@ fn test_roundtrip_sysml_action_behavior_keywords() {
 #[test]
 fn test_roundtrip_sysml_connection_reference_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::ViaKw,
-        SyntaxKind::ToKw,
-        SyntaxKind::FromKw,
-        SyntaxKind::DependencyKw,
-        SyntaxKind::FilterKw,
-        SyntaxKind::ExposeKw,
-        SyntaxKind::AllKw,
-        SyntaxKind::FirstKw,
-        SyntaxKind::HasTypeKw,
-        SyntaxKind::IsTypeKw,
-        SyntaxKind::AsKw,
-        SyntaxKind::MetaKw,
+        SyntaxKind::VIA_KW,
+        SyntaxKind::TO_KW,
+        SyntaxKind::FROM_KW,
+        SyntaxKind::DEPENDENCY_KW,
+        SyntaxKind::FILTER_KW,
+        SyntaxKind::EXPOSE_KW,
+        SyntaxKind::ALL_KW,
+        SyntaxKind::FIRST_KW,
+        SyntaxKind::HASTYPE_KW,
+        SyntaxKind::ISTYPE_KW,
+        SyntaxKind::AS_KW,
+        SyntaxKind::META_KW,
     ]);
 }
 
@@ -250,23 +250,23 @@ fn test_roundtrip_sysml_connection_reference_keywords() {
 #[test]
 fn test_roundtrip_kerml_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::StructKw,
-        SyntaxKind::ClassKw,
-        SyntaxKind::DataTypeKw,
-        SyntaxKind::AssocKw,
-        SyntaxKind::BehaviorKw,
-        SyntaxKind::FunctionKw,
-        SyntaxKind::TypeKw,
-        SyntaxKind::FeatureKw,
-        SyntaxKind::StepKw,
-        SyntaxKind::ExprKw,
-        SyntaxKind::BindingKw,
-        SyntaxKind::SuccessionKw,
-        SyntaxKind::ConnectorKw,
-        SyntaxKind::InvKw,
-        SyntaxKind::NonuniqueKw,
-        SyntaxKind::OrderedKw,
-        SyntaxKind::UnorderedKw,
+        SyntaxKind::STRUCT_KW,
+        SyntaxKind::CLASS_KW,
+        SyntaxKind::DATATYPE_KW,
+        SyntaxKind::ASSOC_KW,
+        SyntaxKind::BEHAVIOR_KW,
+        SyntaxKind::FUNCTION_KW,
+        SyntaxKind::TYPE_KW,
+        SyntaxKind::FEATURE_KW,
+        SyntaxKind::STEP_KW,
+        SyntaxKind::EXPR_KW,
+        SyntaxKind::BINDING_KW,
+        SyntaxKind::SUCCESSION_KW,
+        SyntaxKind::CONNECTOR_KW,
+        SyntaxKind::INV_KW,
+        SyntaxKind::NONUNIQUE_KW,
+        SyntaxKind::ORDERED_KW,
+        SyntaxKind::IDENT,
     ]);
 }
 
@@ -274,39 +274,39 @@ fn test_roundtrip_kerml_keywords() {
 #[test]
 fn test_roundtrip_composite_nodes() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::SourceFile,
-        SyntaxKind::Package,
-        SyntaxKind::Definition,
-        SyntaxKind::Usage,
-        SyntaxKind::Import,
-        SyntaxKind::Alias,
-        SyntaxKind::Annotation,
-        SyntaxKind::Name,
-        SyntaxKind::Body,
-        SyntaxKind::Relationship,
+        SyntaxKind::SOURCE_FILE,
+        SyntaxKind::PACKAGE,
+        SyntaxKind::DEFINITION,
+        SyntaxKind::USAGE,
+        SyntaxKind::IMPORT,
+        SyntaxKind::ALIAS_MEMBER,
+        SyntaxKind::COMMENT_ELEMENT,
+        SyntaxKind::NAME,
+        SyntaxKind::NAMESPACE_BODY,
+        SyntaxKind::RELATIONSHIP,
     ]);
 }
 
 /// Test round-trip conversion for special tokens
 #[test]
 fn test_roundtrip_special_tokens() {
-    assert_roundtrip_conversion(&[SyntaxKind::Error, SyntaxKind::Eof]);
+    assert_roundtrip_conversion(&[SyntaxKind::ERROR, SyntaxKind::TOMBSTONE]);
 }
 
 /// Test that kind_to_raw produces unique raw values for different kinds
 #[test]
 fn test_kind_to_raw_uniqueness() {
     let kinds = [
-        SyntaxKind::Whitespace,
-        SyntaxKind::PackageKw,
-        SyntaxKind::PartKw,
-        SyntaxKind::DefKw,
-        SyntaxKind::LBrace,
-        SyntaxKind::RBrace,
-        SyntaxKind::Identifier,
-        SyntaxKind::SourceFile,
-        SyntaxKind::Error,
-        SyntaxKind::Eof,
+        SyntaxKind::WHITESPACE,
+        SyntaxKind::PACKAGE_KW,
+        SyntaxKind::PART_KW,
+        SyntaxKind::DEF_KW,
+        SyntaxKind::L_BRACE,
+        SyntaxKind::R_BRACE,
+        SyntaxKind::IDENT,
+        SyntaxKind::SOURCE_FILE,
+        SyntaxKind::ERROR,
+        SyntaxKind::TOMBSTONE,
     ];
 
     let mut raw_values = std::collections::HashSet::new();
@@ -325,8 +325,8 @@ fn test_kind_to_raw_uniqueness() {
 #[test]
 fn test_roundtrip_boundary_values() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::Whitespace, // First variant (0)
-        SyntaxKind::Eof,        // Last variant
+        SyntaxKind::WHITESPACE, // First variant (0)
+        SyntaxKind::TOMBSTONE,        // Last variant
     ]);
 }
 
@@ -334,14 +334,14 @@ fn test_roundtrip_boundary_values() {
 #[test]
 fn test_kind_to_raw_numeric_value() {
     // Test that the numeric value is preserved correctly
-    let kind = SyntaxKind::Whitespace;
+    let kind = SyntaxKind::WHITESPACE;
     let raw = <SysMLLanguage as rowan::Language>::kind_to_raw(kind);
     assert_eq!(
         raw.0, kind as u16,
         "Raw value should match enum discriminant"
     );
 
-    let kind = SyntaxKind::PackageKw;
+    let kind = SyntaxKind::PACKAGE_KW;
     let raw = <SysMLLanguage as rowan::Language>::kind_to_raw(kind);
     assert_eq!(
         raw.0, kind as u16,
@@ -353,21 +353,21 @@ fn test_kind_to_raw_numeric_value() {
 #[test]
 fn test_roundtrip_boolean_control_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::TrueKw,
-        SyntaxKind::FalseKw,
-        SyntaxKind::NullKw,
-        SyntaxKind::AndKw,
-        SyntaxKind::OrKw,
-        SyntaxKind::NotKw,
-        SyntaxKind::XorKw,
-        SyntaxKind::ImpliesKw,
-        SyntaxKind::IfKw,
-        SyntaxKind::ElseKw,
-        SyntaxKind::ThenKw,
-        SyntaxKind::LoopKw,
-        SyntaxKind::WhileKw,
-        SyntaxKind::UntilKw,
-        SyntaxKind::ForKw,
+        SyntaxKind::TRUE_KW,
+        SyntaxKind::FALSE_KW,
+        SyntaxKind::NULL_KW,
+        SyntaxKind::AND_KW,
+        SyntaxKind::OR_KW,
+        SyntaxKind::NOT_KW,
+        SyntaxKind::XOR_KW,
+        SyntaxKind::IMPLIES_KW,
+        SyntaxKind::IF_KW,
+        SyntaxKind::ELSE_KW,
+        SyntaxKind::THEN_KW,
+        SyntaxKind::LOOP_KW,
+        SyntaxKind::WHILE_KW,
+        SyntaxKind::UNTIL_KW,
+        SyntaxKind::FOR_KW,
     ]);
 }
 
@@ -375,14 +375,14 @@ fn test_roundtrip_boolean_control_keywords() {
 #[test]
 fn test_roundtrip_documentation_keywords() {
     assert_roundtrip_conversion(&[
-        SyntaxKind::DocKw,
-        SyntaxKind::CommentKw,
-        SyntaxKind::AboutKw,
-        SyntaxKind::RepKw,
-        SyntaxKind::LanguageKw,
-        SyntaxKind::AliasKw,
-        SyntaxKind::ModelKw,
-        SyntaxKind::LibraryKw,
-        SyntaxKind::StandardKw,
+        SyntaxKind::DOC_KW,
+        SyntaxKind::COMMENT_KW,
+        SyntaxKind::ABOUT_KW,
+        SyntaxKind::REP_KW,
+        SyntaxKind::LANGUAGE_KW,
+        SyntaxKind::ALIAS_KW,
+        SyntaxKind::IDENT,
+        SyntaxKind::LIBRARY_KW,
+        SyntaxKind::STANDARD_KW,
     ]);
 }
