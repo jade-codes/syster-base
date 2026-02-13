@@ -10,7 +10,6 @@
 //! Based on kerml.pest grammar.
 
 use super::kerml_expressions::ExpressionParser;
-use crate::parser::parser::kind_to_name;
 use crate::parser::syntax_kind::SyntaxKind;
 
 /// KerML definition keywords
@@ -189,7 +188,7 @@ pub trait KerMLParser: ExpressionParser {
 /// Emit an error for missing body terminator with context
 fn error_missing_body_terminator<P: KerMLParser>(p: &mut P, context: &str) {
     let found = if let Some(text) = p.current_token_text() {
-        format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+        format!("'{}' ({})", text, p.current_kind().display_name())
     } else {
         "end of file".to_string()
     };
@@ -411,7 +410,7 @@ pub fn parse_kerml_file<P: KerMLParser>(p: &mut P) {
             } else if let Some(text) = p.current_token_text() {
                 format!("'{}'", text)
             } else {
-                kind_to_name(p.current_kind()).to_string()
+                p.current_kind().display_name().to_string()
             };
             p.error(format!("unexpected {} in top level", got));
             p.bump();
@@ -554,7 +553,7 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
             let got = if let Some(text) = p.current_token_text() {
                 format!("'{}'", text)
             } else {
-                kind_to_name(p.current_kind()).to_string()
+                p.current_kind().display_name().to_string()
             };
             p.error_recover(
                 format!("unexpected {} in namespace body", got),
@@ -1337,7 +1336,7 @@ fn recover_body_element<P: KerMLParser>(p: &mut P) {
         let got = if let Some(text) = p.current_token_text() {
             format!("'{}'", text)
         } else {
-            kind_to_name(p.current_kind()).to_string()
+            p.current_kind().display_name().to_string()
         };
         p.error(format!("unexpected {} in body", got));
         p.bump();
@@ -1377,7 +1376,7 @@ pub fn parse_body<P: KerMLParser>(p: &mut P) {
     } else {
         // Provide more context about what we found
         let found = if let Some(text) = p.current_token_text() {
-            format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+            format!("'{}' ({})", text, p.current_kind().display_name())
         } else {
             "end of file".to_string()
         };
@@ -1842,7 +1841,7 @@ pub fn parse_calc_body<P: KerMLParser>(p: &mut P) {
                 let got = if let Some(text) = p.current_token_text() {
                     format!("'{}'", text)
                 } else {
-                    kind_to_name(p.current_kind()).to_string()
+                    p.current_kind().display_name().to_string()
                 };
                 p.error(format!("unexpected {} in calc body", got));
                 p.bump();

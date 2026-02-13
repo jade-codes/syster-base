@@ -17,7 +17,6 @@
 
 use super::kerml::is_name_kind;
 use super::kerml_expressions::{ExpressionParser, parse_expression};
-use crate::parser::parser::kind_to_name;
 use crate::parser::syntax_kind::SyntaxKind;
 
 /// Standalone relationship keywords (SysML)
@@ -277,7 +276,7 @@ pub trait SysMLParser: ExpressionParser {
 /// Emit an error for missing body terminator with context
 fn error_missing_body_terminator<P: SysMLParser>(p: &mut P, context: &str) {
     let found = if let Some(text) = p.current_token_text() {
-        format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+        format!("'{}' ({})", text, p.current_kind().display_name())
     } else {
         "end of file".to_string()
     };
@@ -637,9 +636,9 @@ pub fn parse_body<P: SysMLParser>(p: &mut P) {
             // Recovery if no progress made
             if p.get_pos() == start_pos && !p.at(SyntaxKind::ERROR) && !p.at(SyntaxKind::R_BRACE) {
                 let got = if let Some(text) = p.current_token_text() {
-                    format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+                    format!("'{}' ({})", text, p.current_kind().display_name())
                 } else {
-                    kind_to_name(p.current_kind()).to_string()
+                    p.current_kind().display_name().to_string()
                 };
                 p.error(format!(
                     "unexpected {} in definition body—expected a member declaration",
@@ -653,7 +652,7 @@ pub fn parse_body<P: SysMLParser>(p: &mut P) {
     } else {
         // Provide more context about what we found
         let found = if let Some(text) = p.current_token_text() {
-            format!("'{}' ({})", text, kind_to_name(p.current_kind()))
+            format!("'{}' ({})", text, p.current_kind().display_name())
         } else {
             "end of file".to_string()
         };
@@ -879,7 +878,7 @@ pub fn parse_sysml_file<P: SysMLParser>(p: &mut P) {
             } else if let Some(text) = p.current_token_text() {
                 format!("'{}'", text)
             } else {
-                kind_to_name(p.current_kind()).to_string()
+                p.current_kind().display_name().to_string()
             };
             p.error(format!("unexpected {} in top level", got));
             p.bump();
@@ -1273,7 +1272,7 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
             let got = if let Some(text) = p.current_token_text() {
                 format!("'{}'", text)
             } else {
-                kind_to_name(p.current_kind()).to_string()
+                p.current_kind().display_name().to_string()
             };
             p.error_recover(
                 format!("unexpected {} in namespace body", got),
@@ -4994,7 +4993,7 @@ pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
                 let got = if let Some(text) = p.current_token_text() {
                     format!("'{}'", text)
                 } else {
-                    kind_to_name(p.current_kind()).to_string()
+                    p.current_kind().display_name().to_string()
                 };
                 p.error(format!("unexpected {} in calc body", got));
                 p.bump();
