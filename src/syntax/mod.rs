@@ -3,7 +3,6 @@ pub mod file;
 pub mod formatter;
 pub mod normalized;
 pub mod parser;
-pub mod traits;
 
 pub use file::SyntaxFile;
 pub use formatter::{FormatOptions, format_async};
@@ -15,7 +14,6 @@ pub use normalized::{
 // Legacy type aliases
 pub use normalized::{KerMLNormalizedIter, SysMLNormalizedIter};
 pub use parser::{ParseError, ParseResult, load_and_parse, parse_content, parse_with_result};
-pub use traits::{AstNode, Named, ToSource};
 
 // Re-export Position and Span from base for backwards compatibility
 pub use crate::base::{Position, Span};

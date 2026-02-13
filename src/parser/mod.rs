@@ -34,14 +34,12 @@
 mod parser;
 
 pub mod ast;
-pub mod errors;
 pub mod grammar;
 pub mod keywords;
 mod lexer;
 mod syntax_kind;
 
 pub use ast::*;
-pub use errors::{ErrorCode, ParseContext, Severity};
 pub use lexer::{Lexer, Token};
 pub use parser::{Parse, SyntaxError, kind_to_name, parse_kerml, parse_sysml};
 pub use syntax_kind::{SyntaxElement, SyntaxKind, SyntaxNode, SyntaxToken, SysMLLanguage};
