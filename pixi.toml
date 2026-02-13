@@ -1,0 +1,52 @@
+[workspace]
+authors = ["Fredrick Eisele <fred.eisele@vanderbilt.edu>"]
+channels = ["https://prefix.dev/meso-forge", "conda-forge"]
+name = "syster-base"
+platforms = ["linux-64"]
+version = "0.3.6-alpha"  # AUTO_EDIT_VERSION is edited by the sync-version task
+
+[tasks.check]
+cmd = "cargo clippy --all-targets"
+description = "Run clippy lints on all targets"
+
+[tasks.build]
+cmd = "cargo build"
+description = "Compile the project"
+
+[tasks.test]
+cmd = "cargo test"
+description = "Run all tests"
+
+[tasks.fmt]
+cmd = "cargo fmt"
+description = "Format source code"
+
+[tasks.fmt-check]
+cmd = "cargo fmt -- --check"
+description = "Check source code formatting"
+
+[tasks.test-interchange]
+cmd = "cargo test --features interchange"
+description = "Run all tests including interchange format support"
+
+[tasks.sync-version]
+cmd = "sd 'version = \".*\"  # AUTO_EDIT_VERSION.*' \"version = \\\"$(cat Cargo.toml | dasel -i toml package.version | tr -d \"'\")\\\"  # AUTO_EDIT_VERSION is edited by the sync-version task\" pixi.toml"
+description = "Sync pixi.toml version from Cargo.toml"
+inputs = ["Cargo.toml"]
+outputs = ["pixi.toml"]
+
+[tasks.set-version]
+cmd = "cargo set-version {{ version }} && pixi run sync-version"
+args = ["version"]
+description = "Set the version in both Cargo.toml and pixi.toml (e.g. pixi run set-version 0.3.6-alpha)"
+
+[tasks.bump-alpha]
+cmd = "cargo set-version --bump alpha && pixi run sync-version"
+description = "Bump the version in both Cargo.toml and pixi.toml"
+
+[dependencies]
+rust = ">=1.85"
+gh = ">=2.86"
+cargo-edit = ">=0.13"
+dasel = ">=3.2"
+sd = ">=1"

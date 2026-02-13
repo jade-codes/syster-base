@@ -692,6 +692,7 @@ fn test_short_name_visibility_via_import() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             HirSymbol {
                 name: Arc::from("kilogram"),
@@ -728,6 +729,7 @@ fn test_short_name_visibility_via_import() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
         ],
     );
@@ -771,6 +773,7 @@ fn test_short_name_visibility_via_import() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             HirSymbol {
                 name: Arc::from("SI::*"),
@@ -807,6 +810,7 @@ fn test_short_name_visibility_via_import() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
         ],
     );
@@ -926,6 +930,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Definition: TransportPassenger
             HirSymbol {
@@ -963,6 +968,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Member of definition: getInVehicle_a
             HirSymbol {
@@ -1000,6 +1006,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Usage: transportPassenger : TransportPassenger
             HirSymbol {
@@ -1037,6 +1044,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Nested member: driverGetInVehicle (references getInVehicle_a)
             HirSymbol {
@@ -1074,6 +1082,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Nested action 'a' inside transportPassenger (no type annotation)
             HirSymbol {
@@ -1111,6 +1120,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
             // Action inside 'a' that references getInVehicle_a
             HirSymbol {
@@ -1148,6 +1158,7 @@ fn test_usage_inherits_type_members() {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             },
         ],
     );

@@ -21,7 +21,9 @@
 //! let xmi_bytes = Xmi.write(&model)?;
 //! ```
 
-use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
+use super::model::{
+    Element, ElementId, ElementKind, Model, PropertyValue, Relationship, RelationshipKind,
+};
 use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
@@ -153,6 +155,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_portion: element.is_portion,
             direction: None,    // TODO: Extract from element if available
             multiplicity: None, // TODO: Extract from element if available
+            value: None,
         };
 
         symbols.push(symbol);
@@ -301,17 +304,21 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 // Look up target's element_id from qualified name
                 // Try multiple resolution strategies:
                 // 1. Direct lookup (fully qualified)
-                // 2. Same namespace as source (e.g., "Vehicle" -> "Types::Vehicle")
+                // 2. Walk up ancestor namespaces (e.g., for "Label" from
+                //    "Sensor::Thermometer::name", try "Sensor::Thermometer::Label"
+                //    then "Sensor::Label")
                 let target_id = name_to_id
                     .get(hir_rel.target.as_ref())
                     .or_else(|| {
-                        // Try adding source's namespace prefix
-                        if let Some((ns, _)) = symbol.qualified_name.rsplit_once("::") {
-                            let namespaced = format!("{}::{}", ns, hir_rel.target);
-                            name_to_id.get(namespaced.as_str())
-                        } else {
-                            None
+                        let mut ns = symbol.qualified_name.as_ref();
+                        while let Some((parent, _)) = ns.rsplit_once("::") {
+                            let candidate = format!("{}::{}", parent, hir_rel.target);
+                            if let Some(found) = name_to_id.get(candidate.as_str()) {
+                                return Some(found);
+                            }
+                            ns = parent;
                         }
+                        None
                     })
                     .map(|&id| ElementId::new(id))
                     .unwrap_or_else(|| {
@@ -319,8 +326,92 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         ElementId::new(hir_rel.target.as_ref())
                     });
 
-                let relationship = Relationship::new(rel_id, rel_kind, id.clone(), target_id);
+                let relationship =
+                    Relationship::new(rel_id.clone(), rel_kind, id.clone(), target_id.clone());
                 model.add_relationship(relationship);
+
+                // Also create relationship elements as owned children so the
+                // XMI writer emits them (it traverses the element tree, not
+                // model.relationships).
+                let element_kind = match rel_kind {
+                    RelationshipKind::FeatureTyping => Some(ElementKind::FeatureTyping),
+                    RelationshipKind::Specialization => Some(ElementKind::Specialization),
+                    RelationshipKind::Redefinition => Some(ElementKind::Redefinition),
+                    RelationshipKind::Subsetting => Some(ElementKind::Subsetting),
+                    _ => None,
+                };
+                if let Some(ek) = element_kind {
+                    let mut rel_element =
+                        Element::new(rel_id.clone(), ek).with_owner(id.clone());
+                    // Store target as attribute so the XMI writer emits it
+                    // and the reader can reconstruct the relationship
+                    let target_attr = match ek {
+                        ElementKind::FeatureTyping => "type",
+                        ElementKind::Specialization => "general",
+                        ElementKind::Redefinition => "redefinedFeature",
+                        ElementKind::Subsetting => "subsettedFeature",
+                        _ => "target",
+                    };
+                    rel_element.properties.insert(
+                        Arc::from(target_attr),
+                        PropertyValue::String(Arc::from(target_id.as_str())),
+                    );
+                    model.add_element(rel_element);
+                    if let Some(parent) = model.get_mut(&id) {
+                        parent.owned_elements.push(rel_id);
+                    }
+                }
+            }
+        }
+
+        // Create FeatureValue + Literal child elements for symbols with values
+        if let Some(ref value) = symbol.value {
+            use crate::syntax::normalized::ValueExpression;
+
+            let fv_id = ElementId::new(format!("{}-fv", symbol.element_id));
+            let lit_id = ElementId::new(format!("{}-fv-lit", symbol.element_id));
+
+            let (lit_kind, lit_prop_value) = match value {
+                ValueExpression::LiteralInteger(v) => {
+                    (ElementKind::LiteralInteger, PropertyValue::Integer(*v))
+                }
+                ValueExpression::LiteralReal(v) => {
+                    (ElementKind::LiteralReal, PropertyValue::Real(*v))
+                }
+                ValueExpression::LiteralString(s) => (
+                    ElementKind::LiteralString,
+                    PropertyValue::String(Arc::from(s.as_str())),
+                ),
+                ValueExpression::LiteralBoolean(b) => {
+                    (ElementKind::LiteralBoolean, PropertyValue::Boolean(*b))
+                }
+                ValueExpression::Null => (
+                    ElementKind::NullExpression,
+                    PropertyValue::String(Arc::from("null")),
+                ),
+                ValueExpression::Expression(text) => (
+                    ElementKind::FeatureReferenceExpression,
+                    PropertyValue::String(Arc::from(text.as_str())),
+                ),
+            };
+
+            // Create the literal element
+            let mut lit_element =
+                Element::new(lit_id.clone(), lit_kind).with_owner(fv_id.clone());
+            lit_element
+                .properties
+                .insert(Arc::from("value"), lit_prop_value);
+            model.add_element(lit_element);
+
+            // Create the FeatureValue relationship element
+            let mut fv_element =
+                Element::new(fv_id.clone(), ElementKind::FeatureValue).with_owner(id.clone());
+            fv_element.owned_elements.push(lit_id);
+            model.add_element(fv_element);
+
+            // Add FeatureValue as owned child of the usage element
+            if let Some(parent) = model.get_mut(&id) {
+                parent.owned_elements.push(fv_id);
             }
         }
     }

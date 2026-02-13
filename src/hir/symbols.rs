@@ -428,6 +428,8 @@ pub struct HirSymbol {
     pub direction: Option<Direction>,
     /// Multiplicity bounds [lower..upper]
     pub multiplicity: Option<Multiplicity>,
+    /// Value expression assigned to this feature (e.g., `= 42`, `= "hello"`)
+    pub value: Option<crate::syntax::normalized::ValueExpression>,
 }
 
 /// The kind of a symbol.
@@ -942,6 +944,7 @@ fn extract_from_normalized(
                     is_portion: false,
                     direction: None,
                     multiplicity: None,
+                    value: None,
                 });
             }
         }
@@ -1036,6 +1039,7 @@ fn extract_from_normalized_package(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     });
 
     ctx.push_scope(&name);
@@ -1261,6 +1265,7 @@ fn extract_from_normalized_definition(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     });
 
     // Recurse into children
@@ -1491,6 +1496,7 @@ fn extract_from_normalized_usage(
                 is_portion: usage.is_portion,
                 direction: usage.direction,
                 multiplicity: usage.multiplicity,
+                value: None,
             };
             symbols.push(anon_symbol);
 
@@ -1631,6 +1637,7 @@ fn extract_from_normalized_usage(
         is_portion: usage.is_portion,
         direction: usage.direction,
         multiplicity: usage.multiplicity,
+        value: usage.value.clone(),
     });
 
     // Recurse into children
@@ -1714,6 +1721,7 @@ fn extract_from_normalized_import(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     });
 }
 
@@ -1783,6 +1791,7 @@ fn extract_from_normalized_alias(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     });
 }
 
@@ -1855,6 +1864,7 @@ fn extract_from_normalized_comment(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     });
 }
 
@@ -2020,6 +2030,7 @@ fn extract_from_normalized_dependency(
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         });
     } else if !type_refs.is_empty() {
         // Anonymous dependency - attach type refs to parent or create anonymous symbol
@@ -2061,6 +2072,7 @@ fn extract_from_normalized_dependency(
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         });
     }
 }

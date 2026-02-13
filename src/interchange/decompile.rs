@@ -319,21 +319,37 @@ impl<'a> DecompileContext<'a> {
         let typing = self.format_typing(&element.id);
         let subsetting = self.format_subsetting(&element.id);
         let redefinition = self.format_redefinition(&element.id);
+        let value = self.format_feature_value(&element.id);
         let short = self.format_short_name(element);
 
         let relations = format!("{}{}{}", typing, subsetting, redefinition);
 
+        // Filter children rendered inline (values and relationships like
+        // FeatureTyping, Specialization, etc.) from the "has body" check.
+        let has_body_children = element.owned_elements.iter().any(|child_id| {
+            self.model
+                .get(child_id)
+                .map(|c| !c.kind.is_inline_rendered())
+                .unwrap_or(false)
+        });
+
         if let Some(name) = &element.name {
-            if element.owned_elements.is_empty() && element.documentation.is_none() {
-                self.write_line(&format!("{} {}{}{};", keyword, short, name, relations));
+            if !has_body_children && element.documentation.is_none() {
+                self.write_line(&format!(
+                    "{} {}{}{}{};",
+                    keyword, short, name, relations, value
+                ));
             } else {
-                self.write_line(&format!("{} {}{}{} {{", keyword, short, name, relations));
+                self.write_line(&format!(
+                    "{} {}{}{}{} {{",
+                    keyword, short, name, relations, value
+                ));
                 self.decompile_body(element);
                 self.write_line("}");
             }
-        } else if !relations.is_empty() {
-            // Anonymous usage with typing/subsetting
-            self.write_line(&format!("{}{};", keyword, relations));
+        } else if !relations.is_empty() || !value.is_empty() {
+            // Anonymous usage with typing/subsetting/value
+            self.write_line(&format!("{}{}{};", keyword, relations, value));
         }
     }
 
@@ -367,11 +383,21 @@ impl<'a> DecompileContext<'a> {
             format!(" {}", modifiers.join(" "))
         };
 
+        let value = self.format_feature_value(&element.id);
+
+        // Filter children rendered inline from the "has body" check
+        let has_body_children = element.owned_elements.iter().any(|child_id| {
+            self.model
+                .get(child_id)
+                .map(|c| !c.kind.is_inline_rendered())
+                .unwrap_or(false)
+        });
+
         // Build the full feature declaration
-        // Format: [abstract] feature name : Type [mult] [modifiers] [subsets X] [chains Y] [redefines Z]
+        // Format: [abstract] feature name : Type [mult] [modifiers] [subsets X] [chains Y] [redefines Z] [= value]
         if let Some(name) = &element.name {
             let decl = format!(
-                "{}feature {}{}{}{}{}{}{}{}",
+                "{}feature {}{}{}{}{}{}{}{}{}",
                 abstract_kw,
                 short,
                 name,
@@ -380,10 +406,11 @@ impl<'a> DecompileContext<'a> {
                 mod_str,
                 subsetting,
                 chaining,
-                redefinition
+                redefinition,
+                value,
             );
 
-            if element.owned_elements.is_empty() && element.documentation.is_none() {
+            if !has_body_children && element.documentation.is_none() {
                 self.write_line(&format!("{};", decl));
             } else {
                 self.write_line(&format!("{} {{", decl));
@@ -521,6 +548,17 @@ impl<'a> DecompileContext<'a> {
                     }
                 } else {
                     result.push("0".to_string());
+                }
+            }
+            ElementKind::LiteralReal => {
+                if let Some(pv) = element.properties.get(&value_key) {
+                    match pv {
+                        super::model::PropertyValue::Real(v) => result.push(v.to_string()),
+                        super::model::PropertyValue::String(s) => result.push(s.to_string()),
+                        _ => result.push("0.0".to_string()),
+                    }
+                } else {
+                    result.push("0.0".to_string());
                 }
             }
             ElementKind::LiteralInfinity => {
@@ -778,6 +816,67 @@ impl<'a> DecompileContext<'a> {
         } else {
             format!(" chains {}", chains.join("."))
         }
+    }
+
+    /// Format a feature value expression (e.g., ` = 42`, ` = "hello"`, ` = true`).
+    /// Returns an empty string if the element has no FeatureValue child.
+    fn format_feature_value(&self, element_id: &ElementId) -> String {
+        if let Some(element) = self.model.get(element_id) {
+            for child_id in &element.owned_elements {
+                if let Some(child) = self.model.get(child_id) {
+                    if child.kind == ElementKind::FeatureValue {
+                        // Find the literal inside
+                        for lit_id in &child.owned_elements {
+                            if let Some(lit) = self.model.get(lit_id) {
+                                let value_key: Arc<str> = Arc::from("value");
+                                if let Some(pv) = lit.properties.get(&value_key) {
+                                    return match (lit.kind, pv) {
+                                        (
+                                            ElementKind::LiteralString,
+                                            super::model::PropertyValue::String(s),
+                                        ) => {
+                                            format!(" = \"{}\"", s)
+                                        }
+                                        (
+                                            ElementKind::LiteralInteger,
+                                            super::model::PropertyValue::Integer(v),
+                                        ) => {
+                                            format!(" = {}", v)
+                                        }
+                                        (
+                                            ElementKind::LiteralBoolean,
+                                            super::model::PropertyValue::Boolean(b),
+                                        ) => {
+                                            format!(" = {}", b)
+                                        }
+                                        (
+                                            ElementKind::LiteralReal,
+                                            super::model::PropertyValue::Real(v),
+                                        ) => {
+                                            format!(" = {}", v)
+                                        }
+                                        (
+                                            ElementKind::NullExpression,
+                                            _,
+                                        ) => {
+                                            " = null".to_string()
+                                        }
+                                        (
+                                            ElementKind::FeatureReferenceExpression,
+                                            super::model::PropertyValue::String(s),
+                                        ) => {
+                                            format!(" = {}", s)
+                                        }
+                                        _ => String::new(),
+                                    };
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        String::new()
     }
 
     /// Get reference for chaining - use simple names joined with dots.

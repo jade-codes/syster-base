@@ -431,6 +431,7 @@ mod tests {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -474,6 +475,7 @@ mod tests {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         };
 
         // Add a usage with type_ref
@@ -534,6 +536,7 @@ mod tests {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         };
 
         index.add_file(FileId::new(0), vec![symbol]);

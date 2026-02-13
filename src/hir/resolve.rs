@@ -3332,6 +3332,7 @@ mod tests {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 

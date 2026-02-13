@@ -334,6 +334,107 @@ package NewModel {
     }
 
     #[test]
+    fn test_attribute_value_roundtrip_settles() {
+        // Test: SysML with attribute value assignments survives two full
+        // roundtrip cycles through the intermediate normalized form and
+        // the decompiled text settles (cycle 2 output == cycle 1 output).
+        //
+        // Cycle: SysML → parse → symbols → Model → XMI
+        //        → Model → decompile → SysML text
+        //        → parse → symbols → Model → XMI   (repeat)
+
+        let original_sysml = r#"
+package Sensor {
+    attribute def Temperature;
+    attribute def Label;
+
+    part def Thermometer {
+        attribute name : Label = "temperature-01";
+        attribute reading : Temperature = 42;
+        attribute threshold : Temperature = 98.6;
+        attribute active = true;
+    }
+}
+"#;
+
+        // --- Cycle 1: original SysML → XMI → decompile → SysML text ---
+        let mut host = AnalysisHost::new();
+        host.set_file_content("/sensor.sysml", original_sysml);
+
+        let analysis = host.analysis();
+        let syms: Vec<_> = analysis
+            .symbol_index()
+            .all_symbols()
+            .map(|s| s.clone())
+            .collect();
+
+        let model = model_from_symbols(&syms);
+        let xmi_bytes = Xmi.write(&model).expect("cycle 1: write XMI");
+
+        let model_rt = Xmi.read(&xmi_bytes).expect("cycle 1: read XMI");
+        let decompiled_1 = decompile(&model_rt);
+
+        // --- Cycle 2: decompiled SysML → XMI → decompile → SysML text ---
+        let mut host2 = AnalysisHost::new();
+        host2.set_file_content("/sensor.sysml", &decompiled_1.text);
+        apply_metadata_to_host(&mut host2, &decompiled_1.metadata);
+
+        let analysis2 = host2.analysis();
+        let syms2: Vec<_> = analysis2
+            .symbol_index()
+            .all_symbols()
+            .map(|s| s.clone())
+            .collect();
+        let model2 = model_from_symbols(&syms2);
+        let xmi_bytes2 = Xmi.write(&model2).expect("cycle 2: write XMI");
+
+        let model_rt2 = Xmi.read(&xmi_bytes2).expect("cycle 2: read XMI");
+        let decompiled_2 = decompile(&model_rt2);
+
+        // --- Verify the decompiled text has settled ---
+        assert_eq!(
+            decompiled_1.text, decompiled_2.text,
+            "Decompiled SysML text should be identical after two roundtrip cycles"
+        );
+
+        // --- Verify specific attribute values survive ---
+        let final_text = &decompiled_2.text;
+
+        assert!(
+            final_text.contains("\"temperature-01\""),
+            "String literal value missing from settled output:\n{}",
+            final_text
+        );
+        assert!(
+            final_text.contains("= 42"),
+            "Integer literal value missing from settled output:\n{}",
+            final_text
+        );
+        assert!(
+            final_text.contains("= 98.6"),
+            "Real literal value missing from settled output:\n{}",
+            final_text
+        );
+        assert!(
+            final_text.contains("= true"),
+            "Boolean literal value missing from settled output:\n{}",
+            final_text
+        );
+
+        // Verify structural elements also survived
+        assert!(
+            final_text.contains("Sensor"),
+            "Package name missing from settled output:\n{}",
+            final_text
+        );
+        assert!(
+            final_text.contains("Thermometer"),
+            "Part def name missing from settled output:\n{}",
+            final_text
+        );
+    }
+
+    #[test]
     fn test_full_round_trip_file_workflow() {
         // Test complete workflow: SysML file → XMI export → decompile → reload → re-export
         // Simulates real user workflow

@@ -142,6 +142,42 @@ pub struct Multiplicity {
     pub upper: Option<u64>,
 }
 
+/// A value expression assigned to a feature (e.g., `= 42`, `= "hello"`, `= true`).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ValueExpression {
+    /// Integer literal (e.g., `100`)
+    LiteralInteger(i64),
+    /// Real/decimal literal (e.g., `0.75`)
+    LiteralReal(f64),
+    /// String literal (e.g., `"temperature-01"`) — stored without quotes
+    LiteralString(String),
+    /// Boolean literal (`true` or `false`)
+    LiteralBoolean(bool),
+    /// Null literal
+    Null,
+    /// A non-literal expression, stored as raw source text
+    Expression(String),
+}
+
+// Manual Eq impl because f64 doesn't implement Eq (NaN != NaN).
+// We treat two LiteralReal values as equal when their bit patterns match.
+impl Eq for ValueExpression {}
+
+// Manual Hash impl consistent with the Eq impl above.
+impl std::hash::Hash for ValueExpression {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        std::mem::discriminant(self).hash(state);
+        match self {
+            ValueExpression::LiteralInteger(v) => v.hash(state),
+            ValueExpression::LiteralReal(v) => v.to_bits().hash(state),
+            ValueExpression::LiteralString(v) => v.hash(state),
+            ValueExpression::LiteralBoolean(v) => v.hash(state),
+            ValueExpression::Null => {}
+            ValueExpression::Expression(v) => v.hash(state),
+        }
+    }
+}
+
 /// A normalized usage (SysML usage or KerML feature).
 #[derive(Debug, Clone)]
 pub struct NormalizedUsage {
@@ -183,6 +219,8 @@ pub struct NormalizedUsage {
     pub direction: Option<Direction>,
     /// Multiplicity bounds [lower..upper]
     pub multiplicity: Option<Multiplicity>,
+    /// Value expression (e.g., `= 42` or `default "hello"`)
+    pub value: Option<ValueExpression>,
 }
 
 /// A normalized import statement.
@@ -447,6 +485,58 @@ fn extract_expression_chains(
 }
 
 /// Helper to create a feature chain or simple target from a qualified name
+/// Extract a `ValueExpression` from a parser `Expression` node.
+///
+/// For simple literals (single token), returns a typed variant.
+/// For complex expressions, falls back to storing the raw source text.
+fn extract_value_expression(expr: &crate::parser::Expression) -> ValueExpression {
+    use crate::parser::SyntaxKind;
+
+    let syntax = expr.syntax();
+    // Collect non-trivia tokens from the expression
+    let mut tokens = syntax
+        .descendants_with_tokens()
+        .filter_map(|el| el.into_token())
+        .filter(|t| !t.kind().is_trivia());
+
+    if let Some(token) = tokens.next() {
+        // If there's only one non-trivia token, it's a simple literal
+        let is_single = tokens.next().is_none();
+        if is_single {
+            match token.kind() {
+                SyntaxKind::INTEGER => {
+                    if let Ok(v) = token.text().parse::<i64>() {
+                        return ValueExpression::LiteralInteger(v);
+                    }
+                }
+                SyntaxKind::DECIMAL => {
+                    if let Ok(v) = token.text().parse::<f64>() {
+                        return ValueExpression::LiteralReal(v);
+                    }
+                }
+                SyntaxKind::STRING => {
+                    let text = token.text();
+                    // Strip surrounding quotes
+                    let inner = if (text.starts_with('"') && text.ends_with('"'))
+                        || (text.starts_with('\'') && text.ends_with('\''))
+                    {
+                        &text[1..text.len() - 1]
+                    } else {
+                        text
+                    };
+                    return ValueExpression::LiteralString(inner.to_string());
+                }
+                SyntaxKind::TRUE_KW => return ValueExpression::LiteralBoolean(true),
+                SyntaxKind::FALSE_KW => return ValueExpression::LiteralBoolean(false),
+                SyntaxKind::NULL_KW => return ValueExpression::Null,
+                _ => {}
+            }
+        }
+    }
+    // Fallback: store the full expression text
+    ValueExpression::Expression(syntax.text().to_string().trim().to_string())
+}
+
 fn make_chain_or_simple(target_str: &str, qn: &crate::parser::QualifiedName) -> RelTarget {
     if target_str.contains('.') {
         // Get segments with their ranges for proper hover resolution
@@ -574,6 +664,7 @@ impl NormalizedElement {
                     is_portion: false,
                     direction: None,
                     multiplicity: None,
+                    value: None,
                 })
             }
             NamespaceMember::Comment(comment) => {
@@ -1241,6 +1332,7 @@ impl NormalizedUsage {
                         is_portion: false,
                         direction: None,
                         multiplicity: None,
+                        value: None,
                     }));
                 } else if let Some(qn) = end.target() {
                     // No endpoint name, just a direct reference (e.g., `a.port to b.port`)
@@ -1454,6 +1546,7 @@ impl NormalizedUsage {
                     is_portion: false,
                     direction: None,
                     multiplicity: None,
+                    value: None,
                 }));
             }
         }
@@ -1620,6 +1713,9 @@ impl NormalizedUsage {
             multiplicity: usage
                 .multiplicity()
                 .map(|(l, u)| Multiplicity { lower: l, upper: u }),
+            value: usage
+                .value_expression()
+                .map(|expr| extract_value_expression(&expr)),
         }
     }
 
@@ -1669,6 +1765,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -1790,6 +1887,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -1908,6 +2006,7 @@ impl NormalizedUsage {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             }));
         }
 
@@ -1948,6 +2047,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2021,6 +2121,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2089,6 +2190,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2151,6 +2253,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2250,6 +2353,7 @@ impl NormalizedUsage {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             }));
         }
 
@@ -2287,6 +2391,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2350,6 +2455,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2409,6 +2515,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2457,6 +2564,7 @@ impl NormalizedUsage {
                 is_portion: false,
                 direction: None,
                 multiplicity: None,
+                value: None,
             }));
         }
 
@@ -2490,6 +2598,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2544,6 +2653,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 
@@ -2587,6 +2697,7 @@ impl NormalizedUsage {
             is_portion: false,
             direction: None,
             multiplicity: None,
+            value: None,
         }
     }
 }

@@ -58,6 +58,7 @@ fn make_symbol(name: &str, qualified: &str, kind: SymbolKind, supertypes: Vec<&s
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     }
 }
 
@@ -104,6 +105,7 @@ fn make_symbol_with_type_refs(
         is_portion: false,
         direction: None,
         multiplicity: None,
+        value: None,
     }
 }
 
