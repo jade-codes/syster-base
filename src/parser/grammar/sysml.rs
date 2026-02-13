@@ -19,35 +19,6 @@ use super::kerml::is_name_kind;
 use super::kerml_expressions::{ExpressionParser, parse_expression};
 use crate::parser::syntax_kind::SyntaxKind;
 
-/// Standalone relationship keywords (SysML)
-pub const STANDALONE_RELATIONSHIP_KEYWORDS: &[SyntaxKind] = &[
-    SyntaxKind::SPECIALIZATION_KW,
-    SyntaxKind::SUBCLASSIFIER_KW,
-    SyntaxKind::REDEFINITION_KW,
-    SyntaxKind::SUBSET_KW,
-    SyntaxKind::SUBTYPE_KW,
-    SyntaxKind::TYPING_KW,
-    SyntaxKind::CONJUGATION_KW,
-    SyntaxKind::DISJOINING_KW,
-    SyntaxKind::FEATURING_KW,
-    SyntaxKind::INVERTING_KW,
-];
-
-/// Relationship operator keywords (SysML)
-pub const RELATIONSHIP_OPERATORS: &[SyntaxKind] = &[
-    SyntaxKind::SPECIALIZES_KW,
-    SyntaxKind::COLON_GT,
-    SyntaxKind::SUBSETS_KW,
-    SyntaxKind::REDEFINES_KW,
-    SyntaxKind::COLON_GT_GT,
-    SyntaxKind::TYPED_KW,
-    SyntaxKind::COLON,
-    SyntaxKind::CONJUGATES_KW,
-    SyntaxKind::TILDE,
-    SyntaxKind::INVERSE_KW,
-    SyntaxKind::OF_KW,
-];
-
 /// SysML definition keywords (used with 'def')
 pub const SYSML_DEFINITION_KEYWORDS: &[SyntaxKind] = &[
     SyntaxKind::PART_KW,
@@ -5566,7 +5537,7 @@ pub fn parse_standalone_relationship<P: SysMLParser>(p: &mut P) {
     }
 
     // Handle the relationship keyword (subclassifier, subtype, subset, redefinition, etc.)
-    if p.at_any(STANDALONE_RELATIONSHIP_KEYWORDS) {
+    if p.at_any(super::STANDALONE_RELATIONSHIP_KEYWORDS) {
         p.bump(); // relationship keyword
         p.skip_trivia();
     }
@@ -5578,7 +5549,7 @@ pub fn parse_standalone_relationship<P: SysMLParser>(p: &mut P) {
     }
 
     // Parse the operator (specializes/:>, subsets/:>, redefines/:>>, etc.)
-    if p.at_any(RELATIONSHIP_OPERATORS) {
+    if p.at_any(super::RELATIONSHIP_OPERATORS) {
         p.bump(); // operator
         p.skip_trivia();
     }

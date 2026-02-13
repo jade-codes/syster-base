@@ -49,35 +49,6 @@ pub const FEATURE_PREFIX_MODIFIERS: &[SyntaxKind] = &[
 /// Definition prefixes (abstract, variation)
 pub const DEFINITION_PREFIXES: &[SyntaxKind] = &[SyntaxKind::ABSTRACT_KW, SyntaxKind::VARIATION_KW];
 
-/// Standalone relationship keywords
-pub const STANDALONE_RELATIONSHIP_KEYWORDS: &[SyntaxKind] = &[
-    SyntaxKind::SPECIALIZATION_KW,
-    SyntaxKind::SUBCLASSIFIER_KW,
-    SyntaxKind::REDEFINITION_KW,
-    SyntaxKind::SUBSET_KW,
-    SyntaxKind::SUBTYPE_KW,
-    SyntaxKind::TYPING_KW,
-    SyntaxKind::CONJUGATION_KW,
-    SyntaxKind::DISJOINING_KW,
-    SyntaxKind::FEATURING_KW,
-    SyntaxKind::INVERTING_KW,
-];
-
-/// Relationship operator keywords
-pub const RELATIONSHIP_OPERATORS: &[SyntaxKind] = &[
-    SyntaxKind::SPECIALIZES_KW,
-    SyntaxKind::COLON_GT,
-    SyntaxKind::SUBSETS_KW,
-    SyntaxKind::REDEFINES_KW,
-    SyntaxKind::COLON_GT_GT,
-    SyntaxKind::TYPED_KW,
-    SyntaxKind::COLON,
-    SyntaxKind::CONJUGATES_KW,
-    SyntaxKind::TILDE,
-    SyntaxKind::INVERSE_KW,
-    SyntaxKind::OF_KW,
-];
-
 /// Check if a kind is a KerML definition keyword
 pub fn is_kerml_definition_keyword(kind: SyntaxKind) -> bool {
     KERML_DEFINITION_KEYWORDS.contains(&kind)
@@ -95,7 +66,7 @@ pub fn is_feature_prefix_modifier(kind: SyntaxKind) -> bool {
 
 /// Check if a kind is a standalone relationship keyword
 pub fn is_standalone_relationship_keyword(kind: SyntaxKind) -> bool {
-    STANDALONE_RELATIONSHIP_KEYWORDS.contains(&kind)
+    super::STANDALONE_RELATIONSHIP_KEYWORDS.contains(&kind)
 }
 
 /// Trait for KerML parsing operations
@@ -724,13 +695,13 @@ fn parse_conjugation_relationship<P: KerMLParser>(p: &mut P) {
 /// Parse generic relationship: keyword source operator target
 /// Handles relationships that don't fit other specific patterns
 fn parse_generic_relationship<P: KerMLParser>(p: &mut P) {
-    if p.at_any(STANDALONE_RELATIONSHIP_KEYWORDS) {
+    if p.at_any(super::STANDALONE_RELATIONSHIP_KEYWORDS) {
         bump_and_skip(p);
     }
 
     parse_optional_qualified_name(p);
 
-    if p.at_any(RELATIONSHIP_OPERATORS) {
+    if p.at_any(super::RELATIONSHIP_OPERATORS) {
         bump_and_skip(p);
     }
 
