@@ -384,30 +384,41 @@ implementation detail of the parser layer, not an architectural dependency of th
 > type aliases (~220 lines) and wired the formatter's lexer to produce the
 > parser's `SyntaxKind` values. Net savings: ~215 lines (not ~800 as estimated).
 
-### Phase 2 — Split God Files
+### Phase 2 — Split God Files ✅ COMPLETE
 
-- [ ] **2.1** Split `grammar/sysml.rs` (5,737 lines) into `grammar/sysml/` directory:
-  - [ ] 2.1.1 Create `sysml/mod.rs` — trait definition, entry points, keyword constants, helpers
-  - [ ] 2.1.2 Create `sysml/actions.rs` — action body parsing (accept, send, perform, if/while/for, fork/join/merge/decide)
-  - [ ] 2.1.3 Create `sysml/states.rs` — state body parsing (entry, exit, do, transitions)
-  - [ ] 2.1.4 Create `sysml/requirements.rs` — requirement body parsing (subject, actor, stakeholder, objective)
-  - [ ] 2.1.5 Create `sysml/definitions.rs` — `parse_definition_or_usage`, variant parsing
-  - [ ] 2.1.6 Create `sysml/connections.rs` — connect, binding, succession, flow parsing
-- [ ] **2.2** Split `ast.rs` (2,165 lines) into `ast/` directory:
-  - [ ] 2.2.1 Create `ast/mod.rs` — `AstNode` trait, macros, `SourceFile`, `NamespaceMember` enum
-  - [ ] 2.2.2 Create `ast/package.rs` — `Package`, `LibraryPackage`, `NamespaceBody`, `Import`, `Alias`
-  - [ ] 2.2.3 Create `ast/definition.rs` — `Definition`, `DefinitionKind`, specializations
-  - [ ] 2.2.4 Create `ast/usage.rs` — `Usage`, `UsageKind`, `Direction`, multiplicity
-  - [ ] 2.2.5 Create `ast/expression.rs` — `Expression`, `QualifiedName`, literal nodes
-  - [ ] 2.2.6 Create `ast/actions.rs` — `SendActionUsage`, `AcceptActionUsage`, `ControlNode`, loops
-  - [ ] 2.2.7 Create `ast/connectors.rs` — `Connector`, `ConnectUsage`, `BindingConnector`, `Succession`
-- [ ] **2.3** Split `normalized.rs` (2,846 lines) into `normalized/` directory:
-  - [ ] 2.3.1 Create `normalized/mod.rs` — `NormalizedElement` enum, kind enums, `RelTarget`, `FeatureChain`
-  - [ ] 2.3.2 Create `normalized/definition.rs` — `NormalizedDefinition::from_rowan`
-  - [ ] 2.3.3 Create `normalized/usage.rs` — `NormalizedUsage::from_rowan`
-  - [ ] 2.3.4 Create `normalized/import.rs` — `NormalizedImport`, `NormalizedAlias`, `NormalizedDependency`
-  - [ ] 2.3.5 Create `normalized/relationships.rs` — extraction helpers, expression chains
-  - [ ] 2.3.6 Create `normalized/values.rs` — `ValueExpression`, `extract_value_expression`
+> **Completed**: February 2026 — 3 commits  
+> **Lines reorganized**: ~10,688 lines across 3 files → 20 submodule files
+
+- [x] **2.1** Split `grammar/sysml.rs` (5,678 lines) into `grammar/sysml/` directory (10 files):
+  - [x] `sysml/mod.rs` — SysMLParser trait, constants, keyword predicates (~275 lines)
+  - [x] `sysml/helpers.rs` — shared helper functions: bump_keyword, expect_and_skip, etc. (~315 lines)
+  - [x] `sysml/body.rs` — parse_body (~55 lines)
+  - [x] `sysml/namespace.rs` — package/import/alias parsing (~190 lines)
+  - [x] `sysml/entry.rs` — file entry point + parse_package_body_element (~445 lines)
+  - [x] `sysml/actions.rs` — action body elements (~770 lines)
+  - [x] `sysml/states.rs` — state body elements (~235 lines)
+  - [x] `sysml/requirements.rs` — requirement body elements (~440 lines)
+  - [x] `sysml/definitions.rs` — definition/usage parsing (~2,435 lines)
+  - [x] `sysml/relationships.rs` — specialization/annotation/relationship (~565 lines)
+- [x] **2.2** Split `ast.rs` (2,165 lines) into `ast/` directory (6 files):
+  - [x] `ast/mod.rs` — AstNode/AstToken traits, macros, utilities (~540 lines)
+  - [x] `ast/namespace.rs` — SourceFile, NamespaceMember, Package, Import, Alias, Dependency (~310 lines)
+  - [x] `ast/elements.rs` — Filter, Comment, Metadata, Definition, Usage, Names (~590 lines)
+  - [x] `ast/relationships.rs` — Typing, Specialization, transitions, action/state nodes, connectors (~450 lines)
+  - [x] `ast/expressions.rs` — Expression, FeatureChainRef, ConstraintBody (~160 lines)
+  - [x] `ast/tests.rs` — AST unit tests (~110 lines)
+- [x] **2.3** Split `normalized.rs` (2,845 lines) into `normalized/` directory (4 files):
+  - [x] `normalized/mod.rs` — type definitions, NormalizedElement enum, helper functions, iteration (~780 lines)
+  - [x] `normalized/definition.rs` — NormalizedPackage + NormalizedDefinition impls (~180 lines)
+  - [x] `normalized/usage.rs` — NormalizedUsage impl (~1,780 lines)
+  - [x] `normalized/imports.rs` — NormalizedImport, NormalizedAlias, NormalizedDependency impls (~106 lines)
+
+> **Deviation from plan**: The actual file groupings differ from the original plan's proposed filenames.
+> Key decisions:
+> - sysml.rs: Split into 10 files (plan had 6) for finer granularity. `helpers.rs` extracted as shared utility module. `entry.rs` holds the main dispatch. `relationships.rs` instead of `connections.rs`.
+> - ast.rs: Split into 6 files (plan had 7). Grouped by concern rather than strict type-per-file. Used `pub(crate)` on ast_node! macro field for cross-module construction.
+> - normalized.rs: Split into 4 files (plan had 6). Kept type definitions + NormalizedElement dispatch in mod.rs rather than separate files. Helper functions stayed in mod.rs as `pub(super)`.
+> - Cross-module pattern: `pub(super)` visibility + `use super::*;` for sibling access throughout.
 
 ### Phase 3 — Unify Parser Traits
 
