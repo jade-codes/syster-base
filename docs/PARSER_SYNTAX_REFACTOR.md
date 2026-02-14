@@ -433,12 +433,11 @@ implementation detail of the parser layer, not an architectural dependency of th
   - [x] `sysml/definitions.rs` — constraint_body, dependency, filter, variant, redefines (~523 lines)
   - Also removed dead freestanding `parse_multiplicity`/`parse_multiplicity_bound` (duplicated trait method)
 
-- [ ] **2b.2** Remove KerML definition handling from SysML grammar:
-  - The SysML parser currently accepts KerML-only syntax (`struct`, `class`, `datatype`, `behavior`, etc.) via `parse_kerml_definition` in `classify.rs` and KerML keyword entries in `entry.rs`. This is incorrect — `.sysml` files don't use KerML syntax. The KerML parser (`grammar::kerml`) already handles these for `.kerml` files.
-  - [ ] Remove `DefinitionClassification::KermlDefinition` variant and `parse_kerml_definition` from `classify.rs`
-  - [ ] Remove `is_kerml_definition_keyword` from `classify.rs` (the canonical version lives in `grammar/kerml.rs`)
-  - [ ] Remove KerML keyword entries (`CLASS_KW`, `STRUCT_KW`, `DATATYPE_KW`, etc.) from `entry.rs` `parse_package_body_element`
-  - [ ] Fix tests: move `"abstract class Base;"` / `"class Base;"` cases in `test_sysml_abstract_modifier` to use `parse_kerml_def` instead
+- [x] **2b.2** Remove KerML definition handling from SysML grammar — `1b350a5`:
+  - Removed `DefinitionClassification::KermlDefinition`, `parse_kerml_definition`, `is_kerml_definition_keyword` from `classify.rs`
+  - Removed KerML keyword entries (`CLASS_KW`, `STRUCT_KW`, `DATATYPE_KW`, etc.) from `entry.rs`
+  - Merged remaining `classify.rs` content (`parse_definition_or_usage`, `has_def_keyword`, `parse_definition`) into `definitions.rs`, deleted `classify.rs`
+  - Fixed tests: converted KerML syntax in SysML test sources to valid SysML
 
 - [x] **2b.3** Deduplicate sysml/ grammar files (~235 lines removed) — `47dfc6d`:
   - **A. Kill duplicate member parsers in bodies.rs** (~162 lines): `parse_subject_member`, `parse_actor_member`, `parse_stakeholder_member`, `parse_objective_member` are hand-rolled duplicates of the public versions in requirements.rs (`parse_subject_usage`, `parse_actor_usage`, etc.). Have `parse_case_body` call the requirements.rs versions instead.
