@@ -17,7 +17,6 @@
 
 // Submodules
 mod actions;
-mod bodies;
 mod body;
 mod classify;
 mod connectors;
@@ -38,7 +37,7 @@ pub(super) use crate::parser::syntax_kind::SyntaxKind;
 
 // Internal re-exports — submodules access siblings via `use super::*;`
 pub(super) use self::actions::*;
-pub(super) use self::bodies::*;
+pub(super) use self::body::*;
 pub(super) use self::connectors::*;
 pub(super) use self::definitions::*;
 pub(super) use self::entry::*;
@@ -50,7 +49,7 @@ pub(super) use self::states::*;
 pub(super) use self::usage::*;
 
 // Public API — visible outside sysml module (used by parser.rs, rule_parser.rs)
-pub use self::body::parse_body;
+pub use self::body::{parse_body, parse_case_body, parse_metadata_body, parse_sysml_calc_body};
 pub use self::classify::parse_definition_or_usage;
 pub use self::connectors::{parse_binding_or_succession, parse_connect_usage};
 pub use self::definitions::{
