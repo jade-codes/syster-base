@@ -458,7 +458,99 @@ pub fn parse_shorthand_feature_member<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-// Parse case body (for analysis/verification definitions)
-// Per pest: case_body = { ";" | ("{" ~ case_body_part ~ "}") }
-// Per pest: case_body_part = { case_calculation_body_item* ~ case_objective* ~ case_subject* ~ case_actor* ~ case_stakeholder* ~ result_expression_member? }
-// Pattern: semicolon | { [objective|subject|actor|stakeholder|calculation items]* [result expression]? }
+// =============================================================================
+// Definition/Usage Classification & Dispatch
+// =============================================================================
+
+/// Per pest: package_member = { (definition | usage | alias_member | ...) }
+/// Pattern: Determines whether to parse as definition (has 'def') or usage (no 'def')
+pub fn parse_definition_or_usage<P: SysMLParser>(p: &mut P) {
+    if has_def_keyword(p) {
+        parse_definition(p);
+    } else {
+        parse_usage(p);
+    }
+}
+
+/// Scan ahead (skipping trivia) to determine if this declaration has a 'def' keyword
+fn has_def_keyword<P: SysMLParser>(p: &P) -> bool {
+    for i in 0..20 {
+        let kind = p.peek_kind(i);
+
+        if kind == SyntaxKind::DEF_KW {
+            return true;
+        }
+
+        // Stop scanning at statement-ending tokens
+        if kind == SyntaxKind::SEMICOLON
+            || kind == SyntaxKind::L_BRACE
+            || kind == SyntaxKind::COLON
+            || kind == SyntaxKind::COLON_GT
+            || kind == SyntaxKind::COLON_GT_GT
+            || kind == SyntaxKind::EQ
+            || kind == SyntaxKind::ERROR
+        {
+            return false;
+        }
+    }
+    false
+}
+
+fn parse_definition<P: SysMLParser>(p: &mut P) {
+    // Per pest: definition = { prefix* ~ definition_declaration ~ definition_body }
+    // Pattern: [abstract|variation|individual] <keyword> def <name> <specializations> <body>
+    p.start_node(SyntaxKind::DEFINITION);
+
+    // Prefixes (variation point and individual markers)
+    while p.at(SyntaxKind::ABSTRACT_KW)
+        || p.at(SyntaxKind::VARIATION_KW)
+        || p.at(SyntaxKind::INDIVIDUAL_KW)
+    {
+        bump_keyword(p);
+    }
+
+    let is_constraint = p.at(SyntaxKind::CONSTRAINT_KW);
+    let is_calc = p.at(SyntaxKind::CALC_KW);
+    let is_action = p.at(SyntaxKind::ACTION_KW);
+    let is_state = p.at(SyntaxKind::STATE_KW);
+    let is_analysis = p.at(SyntaxKind::ANALYSIS_KW);
+    let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
+    let is_metadata = p.at(SyntaxKind::METADATA_KW);
+    let is_usecase = p.at(SyntaxKind::USE_KW); // use case def
+
+    // Definition keyword
+    parse_definition_keyword(p);
+    p.skip_trivia();
+
+    // 'def' keyword (or 'case def' for analysis/verification)
+    consume_if(p, SyntaxKind::CASE_KW);
+    expect_and_skip(p, SyntaxKind::DEF_KW);
+
+    // Identification
+    if p.at(SyntaxKind::IDENT) || p.at(SyntaxKind::LT) {
+        p.parse_identification();
+    }
+    p.skip_trivia();
+
+    // Specializations
+    parse_specializations_with_skip(p);
+
+    // Body
+    if is_constraint {
+        parse_constraint_body(p);
+    } else if is_calc {
+        parse_sysml_calc_body(p);
+    } else if is_action {
+        parse_action_body(p);
+    } else if is_state {
+        parse_state_body(p);
+    } else if is_analysis || is_verification || is_usecase {
+        parse_case_body(p);
+    } else if is_metadata {
+        parse_metadata_body(p);
+    } else {
+        p.parse_body();
+    }
+
+    p.finish_node();
+}

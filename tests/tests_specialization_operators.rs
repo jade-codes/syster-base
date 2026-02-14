@@ -463,7 +463,7 @@ fn test_segments_with_ranges_strips_quotes() {
 /// Test `specializes` keyword
 #[test]
 fn test_specializes_keyword() {
-    let input = "classifier A specializes B;";
+    let input = "part def A specializes B;";
     let file = parse_source(input);
     let members: Vec<_> = file.members().collect();
     match &members[0] {

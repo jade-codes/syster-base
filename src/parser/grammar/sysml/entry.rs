@@ -169,19 +169,7 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         | SyntaxKind::MESSAGE_KW
         | SyntaxKind::SNAPSHOT_KW
         | SyntaxKind::TIMESLICE_KW
-        | SyntaxKind::ABOUT_KW
-        // KerML definition keywords (for standard library and KerML interop)
-        | SyntaxKind::CLASS_KW
-        | SyntaxKind::STRUCT_KW
-        | SyntaxKind::DATATYPE_KW
-        | SyntaxKind::BEHAVIOR_KW
-        | SyntaxKind::FUNCTION_KW
-        | SyntaxKind::ASSOC_KW
-        | SyntaxKind::INTERACTION_KW
-        | SyntaxKind::PREDICATE_KW
-        | SyntaxKind::METACLASS_KW
-        | SyntaxKind::CLASSIFIER_KW
-        | SyntaxKind::TYPE_KW => {
+        | SyntaxKind::ABOUT_KW => {
             p.parse_definition_or_usage();
         }
 
