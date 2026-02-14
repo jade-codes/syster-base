@@ -425,12 +425,13 @@ implementation detail of the parser layer, not an architectural dependency of th
 > **Status**: In progress  
 > **Context**: Phase 2 split `sysml.rs` into 10 files, but `definitions.rs` at 2,435 lines is still a god file containing definition parsing, usage parsing, connector parsing, and specialized body parsers all lumped together.
 
-- [ ] **2b.1** Split `sysml/definitions.rs` (2,435 lines) into 5 focused files:
-  - [ ] `sysml/classify.rs` — `parse_definition_or_usage` entry point, `classify_definition_or_usage`, `parse_definition`, `parse_kerml_definition` (~171 lines)
-  - [ ] `sysml/usage.rs` — `parse_usage`, `parse_usage_keyword`, `parse_usage_prefix`, `parse_allocate_end_member`, `parse_definition_keyword`, `parse_multiplicity` (~586 lines)
-  - [ ] `sysml/connectors.rs` — `parse_bind_usage`, `parse_assign_action`, `parse_connect_usage`, `parse_connector_usage`, `parse_binding_or_succession`, `parse_flow_usage` (~651 lines)
-  - [ ] `sysml/bodies.rs` — `parse_case_body`, `parse_metadata_body`, `parse_sysml_calc_body`, `parse_requirement_body`, member parsers (~517 lines)
-  - [ ] `sysml/definitions.rs` — remaining: `parse_constraint_body`, `parse_dependency`, `parse_filter`, `parse_metadata_usage`, `parse_variant_usage`, `parse_redefines_feature_member`, `parse_anonymous_usage`, `parse_shorthand_feature_member` (~523 lines)
+- [x] **2b.1** Split `sysml/definitions.rs` (2,435 lines) into 5 focused files:
+  - [x] `sysml/classify.rs` — `parse_definition_or_usage` entry point, classification dispatch (~171 lines)
+  - [x] `sysml/usage.rs` — `parse_usage`, keyword/prefix helpers (~584 lines)
+  - [x] `sysml/connectors.rs` — bind, connect, connector, succession, flow parsers (~602 lines)
+  - [x] `sysml/bodies.rs` — case_body, metadata_body, calc_body, member parsers (~515 lines)
+  - [x] `sysml/definitions.rs` — constraint_body, dependency, filter, variant, redefines (~523 lines)
+  - Also removed dead freestanding `parse_multiplicity`/`parse_multiplicity_bound` (duplicated trait method)
 
 - [ ] **2b.2** Remove KerML definition handling from SysML grammar:
   - The SysML parser currently accepts KerML-only syntax (`struct`, `class`, `datatype`, `behavior`, etc.) via `parse_kerml_definition` in `classify.rs` and KerML keyword entries in `entry.rs`. This is incorrect — `.sysml` files don't use KerML syntax. The KerML parser (`grammar::kerml`) already handles these for `.kerml` files.
@@ -438,6 +439,12 @@ implementation detail of the parser layer, not an architectural dependency of th
   - [ ] Remove `is_kerml_definition_keyword` from `classify.rs` (the canonical version lives in `grammar/kerml.rs`)
   - [ ] Remove KerML keyword entries (`CLASS_KW`, `STRUCT_KW`, `DATATYPE_KW`, etc.) from `entry.rs` `parse_package_body_element`
   - [ ] Fix tests: move `"abstract class Base;"` / `"class Base;"` cases in `test_sysml_abstract_modifier` to use `parse_kerml_def` instead
+
+- [ ] **2b.3** Deduplicate sysml/ grammar files (~230 lines removed):
+  - **A. Kill duplicate member parsers in bodies.rs** (~162 lines): `parse_subject_member`, `parse_actor_member`, `parse_stakeholder_member`, `parse_objective_member` are hand-rolled duplicates of the public versions in requirements.rs (`parse_subject_usage`, `parse_actor_usage`, etc.). Have `parse_case_body` call the requirements.rs versions instead.
+  - **B. Replace inline default-value parsing** (~50 lines): 3 spots in bodies.rs and 2 in definitions.rs hand-roll the same `DEFAULT_KW`/`EQ`/`COLON_EQ` pattern that `parse_optional_default_value` in helpers.rs already handles.
+  - **C. Replace inline typing patterns** (~16 lines): 5 spots in bodies.rs and 3 in definitions.rs do `if p.at(COLON) { p.parse_typing(); p.skip_trivia(); }` instead of using `parse_optional_typing(p)`.
+  - **D. Normalize specialization calls**: Replace manual `parse_specializations(p); p.skip_trivia();` pairs with `parse_specializations_with_skip(p)` for consistency.
 
 ### Phase 3 — Unify Parser Traits
 

@@ -16,13 +16,16 @@ pub fn parse_subject_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_identification(p);
 
-    // Typing (optional, can come before or after specializations)
+    // Multiplicity (can appear immediately after name, before typing)
+    parse_optional_multiplicity(p);
+
+    // Typing (optional)
     parse_optional_typing(p);
 
     // Specializations (redefines, subsets, etc.)
     parse_specializations_with_skip(p);
 
-    // Multiplicity (can come after specializations)
+    // Multiplicity can also appear after specializations (e.g., subject x :> y [2])
     parse_optional_multiplicity(p);
 
     // Default value (with 'default' keyword or '=' operator)
@@ -45,12 +48,14 @@ pub fn parse_actor_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_identification(p);
 
+    parse_optional_multiplicity(p);
+
     parse_optional_typing(p);
 
     // Specializations (redefines, subsets, etc.)
     parse_specializations_with_skip(p);
 
-    // Multiplicity
+    // Multiplicity can also appear after specializations
     parse_optional_multiplicity(p);
 
     // Default value
@@ -72,6 +77,8 @@ pub fn parse_stakeholder_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_identification(p);
 
+    parse_optional_multiplicity(p);
+
     parse_optional_typing(p);
 
     p.expect(SyntaxKind::SEMICOLON);
@@ -90,12 +97,14 @@ pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_identification(p);
 
+    parse_optional_multiplicity(p);
+
     parse_optional_typing(p);
 
     // Specializations (per pest: constraint_usage_declaration = usage_declaration? ~ value_part?)
     parse_specializations_with_skip(p);
 
-    // Multiplicity
+    // Multiplicity can also appear after specializations
     parse_optional_multiplicity(p);
 
     p.parse_body();

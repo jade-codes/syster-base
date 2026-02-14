@@ -18,13 +18,13 @@ pub fn parse_case_body<P: SysMLParser>(p: &mut P) {
     // Parse case body items: objective, subject, actor, case_calculation_body_item
     while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::ERROR) {
         if p.at(SyntaxKind::OBJECTIVE_KW) {
-            parse_objective_member(p);
+            parse_objective_usage(p);
         } else if p.at(SyntaxKind::SUBJECT_KW) {
-            parse_subject_member(p);
+            parse_subject_usage(p);
         } else if p.at(SyntaxKind::ACTOR_KW) {
-            parse_actor_member(p);
+            parse_actor_usage(p);
         } else if p.at(SyntaxKind::STAKEHOLDER_KW) {
-            parse_stakeholder_member(p);
+            parse_stakeholder_usage(p);
         } else if p.at(SyntaxKind::RETURN_KW) {
             parse_sysml_parameter(p);
         } else if p.at(SyntaxKind::IDENT) {
@@ -162,14 +162,10 @@ fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
     }
 
     // Optional typing
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
+    parse_optional_typing(p);
 
     // Optional specializations
-    parse_specializations(p);
-    p.skip_trivia();
+    parse_specializations_with_skip(p);
 
     // Optional 'default' clause with expression
     // Pattern: `default <expression>`
@@ -212,194 +208,6 @@ fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
         p.expect(SyntaxKind::SEMICOLON);
     }
 
-    p.finish_node();
-}
-
-// Parse objective member: 'objective' [name] ':' type [:>> ref, ...] body
-fn parse_objective_member<P: SysMLParser>(p: &mut P) {
-    p.start_node(SyntaxKind::OBJECTIVE_USAGE);
-    p.bump(); // objective
-    p.skip_trivia();
-
-    // Optional identifier (wrapped in NAME)
-    parse_optional_identification(p);
-
-    // Optional typing
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
-
-    // Specializations (per pest: constraint_usage_declaration includes usage_declaration)
-    parse_specializations(p);
-    p.skip_trivia();
-
-    // Multiplicity
-    if p.at(SyntaxKind::L_BRACKET) {
-        p.parse_multiplicity();
-        p.skip_trivia();
-    }
-
-    // Body (requirement body)
-    parse_requirement_body(p);
-
-    p.finish_node();
-}
-
-// Parse subject member: 'subject' usage_declaration
-fn parse_subject_member<P: SysMLParser>(p: &mut P) {
-    p.start_node(SyntaxKind::SUBJECT_USAGE);
-    p.bump(); // subject
-    p.skip_trivia();
-
-    // Usage declaration (identifier wrapped in NAME, typing, etc.)
-    parse_optional_identification(p);
-
-    // Multiplicity
-    if p.at(SyntaxKind::L_BRACKET) {
-        p.parse_multiplicity();
-        p.skip_trivia();
-    }
-
-    // Typing
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
-
-    // Specializations
-    parse_specializations(p);
-    p.skip_trivia();
-
-    // Default value or assignment
-    if p.at(SyntaxKind::DEFAULT_KW) {
-        p.bump();
-        p.skip_trivia();
-        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.can_start_expression() {
-            parse_expression(p);
-        }
-        p.skip_trivia();
-    } else if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-        p.bump();
-        p.skip_trivia();
-        parse_expression(p);
-        p.skip_trivia();
-    }
-
-    // Body
-    if p.at(SyntaxKind::L_BRACE) {
-        p.parse_body();
-    } else {
-        p.expect(SyntaxKind::SEMICOLON);
-    }
-
-    p.finish_node();
-}
-
-// Parse actor member: 'actor' usage_declaration
-fn parse_actor_member<P: SysMLParser>(p: &mut P) {
-    p.start_node(SyntaxKind::ACTOR_USAGE);
-    p.bump(); // actor
-    p.skip_trivia();
-
-    // Usage declaration (identifier wrapped in NAME)
-    parse_optional_identification(p);
-
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
-
-    parse_specializations(p);
-    p.skip_trivia();
-
-    // Multiplicity
-    if p.at(SyntaxKind::L_BRACKET) {
-        p.parse_multiplicity();
-        p.skip_trivia();
-    }
-
-    // Default value
-    if p.at(SyntaxKind::DEFAULT_KW) {
-        p.bump();
-        p.skip_trivia();
-        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.can_start_expression() {
-            parse_expression(p);
-        }
-        p.skip_trivia();
-    } else if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-        p.bump();
-        p.skip_trivia();
-        parse_expression(p);
-        p.skip_trivia();
-    }
-
-    if p.at(SyntaxKind::L_BRACE) {
-        p.parse_body();
-    } else {
-        p.expect(SyntaxKind::SEMICOLON);
-    }
-
-    p.finish_node();
-}
-
-// Parse stakeholder member: 'stakeholder' usage_declaration
-fn parse_stakeholder_member<P: SysMLParser>(p: &mut P) {
-    p.start_node(SyntaxKind::STAKEHOLDER_USAGE);
-    p.bump(); // stakeholder
-    p.skip_trivia();
-
-    // Usage declaration (identifier wrapped in NAME)
-    parse_optional_identification(p);
-
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
-
-    parse_specializations(p);
-    p.skip_trivia();
-
-    if p.at(SyntaxKind::L_BRACE) {
-        p.parse_body();
-    } else {
-        p.expect(SyntaxKind::SEMICOLON);
-    }
-
-    p.finish_node();
-}
-
-// Parse requirement body (for objective members and requirements)
-fn parse_requirement_body<P: SysMLParser>(p: &mut P) {
-    if p.at(SyntaxKind::SEMICOLON) {
-        p.bump();
-        return;
-    }
-
-    if !p.at(SyntaxKind::L_BRACE) {
-        error_missing_body_terminator(p, "requirement");
-        return;
-    }
-
-    p.start_node(SyntaxKind::NAMESPACE_BODY);
-    p.bump(); // {
-    p.skip_trivia();
-
-    // Requirement body can contain definition_body_items, subject members, constraints, etc.
-    while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::ERROR) {
-        parse_package_body_element(p);
-        p.skip_trivia();
-    }
-
-    p.expect(SyntaxKind::R_BRACE);
     p.finish_node();
 }
 

@@ -330,13 +330,9 @@ pub fn parse_variant_usage<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
 
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
+    parse_optional_typing(p);
 
-    parse_specializations(p);
-    p.skip_trivia();
+    parse_specializations_with_skip(p);
 
     if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
@@ -378,37 +374,14 @@ pub fn parse_redefines_feature_member<P: SysMLParser>(p: &mut P) {
         p.finish_node();
     }
 
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
+    parse_optional_typing(p);
 
-    if p.at(SyntaxKind::L_BRACKET) {
-        p.parse_multiplicity();
-        p.skip_trivia();
-    }
+    parse_optional_multiplicity(p);
 
-    parse_specializations(p);
-    p.skip_trivia();
+    parse_specializations_with_skip(p);
 
     // Default value or assignment
-    if p.at(SyntaxKind::DEFAULT_KW) {
-        p.bump();
-        p.skip_trivia();
-        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.can_start_expression() {
-            parse_expression(p);
-            p.skip_trivia();
-        }
-    } else if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-        p.bump();
-        p.skip_trivia();
-        parse_expression(p);
-        p.skip_trivia();
-    }
+    parse_optional_default_value(p);
 
     if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
@@ -430,24 +403,10 @@ pub(super) fn parse_anonymous_usage<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 
     // Optional specializations
-    parse_specializations(p);
-    p.skip_trivia();
+    parse_specializations_with_skip(p);
 
     // Optional value assignment
-    if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) || p.at(SyntaxKind::DEFAULT_KW) {
-        if p.at(SyntaxKind::DEFAULT_KW) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.can_start_expression() {
-            parse_expression(p);
-        }
-        p.skip_trivia();
-    }
+    parse_optional_default_value(p);
 
     // Body or semicolon
     if p.at(SyntaxKind::L_BRACE) {
@@ -484,29 +443,11 @@ pub fn parse_shorthand_feature_member<P: SysMLParser>(p: &mut P) {
     }
 
     // Only COLON is typing; COLON_GT and COLON_GT_GT are specializations
-    if p.at(SyntaxKind::COLON) {
-        p.parse_typing();
-        p.skip_trivia();
-    }
+    parse_optional_typing(p);
 
-    parse_specializations(p);
-    p.skip_trivia();
+    parse_specializations_with_skip(p);
 
-    if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) || p.at(SyntaxKind::DEFAULT_KW) {
-        if p.at(SyntaxKind::DEFAULT_KW) {
-            p.bump();
-            p.skip_trivia();
-        }
-        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
-            p.bump();
-            p.skip_trivia();
-        }
-        // Parse expression after '=' or 'default' (default can omit '=')
-        if p.can_start_expression() {
-            parse_expression(p);
-        }
-        p.skip_trivia();
-    }
+    parse_optional_default_value(p);
 
     if p.at(SyntaxKind::L_BRACE) {
         p.parse_body();
