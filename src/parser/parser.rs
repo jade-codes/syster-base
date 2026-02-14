@@ -456,7 +456,7 @@ impl<'a> SysMLParser for Parser<'a> {
     }
 
     fn parse_identification(&mut self) {
-        super::grammar::sysml::parse_identification(self)
+        super::grammar::kerml::parse_identification(self)
     }
 
     fn parse_body(&mut self) {
