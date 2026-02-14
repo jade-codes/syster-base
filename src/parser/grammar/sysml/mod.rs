@@ -17,7 +17,10 @@
 
 // Submodules
 mod actions;
+mod bodies;
 mod body;
+mod classify;
+mod connectors;
 mod definitions;
 mod entry;
 mod helpers;
@@ -25,6 +28,7 @@ mod namespace;
 mod relationships;
 mod requirements;
 mod states;
+mod usage;
 
 // Shared imports — pub(super) so submodules get them via `use super::*;`
 pub(super) use super::kerml::is_name_kind;
@@ -34,6 +38,8 @@ pub(super) use crate::parser::syntax_kind::SyntaxKind;
 
 // Internal re-exports — submodules access siblings via `use super::*;`
 pub(super) use self::actions::*;
+pub(super) use self::bodies::*;
+pub(super) use self::connectors::*;
 pub(super) use self::definitions::*;
 pub(super) use self::entry::*;
 use self::helpers::*; // pub(super) relative to helpers → private import here, still visible to descendants
@@ -41,12 +47,14 @@ pub(super) use self::namespace::*;
 pub(super) use self::relationships::*;
 pub(super) use self::requirements::*;
 pub(super) use self::states::*;
+pub(super) use self::usage::*;
 
 // Public API — visible outside sysml module (used by parser.rs, rule_parser.rs)
 pub use self::body::parse_body;
+pub use self::classify::parse_definition_or_usage;
+pub use self::connectors::{parse_binding_or_succession, parse_connect_usage};
 pub use self::definitions::{
-    parse_binding_or_succession, parse_connect_usage, parse_constraint_body,
-    parse_definition_or_usage, parse_dependency, parse_filter, parse_metadata_usage,
+    parse_constraint_body, parse_dependency, parse_filter, parse_metadata_usage,
     parse_redefines_feature_member, parse_shorthand_feature_member, parse_variant_usage,
 };
 pub use self::entry::parse_sysml_file;

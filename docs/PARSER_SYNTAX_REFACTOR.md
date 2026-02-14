@@ -420,6 +420,25 @@ implementation detail of the parser layer, not an architectural dependency of th
 > - normalized.rs: Split into 4 files (plan had 6). Kept type definitions + NormalizedElement dispatch in mod.rs rather than separate files. Helper functions stayed in mod.rs as `pub(super)`.
 > - Cross-module pattern: `pub(super)` visibility + `use super::*;` for sibling access throughout.
 
+### Phase 2b — Refine definitions.rs Split
+
+> **Status**: In progress  
+> **Context**: Phase 2 split `sysml.rs` into 10 files, but `definitions.rs` at 2,435 lines is still a god file containing definition parsing, usage parsing, connector parsing, and specialized body parsers all lumped together.
+
+- [ ] **2b.1** Split `sysml/definitions.rs` (2,435 lines) into 5 focused files:
+  - [ ] `sysml/classify.rs` — `parse_definition_or_usage` entry point, `classify_definition_or_usage`, `parse_definition`, `parse_kerml_definition` (~171 lines)
+  - [ ] `sysml/usage.rs` — `parse_usage`, `parse_usage_keyword`, `parse_usage_prefix`, `parse_allocate_end_member`, `parse_definition_keyword`, `parse_multiplicity` (~586 lines)
+  - [ ] `sysml/connectors.rs` — `parse_bind_usage`, `parse_assign_action`, `parse_connect_usage`, `parse_connector_usage`, `parse_binding_or_succession`, `parse_flow_usage` (~651 lines)
+  - [ ] `sysml/bodies.rs` — `parse_case_body`, `parse_metadata_body`, `parse_sysml_calc_body`, `parse_requirement_body`, member parsers (~517 lines)
+  - [ ] `sysml/definitions.rs` — remaining: `parse_constraint_body`, `parse_dependency`, `parse_filter`, `parse_metadata_usage`, `parse_variant_usage`, `parse_redefines_feature_member`, `parse_anonymous_usage`, `parse_shorthand_feature_member` (~523 lines)
+
+- [ ] **2b.2** Remove KerML definition handling from SysML grammar:
+  - The SysML parser currently accepts KerML-only syntax (`struct`, `class`, `datatype`, `behavior`, etc.) via `parse_kerml_definition` in `classify.rs` and KerML keyword entries in `entry.rs`. This is incorrect — `.sysml` files don't use KerML syntax. The KerML parser (`grammar::kerml`) already handles these for `.kerml` files.
+  - [ ] Remove `DefinitionClassification::KermlDefinition` variant and `parse_kerml_definition` from `classify.rs`
+  - [ ] Remove `is_kerml_definition_keyword` from `classify.rs` (the canonical version lives in `grammar/kerml.rs`)
+  - [ ] Remove KerML keyword entries (`CLASS_KW`, `STRUCT_KW`, `DATATYPE_KW`, etc.) from `entry.rs` `parse_package_body_element`
+  - [ ] Fix tests: move `"abstract class Base;"` / `"class Base;"` cases in `test_sysml_abstract_modifier` to use `parse_kerml_def` instead
+
 ### Phase 3 — Unify Parser Traits
 
 - [ ] **3.1** Extract common trait `BaseParser` with the 7 shared methods from `KerMLParser` and `SysMLParser` into `grammar/mod.rs`.
