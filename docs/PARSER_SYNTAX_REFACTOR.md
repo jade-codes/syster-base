@@ -440,7 +440,7 @@ implementation detail of the parser layer, not an architectural dependency of th
   - [ ] Remove KerML keyword entries (`CLASS_KW`, `STRUCT_KW`, `DATATYPE_KW`, etc.) from `entry.rs` `parse_package_body_element`
   - [ ] Fix tests: move `"abstract class Base;"` / `"class Base;"` cases in `test_sysml_abstract_modifier` to use `parse_kerml_def` instead
 
-- [ ] **2b.3** Deduplicate sysml/ grammar files (~230 lines removed):
+- [x] **2b.3** Deduplicate sysml/ grammar files (~235 lines removed) — `47dfc6d`:
   - **A. Kill duplicate member parsers in bodies.rs** (~162 lines): `parse_subject_member`, `parse_actor_member`, `parse_stakeholder_member`, `parse_objective_member` are hand-rolled duplicates of the public versions in requirements.rs (`parse_subject_usage`, `parse_actor_usage`, etc.). Have `parse_case_body` call the requirements.rs versions instead.
   - **B. Replace inline default-value parsing** (~50 lines): 3 spots in bodies.rs and 2 in definitions.rs hand-roll the same `DEFAULT_KW`/`EQ`/`COLON_EQ` pattern that `parse_optional_default_value` in helpers.rs already handles.
   - **C. Replace inline typing patterns** (~16 lines): 5 spots in bodies.rs and 3 in definitions.rs do `if p.at(COLON) { p.parse_typing(); p.skip_trivia(); }` instead of using `parse_optional_typing(p)`.
