@@ -366,15 +366,23 @@ implementation detail of the parser layer, not an architectural dependency of th
 
 ## 3. To-Do List
 
-### Phase 1 — Kill Duplication
+### Phase 1 — Kill Duplication ✅ COMPLETE
 
-- [ ] **1.1** Delete `parser/errors/` module entirely (`error.rs`, `codes.rs`, `context.rs`, `tests.rs`, `mod.rs`) — ~1,200 lines of dead code. Remove re-exports from `parser/mod.rs`.
-- [ ] **1.2** Delete `syntax/traits.rs` — dead `AstNode`/`Named`/`ToSource` traits with zero implementations. Remove re-export from `syntax/mod.rs`.
-- [ ] **1.3** Delete `parser/result.rs` — duplicate `ParseError`/`ParseResult`. Redirect any imports to `syntax/parser.rs`.
-- [ ] **1.4** Move `kind_to_name()` from `parser/parser.rs` to `SyntaxKind::display_name(&self)` in `parser/syntax_kind.rs`. Update all call sites to use `kind.display_name()`.
-- [ ] **1.5** Unify formatter lexer: make `syntax/formatter/mod.rs` import from `parser::lexer` and `parser::syntax_kind`. Delete `syntax/formatter/lexer.rs` and `syntax/formatter/syntax_kind.rs`. Write mapping layer if formatter needs a token subset.
-- [ ] **1.6** Deduplicate `STANDALONE_RELATIONSHIP_KEYWORDS` and `RELATIONSHIP_OPERATORS` — move shared constants from `kerml.rs` and `sysml.rs` into `grammar/mod.rs`.
-- [ ] **1.7** Deduplicate `parse_identification` — keep one canonical implementation; remove the copy from `sysml.rs`.
+- [x] **1.1** Delete `parser/errors/` module entirely (`error.rs`, `codes.rs`, `context.rs`, `tests.rs`, `mod.rs`) — ~1,200 lines of dead code. Remove re-exports from `parser/mod.rs`.
+- [x] **1.2** Delete `syntax/traits.rs` — dead `AstNode`/`Named`/`ToSource` traits with zero implementations. Remove re-export from `syntax/mod.rs`.
+- [x] **1.3** Delete `parser/result.rs` — duplicate `ParseError`/`ParseResult`. Redirect any imports to `syntax/parser.rs`.
+- [x] **1.4** Move `kind_to_name()` from `parser/parser.rs` to `SyntaxKind::display_name(&self)` in `parser/syntax_kind.rs`. Update all call sites to use `kind.display_name()`.
+- [x] **1.5** Unify formatter SyntaxKind: delete `syntax/formatter/syntax_kind.rs` (~220 lines). Formatter now uses canonical `parser::SyntaxKind`/`SyntaxNode`. Formatter keeps its own Logos lexer (needed for multi-word keywords like `"use case"`) but maps to parser's `SyntaxKind` variants. Fixed `strucut` typo and lossy punct mappings.
+- [x] **1.6** Deduplicate `STANDALONE_RELATIONSHIP_KEYWORDS` and `RELATIONSHIP_OPERATORS` — moved shared constants from `kerml.rs` and `sysml.rs` into `grammar/mod.rs`.
+- [x] **1.7** Deduplicate `parse_identification` — SysMLParser impl now delegates to `kerml::parse_identification`.
+
+> **Phase 1 deviation note:** Task 1.5 was scoped differently than planned. The
+> formatter's Logos lexer could not be fully replaced with the parser's `Lexer`
+> because the formatter lexes multi-word keywords (`"use case"`, `"typed by"`) as
+> single tokens, while the parser treats them as separate tokens. Instead, we
+> deleted the formatter's duplicate `SyntaxKind` enum + `SysMLLanguage` + rowan
+> type aliases (~220 lines) and wired the formatter's lexer to produce the
+> parser's `SyntaxKind` values. Net savings: ~215 lines (not ~800 as estimated).
 
 ### Phase 2 — Split God Files
 
