@@ -454,11 +454,11 @@ implementation detail of the parser layer, not an architectural dependency of th
   - Single `impl BaseParser for Parser` replaces duplicated code in both impls
   - Net: -52 lines
 
-### Phase 4 — Clarify Module Boundaries
+### Phase 4 — Clarify Module Boundaries ✅
 
-- [ ] **4.1** Ensure `syntax/parser.rs` is the single canonical location for `ParseError` and `ParseResult`. All crate-internal consumers import from `crate::syntax::parser`.
-- [ ] **4.2** Audit and remove any remaining `backwards compatibility` re-exports in `lib.rs` that reference deleted modules.
-- [ ] **4.3** Update `lib.rs` module doc comment to reflect new structure.
+- [x] **4.1** Migrated `syster-lsp` from `syster::core::*` to canonical paths (`syster::syntax::ParseError`, `syster::base::constants::*`, `syster::ide::text_utils`). Bumped version dep to `0.3.6-alpha`.
+- [x] **4.2** Removed `pub mod core` backwards-compat block from `lib.rs`. Removed dead `ParseError`/`ParseResult` re-exports from `project/mod.rs`.
+- [x] **4.3** Updated `lib.rs` module doc: added `project` to dependency diagram, fixed parser description (logos, not pest), added `ParseError`/`ParseResult` to syntax description.
 
 ### Phase 5 — Eliminate Normalized Layer
 

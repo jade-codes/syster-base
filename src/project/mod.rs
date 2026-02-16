@@ -7,8 +7,7 @@ pub use cached_stdlib::CachedStdLib;
 pub use stdlib_loader::StdLibLoader;
 pub use workspace_loader::WorkspaceLoader;
 
-// Re-export parse types from syntax layer
-pub use crate::syntax::parser::{ParseError, ParseResult};
+// Re-export parse utilities from syntax layer
 pub use crate::syntax::parser::{get_extension, load_file, validate_extension};
 
 // Re-export language parsing convenience function
