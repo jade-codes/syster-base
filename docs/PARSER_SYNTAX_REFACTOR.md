@@ -447,9 +447,12 @@ implementation detail of the parser layer, not an architectural dependency of th
 
 ### Phase 3 — Unify Parser Traits
 
-- [ ] **3.1** Extract common trait `BaseParser` with the 7 shared methods from `KerMLParser` and `SysMLParser` into `grammar/mod.rs`.
-- [ ] **3.2** Make `KerMLParser: BaseParser` and `SysMLParser: BaseParser` — remove duplicated method signatures.
-- [ ] **3.3** Implement `BaseParser` for `Parser` once in `parser.rs`, removing the duplicated implementations.
+- [x] **3.1–3.3** Extract `BaseParser` trait, unify trait hierarchy — `83b5e94`:
+  - Created `BaseParser` trait in `grammar/mod.rs` with 6 shared methods: `current_token_text`, `parse_identification`, `skip_trivia_except_block_comments`, `parse_qualified_name_list`, `error`, `error_recover`
+  - `KerMLParser: BaseParser` and `SysMLParser: BaseParser` (was `ExpressionParser`)
+  - `parse_body` remains in each sub-trait (KerML and SysML bodies differ)
+  - Single `impl BaseParser for Parser` replaces duplicated code in both impls
+  - Net: -52 lines
 
 ### Phase 4 — Clarify Module Boundaries
 
