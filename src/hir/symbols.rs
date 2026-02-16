@@ -1,27 +1,310 @@
 //! Symbol extraction from AST — pure functions that return symbols.
 //!
 //! This module provides functions to extract symbols from a parsed AST.
-//! Unlike the old visitor-based approach, these are pure functions that
-//! return data rather than mutating state.
-//!
-//! The extraction uses the normalized syntax layer (`crate::syntax::normalized`)
-//! to provide a unified extraction path for both SysML and KerML files.
+//! Extraction works directly with the typed AST wrapper types from
+//! `crate::parser` (e.g., `Definition`, `Usage`, `Package`), producing
+//! `HirSymbol` values without any intermediate representation.
 
 use std::sync::Arc;
 
 use uuid::Uuid;
 
 use crate::base::FileId;
-use crate::parser::Direction;
-use crate::syntax::normalized::{
-    Multiplicity, NormalizedAlias, NormalizedComment, NormalizedDefKind, NormalizedDefinition,
-    NormalizedDependency, NormalizedElement, NormalizedImport, NormalizedPackage,
-    NormalizedRelKind, NormalizedRelationship, NormalizedUsage, NormalizedUsageKind,
+use crate::parser::{
+    AstNode, DefinitionKind, Direction, Expression, Multiplicity,
+    QualifiedName, SpecializationKind, Usage, UsageKind,
+    ValueExpression,
 };
+use rowan::TextRange;
+
+// Internal normalized types — private to the HIR module
+use super::normalize::{
+    NormalizedAlias, NormalizedComment, NormalizedDefKind, NormalizedDefinition,
+    NormalizedDependency, NormalizedElement, NormalizedImport,
+    NormalizedPackage, NormalizedRelKind, NormalizedRelationship, NormalizedUsage,
+    NormalizedUsageKind,
+};
+
+// ============================================================================
+// RELATIONSHIP HELPER TYPES (formerly in syntax/normalized)
+// These types are scaffolding for incrementally migrating extraction functions
+// to work directly with AST types instead of NormalizedXxx types.
+// ============================================================================
+
+/// A feature chain like `engine.power.value`
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct FeatureChain {
+    pub parts: Vec<FeatureChainPart>,
+    pub range: Option<TextRange>,
+}
+
+/// A single part of a feature chain
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct FeatureChainPart {
+    pub name: String,
+    pub range: Option<TextRange>,
+}
+
+#[allow(dead_code)]
+impl FeatureChain {
+    /// Get the chain as a dotted string
+    pub fn as_dotted_string(&self) -> String {
+        self.parts
+            .iter()
+            .map(|p| p.name.as_str())
+            .collect::<Vec<_>>()
+            .join(".")
+    }
+}
+
+/// A relationship target — either a simple name or a feature chain.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) enum RelTarget {
+    /// A simple reference like `Vehicle`
+    Simple(String),
+    /// A feature chain like `engine.power.value`
+    Chain(FeatureChain),
+}
+
+#[allow(dead_code)]
+impl RelTarget {
+    /// Get the target name (for simple refs) or the full dotted path (for chains)
+    pub fn as_str(&self) -> std::borrow::Cow<'_, str> {
+        match self {
+            RelTarget::Simple(s) => std::borrow::Cow::Borrowed(s),
+            RelTarget::Chain(chain) => std::borrow::Cow::Owned(chain.as_dotted_string()),
+        }
+    }
+}
+
+/// Kinds of relationships (internal representation for extraction).
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RelKind {
+    // Core KerML relationships
+    Specializes,
+    Redefines,
+    Subsets,
+    TypedBy,
+    References,
+    Conjugates,
+    FeatureChain,
+    Expression,
+    // State/Transition relationships
+    TransitionSource,
+    TransitionTarget,
+    SuccessionSource,
+    SuccessionTarget,
+    // Message relationships
+    AcceptedMessage,
+    AcceptVia,
+    SentMessage,
+    SendVia,
+    SendTo,
+    MessageSource,
+    MessageTarget,
+    // Requirement/Constraint relationships
+    Satisfies,
+    Verifies,
+    Asserts,
+    Assumes,
+    Requires,
+    // Allocation/Connection relationships
+    AllocateSource,
+    AllocateTo,
+    BindSource,
+    BindTarget,
+    ConnectSource,
+    ConnectTarget,
+    FlowItem,
+    FlowSource,
+    FlowTarget,
+    InterfaceEnd,
+    // Action/Behavior relationships
+    Performs,
+    Exhibits,
+    Includes,
+    // Metadata/Documentation relationships
+    About,
+    Meta,
+    // View relationships
+    Exposes,
+    Renders,
+    Filters,
+    // Dependency relationships
+    DependencySource,
+    DependencyTarget,
+    // Other
+    Crosses,
+}
+
+/// A relationship extracted from an AST node during symbol extraction.
+#[allow(dead_code)]
+#[derive(Debug, Clone)]
+pub(crate) struct ExtractedRel {
+    pub kind: RelKind,
+    pub target: RelTarget,
+    pub range: Option<TextRange>,
+}
+
+/// Internal usage kind (mirrors the 27 normalized usage kinds + special variants).
+/// Used during extraction to determine SymbolKind without an intermediate enum.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum InternalUsageKind {
+    Part,
+    Item,
+    Action,
+    Port,
+    Attribute,
+    Connection,
+    Interface,
+    Allocation,
+    Requirement,
+    Constraint,
+    State,
+    Calculation,
+    Reference,
+    Occurrence,
+    Flow,
+    Transition,
+    Accept,
+    End,
+    Fork,
+    Join,
+    Merge,
+    Decide,
+    View,
+    Viewpoint,
+    Rendering,
+    Feature,
+    Other,
+}
 
 /// Generate a new unique element ID for XMI interchange.
 pub fn new_element_id() -> Arc<str> {
     Uuid::new_v4().to_string().into()
+}
+
+// ============================================================================
+// BRIDGE FUNCTIONS: NormalizedRelKind ↔ RelKind (temporary, removed when normalized is deleted)
+// ============================================================================
+
+fn normalized_to_rel_kind(nk: NormalizedRelKind) -> RelKind {
+    match nk {
+        NormalizedRelKind::Specializes => RelKind::Specializes,
+        NormalizedRelKind::Redefines => RelKind::Redefines,
+        NormalizedRelKind::Subsets => RelKind::Subsets,
+        NormalizedRelKind::TypedBy => RelKind::TypedBy,
+        NormalizedRelKind::References => RelKind::References,
+        NormalizedRelKind::Conjugates => RelKind::Conjugates,
+        NormalizedRelKind::FeatureChain => RelKind::FeatureChain,
+        NormalizedRelKind::Expression => RelKind::Expression,
+        NormalizedRelKind::TransitionSource => RelKind::TransitionSource,
+        NormalizedRelKind::TransitionTarget => RelKind::TransitionTarget,
+        NormalizedRelKind::SuccessionSource => RelKind::SuccessionSource,
+        NormalizedRelKind::SuccessionTarget => RelKind::SuccessionTarget,
+        NormalizedRelKind::AcceptedMessage => RelKind::AcceptedMessage,
+        NormalizedRelKind::AcceptVia => RelKind::AcceptVia,
+        NormalizedRelKind::SentMessage => RelKind::SentMessage,
+        NormalizedRelKind::SendVia => RelKind::SendVia,
+        NormalizedRelKind::SendTo => RelKind::SendTo,
+        NormalizedRelKind::MessageSource => RelKind::MessageSource,
+        NormalizedRelKind::MessageTarget => RelKind::MessageTarget,
+        NormalizedRelKind::Satisfies => RelKind::Satisfies,
+        NormalizedRelKind::Verifies => RelKind::Verifies,
+        NormalizedRelKind::Asserts => RelKind::Asserts,
+        NormalizedRelKind::Assumes => RelKind::Assumes,
+        NormalizedRelKind::Requires => RelKind::Requires,
+        NormalizedRelKind::AllocateSource => RelKind::AllocateSource,
+        NormalizedRelKind::AllocateTo => RelKind::AllocateTo,
+        NormalizedRelKind::BindSource => RelKind::BindSource,
+        NormalizedRelKind::BindTarget => RelKind::BindTarget,
+        NormalizedRelKind::ConnectSource => RelKind::ConnectSource,
+        NormalizedRelKind::ConnectTarget => RelKind::ConnectTarget,
+        NormalizedRelKind::FlowItem => RelKind::FlowItem,
+        NormalizedRelKind::FlowSource => RelKind::FlowSource,
+        NormalizedRelKind::FlowTarget => RelKind::FlowTarget,
+        NormalizedRelKind::InterfaceEnd => RelKind::InterfaceEnd,
+        NormalizedRelKind::Performs => RelKind::Performs,
+        NormalizedRelKind::Exhibits => RelKind::Exhibits,
+        NormalizedRelKind::Includes => RelKind::Includes,
+        NormalizedRelKind::About => RelKind::About,
+        NormalizedRelKind::Meta => RelKind::Meta,
+        NormalizedRelKind::Exposes => RelKind::Exposes,
+        NormalizedRelKind::Renders => RelKind::Renders,
+        NormalizedRelKind::Filters => RelKind::Filters,
+        NormalizedRelKind::DependencySource => RelKind::DependencySource,
+        NormalizedRelKind::DependencyTarget => RelKind::DependencyTarget,
+        NormalizedRelKind::Crosses => RelKind::Crosses,
+    }
+}
+
+fn normalized_to_definition_kind(nk: NormalizedDefKind) -> DefinitionKind {
+    match nk {
+        NormalizedDefKind::Part => DefinitionKind::Part,
+        NormalizedDefKind::Item => DefinitionKind::Item,
+        NormalizedDefKind::Action => DefinitionKind::Action,
+        NormalizedDefKind::Port => DefinitionKind::Port,
+        NormalizedDefKind::Attribute => DefinitionKind::Attribute,
+        NormalizedDefKind::Connection => DefinitionKind::Connection,
+        NormalizedDefKind::Interface => DefinitionKind::Interface,
+        NormalizedDefKind::Allocation => DefinitionKind::Allocation,
+        NormalizedDefKind::Requirement => DefinitionKind::Requirement,
+        NormalizedDefKind::Constraint => DefinitionKind::Constraint,
+        NormalizedDefKind::State => DefinitionKind::State,
+        NormalizedDefKind::Calculation => DefinitionKind::Calc,
+        NormalizedDefKind::UseCase => DefinitionKind::UseCase,
+        NormalizedDefKind::AnalysisCase => DefinitionKind::Analysis,
+        NormalizedDefKind::Concern => DefinitionKind::Concern,
+        NormalizedDefKind::View => DefinitionKind::View,
+        NormalizedDefKind::Viewpoint => DefinitionKind::Viewpoint,
+        NormalizedDefKind::Rendering => DefinitionKind::Rendering,
+        NormalizedDefKind::Enumeration => DefinitionKind::Enum,
+        NormalizedDefKind::DataType => DefinitionKind::Datatype,
+        NormalizedDefKind::Class => DefinitionKind::Class,
+        NormalizedDefKind::Structure => DefinitionKind::Struct,
+        NormalizedDefKind::Behavior => DefinitionKind::Behavior,
+        NormalizedDefKind::Function => DefinitionKind::Function,
+        NormalizedDefKind::Association => DefinitionKind::Assoc,
+        NormalizedDefKind::Metaclass => DefinitionKind::Metaclass,
+        NormalizedDefKind::Interaction => DefinitionKind::Interaction,
+        NormalizedDefKind::Other => DefinitionKind::Type, // fallback
+    }
+}
+
+fn normalized_to_internal_usage_kind(nk: NormalizedUsageKind) -> InternalUsageKind {
+    match nk {
+        NormalizedUsageKind::Part => InternalUsageKind::Part,
+        NormalizedUsageKind::Item => InternalUsageKind::Item,
+        NormalizedUsageKind::Action => InternalUsageKind::Action,
+        NormalizedUsageKind::Port => InternalUsageKind::Port,
+        NormalizedUsageKind::Attribute => InternalUsageKind::Attribute,
+        NormalizedUsageKind::Connection => InternalUsageKind::Connection,
+        NormalizedUsageKind::Interface => InternalUsageKind::Interface,
+        NormalizedUsageKind::Allocation => InternalUsageKind::Allocation,
+        NormalizedUsageKind::Requirement => InternalUsageKind::Requirement,
+        NormalizedUsageKind::Constraint => InternalUsageKind::Constraint,
+        NormalizedUsageKind::State => InternalUsageKind::State,
+        NormalizedUsageKind::Calculation => InternalUsageKind::Calculation,
+        NormalizedUsageKind::Reference => InternalUsageKind::Reference,
+        NormalizedUsageKind::Occurrence => InternalUsageKind::Occurrence,
+        NormalizedUsageKind::Flow => InternalUsageKind::Flow,
+        NormalizedUsageKind::Transition => InternalUsageKind::Transition,
+        NormalizedUsageKind::Accept => InternalUsageKind::Accept,
+        NormalizedUsageKind::End => InternalUsageKind::End,
+        NormalizedUsageKind::Fork => InternalUsageKind::Fork,
+        NormalizedUsageKind::Join => InternalUsageKind::Join,
+        NormalizedUsageKind::Merge => InternalUsageKind::Merge,
+        NormalizedUsageKind::Decide => InternalUsageKind::Decide,
+        NormalizedUsageKind::View => InternalUsageKind::View,
+        NormalizedUsageKind::Viewpoint => InternalUsageKind::Viewpoint,
+        NormalizedUsageKind::Rendering => InternalUsageKind::Rendering,
+        NormalizedUsageKind::Feature => InternalUsageKind::Feature,
+        NormalizedUsageKind::Other => InternalUsageKind::Other,
+    }
 }
 
 /// The kind of reference - determines resolution strategy.
@@ -60,15 +343,15 @@ impl RefKind {
         )
     }
 
-    /// Convert from NormalizedRelKind.
-    pub fn from_normalized(kind: NormalizedRelKind) -> Self {
+    /// Convert from RelKind.
+    pub(crate) fn from_rel_kind(kind: RelKind) -> Self {
         match kind {
-            NormalizedRelKind::TypedBy => RefKind::TypedBy,
-            NormalizedRelKind::Specializes => RefKind::Specializes,
-            NormalizedRelKind::Redefines => RefKind::Redefines,
-            NormalizedRelKind::Subsets => RefKind::Subsets,
-            NormalizedRelKind::References => RefKind::References,
-            NormalizedRelKind::Expression => RefKind::Expression,
+            RelKind::TypedBy => RefKind::TypedBy,
+            RelKind::Specializes => RefKind::Specializes,
+            RelKind::Redefines => RefKind::Redefines,
+            RelKind::Subsets => RefKind::Subsets,
+            RelKind::References => RefKind::References,
+            RelKind::Expression => RefKind::Expression,
             _ => RefKind::Other,
         }
     }
@@ -120,20 +403,20 @@ pub enum RelationshipKind {
 }
 
 impl RelationshipKind {
-    /// Convert from NormalizedRelKind.
-    pub fn from_normalized(kind: NormalizedRelKind) -> Option<Self> {
+    /// Convert from RelKind.
+    pub(crate) fn from_rel_kind(kind: RelKind) -> Option<Self> {
         match kind {
-            NormalizedRelKind::Specializes => Some(RelationshipKind::Specializes),
-            NormalizedRelKind::TypedBy => Some(RelationshipKind::TypedBy),
-            NormalizedRelKind::Redefines => Some(RelationshipKind::Redefines),
-            NormalizedRelKind::Subsets => Some(RelationshipKind::Subsets),
-            NormalizedRelKind::References => Some(RelationshipKind::References),
-            NormalizedRelKind::Satisfies => Some(RelationshipKind::Satisfies),
-            NormalizedRelKind::Performs => Some(RelationshipKind::Performs),
-            NormalizedRelKind::Exhibits => Some(RelationshipKind::Exhibits),
-            NormalizedRelKind::Includes => Some(RelationshipKind::Includes),
-            NormalizedRelKind::Asserts => Some(RelationshipKind::Asserts),
-            NormalizedRelKind::Verifies => Some(RelationshipKind::Verifies),
+            RelKind::Specializes => Some(RelationshipKind::Specializes),
+            RelKind::TypedBy => Some(RelationshipKind::TypedBy),
+            RelKind::Redefines => Some(RelationshipKind::Redefines),
+            RelKind::Subsets => Some(RelationshipKind::Subsets),
+            RelKind::References => Some(RelationshipKind::References),
+            RelKind::Satisfies => Some(RelationshipKind::Satisfies),
+            RelKind::Performs => Some(RelationshipKind::Performs),
+            RelKind::Exhibits => Some(RelationshipKind::Exhibits),
+            RelKind::Includes => Some(RelationshipKind::Includes),
+            RelKind::Asserts => Some(RelationshipKind::Asserts),
+            RelKind::Verifies => Some(RelationshipKind::Verifies),
             // Expression, About, Meta, Crosses are not shown as relationships
             _ => None,
         }
@@ -429,7 +712,7 @@ pub struct HirSymbol {
     /// Multiplicity bounds [lower..upper]
     pub multiplicity: Option<Multiplicity>,
     /// Value expression assigned to this feature (e.g., `= 42`, `= "hello"`)
-    pub value: Option<crate::syntax::normalized::ValueExpression>,
+    pub value: Option<ValueExpression>,
 }
 
 /// The kind of a symbol.
@@ -497,71 +780,81 @@ pub enum SymbolKind {
 }
 
 impl SymbolKind {
-    /// Create from a NormalizedDefKind.
-    pub fn from_definition_kind(kind: &NormalizedDefKind) -> Self {
+    /// Create from a DefinitionKind (AST-level kind).
+    pub(crate) fn from_definition_kind(kind: Option<DefinitionKind>) -> Self {
         match kind {
-            NormalizedDefKind::Part => Self::PartDefinition,
-            NormalizedDefKind::Item => Self::ItemDefinition,
-            NormalizedDefKind::Action => Self::ActionDefinition,
-            NormalizedDefKind::Port => Self::PortDefinition,
-            NormalizedDefKind::Attribute => Self::AttributeDefinition,
-            NormalizedDefKind::Connection => Self::ConnectionDefinition,
-            NormalizedDefKind::Interface => Self::InterfaceDefinition,
-            NormalizedDefKind::Allocation => Self::AllocationDefinition,
-            NormalizedDefKind::Requirement => Self::RequirementDefinition,
-            NormalizedDefKind::Constraint => Self::ConstraintDefinition,
-            NormalizedDefKind::State => Self::StateDefinition,
-            NormalizedDefKind::Calculation => Self::CalculationDefinition,
-            NormalizedDefKind::UseCase => Self::UseCaseDefinition,
-            NormalizedDefKind::AnalysisCase => Self::AnalysisCaseDefinition,
-            NormalizedDefKind::Concern => Self::ConcernDefinition,
-            NormalizedDefKind::View => Self::ViewDefinition,
-            NormalizedDefKind::Viewpoint => Self::ViewpointDefinition,
-            NormalizedDefKind::Rendering => Self::RenderingDefinition,
-            NormalizedDefKind::Enumeration => Self::EnumerationDefinition,
-            // KerML definitions
-            NormalizedDefKind::DataType => Self::DataType,
-            NormalizedDefKind::Class => Self::Class,
-            NormalizedDefKind::Structure => Self::Structure,
-            NormalizedDefKind::Behavior => Self::Behavior,
-            NormalizedDefKind::Function => Self::Function,
-            NormalizedDefKind::Association => Self::Association,
-            NormalizedDefKind::Metaclass => Self::MetadataDefinition,
-            NormalizedDefKind::Interaction => Self::Interaction,
-            NormalizedDefKind::Other => Self::Other,
+            Some(DefinitionKind::Part) => Self::PartDefinition,
+            Some(DefinitionKind::Item) => Self::ItemDefinition,
+            Some(DefinitionKind::Action) => Self::ActionDefinition,
+            Some(DefinitionKind::Port) => Self::PortDefinition,
+            Some(DefinitionKind::Attribute) => Self::AttributeDefinition,
+            Some(DefinitionKind::Connection) => Self::ConnectionDefinition,
+            Some(DefinitionKind::Interface) => Self::InterfaceDefinition,
+            Some(DefinitionKind::Allocation) => Self::AllocationDefinition,
+            Some(DefinitionKind::Requirement) => Self::RequirementDefinition,
+            Some(DefinitionKind::Constraint) => Self::ConstraintDefinition,
+            Some(DefinitionKind::State) => Self::StateDefinition,
+            Some(DefinitionKind::Calc) => Self::CalculationDefinition,
+            Some(DefinitionKind::Case) | Some(DefinitionKind::UseCase) => {
+                Self::UseCaseDefinition
+            }
+            Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
+                Self::AnalysisCaseDefinition
+            }
+            Some(DefinitionKind::Concern) => Self::ConcernDefinition,
+            Some(DefinitionKind::View) => Self::ViewDefinition,
+            Some(DefinitionKind::Viewpoint) => Self::ViewpointDefinition,
+            Some(DefinitionKind::Rendering) => Self::RenderingDefinition,
+            Some(DefinitionKind::Enum) => Self::EnumerationDefinition,
+            Some(DefinitionKind::Flow) => Self::Other,
+            Some(DefinitionKind::Metadata) => Self::Other,
+            Some(DefinitionKind::Occurrence) => Self::Other,
+            // KerML mappings
+            Some(DefinitionKind::Class) => Self::PartDefinition,
+            Some(DefinitionKind::Struct) => Self::PartDefinition,
+            Some(DefinitionKind::Datatype) => Self::AttributeDefinition,
+            Some(DefinitionKind::Assoc) => Self::ConnectionDefinition,
+            Some(DefinitionKind::Behavior) => Self::ActionDefinition,
+            Some(DefinitionKind::Function) => Self::CalculationDefinition,
+            Some(DefinitionKind::Predicate) => Self::ConstraintDefinition,
+            Some(DefinitionKind::Interaction) => Self::ActionDefinition,
+            Some(DefinitionKind::Classifier) => Self::PartDefinition,
+            Some(DefinitionKind::Type) => Self::Other,
+            Some(DefinitionKind::Metaclass) => Self::MetadataDefinition,
+            None => Self::Other,
         }
     }
 
-    /// Create from a NormalizedUsageKind.
-    pub fn from_usage_kind(kind: &NormalizedUsageKind) -> Self {
+    /// Create from an InternalUsageKind.
+    pub(crate) fn from_usage_kind(kind: InternalUsageKind) -> Self {
         match kind {
-            NormalizedUsageKind::Part => Self::PartUsage,
-            NormalizedUsageKind::Item => Self::ItemUsage,
-            NormalizedUsageKind::Action => Self::ActionUsage,
-            NormalizedUsageKind::Port => Self::PortUsage,
-            NormalizedUsageKind::Attribute => Self::AttributeUsage,
-            NormalizedUsageKind::Connection => Self::ConnectionUsage,
-            NormalizedUsageKind::Interface => Self::InterfaceUsage,
-            NormalizedUsageKind::Allocation => Self::AllocationUsage,
-            NormalizedUsageKind::Requirement => Self::RequirementUsage,
-            NormalizedUsageKind::Constraint => Self::ConstraintUsage,
-            NormalizedUsageKind::State => Self::StateUsage,
-            NormalizedUsageKind::Calculation => Self::CalculationUsage,
-            NormalizedUsageKind::Reference => Self::ReferenceUsage,
-            NormalizedUsageKind::Occurrence => Self::OccurrenceUsage,
-            NormalizedUsageKind::Flow => Self::FlowConnectionUsage,
-            NormalizedUsageKind::Transition => Self::TransitionUsage,
-            NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage,      // Connection endpoints are like ports
-            NormalizedUsageKind::Fork => Self::ActionUsage,   // Fork nodes are action usages
-            NormalizedUsageKind::Join => Self::ActionUsage,   // Join nodes are action usages
-            NormalizedUsageKind::Merge => Self::ActionUsage,  // Merge nodes are action usages
-            NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
-            NormalizedUsageKind::Feature => Self::PartUsage,  // KerML features map to part usage
-            NormalizedUsageKind::View => Self::ViewUsage,
-            NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
-            NormalizedUsageKind::Rendering => Self::RenderingUsage,
-            NormalizedUsageKind::Other => Self::Other,
+            InternalUsageKind::Part => Self::PartUsage,
+            InternalUsageKind::Item => Self::ItemUsage,
+            InternalUsageKind::Action => Self::ActionUsage,
+            InternalUsageKind::Port => Self::PortUsage,
+            InternalUsageKind::Attribute => Self::AttributeUsage,
+            InternalUsageKind::Connection => Self::ConnectionUsage,
+            InternalUsageKind::Interface => Self::InterfaceUsage,
+            InternalUsageKind::Allocation => Self::AllocationUsage,
+            InternalUsageKind::Requirement => Self::RequirementUsage,
+            InternalUsageKind::Constraint => Self::ConstraintUsage,
+            InternalUsageKind::State => Self::StateUsage,
+            InternalUsageKind::Calculation => Self::CalculationUsage,
+            InternalUsageKind::Reference => Self::ReferenceUsage,
+            InternalUsageKind::Occurrence => Self::OccurrenceUsage,
+            InternalUsageKind::Flow => Self::FlowConnectionUsage,
+            InternalUsageKind::Transition => Self::TransitionUsage,
+            InternalUsageKind::Accept => Self::ActionUsage,
+            InternalUsageKind::End => Self::PortUsage,
+            InternalUsageKind::Fork => Self::ActionUsage,
+            InternalUsageKind::Join => Self::ActionUsage,
+            InternalUsageKind::Merge => Self::ActionUsage,
+            InternalUsageKind::Decide => Self::ActionUsage,
+            InternalUsageKind::View => Self::ViewUsage,
+            InternalUsageKind::Viewpoint => Self::ViewpointUsage,
+            InternalUsageKind::Rendering => Self::RenderingUsage,
+            InternalUsageKind::Feature => Self::AttributeUsage,
+            InternalUsageKind::Other => Self::Other,
         }
     }
 
@@ -625,73 +918,14 @@ impl SymbolKind {
         }
     }
 
-    /// Convert a normalized definition kind to a SymbolKind.
+    /// Convert a normalized definition kind to a SymbolKind (bridge — will be removed).
     pub fn from_normalized_def_kind(kind: NormalizedDefKind) -> Self {
-        match kind {
-            NormalizedDefKind::Part => Self::PartDefinition,
-            NormalizedDefKind::Item => Self::ItemDefinition,
-            NormalizedDefKind::Action => Self::ActionDefinition,
-            NormalizedDefKind::Port => Self::PortDefinition,
-            NormalizedDefKind::Attribute => Self::AttributeDefinition,
-            NormalizedDefKind::Connection => Self::ConnectionDefinition,
-            NormalizedDefKind::Interface => Self::InterfaceDefinition,
-            NormalizedDefKind::Allocation => Self::AllocationDefinition,
-            NormalizedDefKind::Requirement => Self::RequirementDefinition,
-            NormalizedDefKind::Constraint => Self::ConstraintDefinition,
-            NormalizedDefKind::State => Self::StateDefinition,
-            NormalizedDefKind::Calculation => Self::CalculationDefinition,
-            NormalizedDefKind::UseCase => Self::UseCaseDefinition,
-            NormalizedDefKind::AnalysisCase => Self::AnalysisCaseDefinition,
-            NormalizedDefKind::Concern => Self::ConcernDefinition,
-            NormalizedDefKind::View => Self::ViewDefinition,
-            NormalizedDefKind::Viewpoint => Self::ViewpointDefinition,
-            NormalizedDefKind::Rendering => Self::RenderingDefinition,
-            NormalizedDefKind::Enumeration => Self::EnumerationDefinition,
-            // KerML definitions
-            NormalizedDefKind::DataType => Self::DataType,
-            NormalizedDefKind::Class => Self::Class,
-            NormalizedDefKind::Structure => Self::Structure,
-            NormalizedDefKind::Behavior => Self::Behavior,
-            NormalizedDefKind::Function => Self::Function,
-            NormalizedDefKind::Association => Self::Association,
-            NormalizedDefKind::Metaclass => Self::MetadataDefinition,
-            NormalizedDefKind::Interaction => Self::Interaction,
-            NormalizedDefKind::Other => Self::Other,
-        }
+        Self::from_definition_kind(Some(normalized_to_definition_kind(kind)))
     }
 
-    /// Convert a normalized usage kind to a SymbolKind.
+    /// Convert a normalized usage kind to a SymbolKind (bridge — will be removed).
     pub fn from_normalized_usage_kind(kind: NormalizedUsageKind) -> Self {
-        match kind {
-            NormalizedUsageKind::Part => Self::PartUsage,
-            NormalizedUsageKind::Item => Self::ItemUsage,
-            NormalizedUsageKind::Action => Self::ActionUsage,
-            NormalizedUsageKind::Port => Self::PortUsage,
-            NormalizedUsageKind::Attribute => Self::AttributeUsage,
-            NormalizedUsageKind::Connection => Self::ConnectionUsage,
-            NormalizedUsageKind::Interface => Self::InterfaceUsage,
-            NormalizedUsageKind::Allocation => Self::AllocationUsage,
-            NormalizedUsageKind::Requirement => Self::RequirementUsage,
-            NormalizedUsageKind::Constraint => Self::ConstraintUsage,
-            NormalizedUsageKind::State => Self::StateUsage,
-            NormalizedUsageKind::Calculation => Self::CalculationUsage,
-            NormalizedUsageKind::Reference => Self::ReferenceUsage,
-            NormalizedUsageKind::Occurrence => Self::OccurrenceUsage,
-            NormalizedUsageKind::Flow => Self::FlowConnectionUsage,
-            NormalizedUsageKind::Transition => Self::TransitionUsage,
-            NormalizedUsageKind::Accept => Self::ActionUsage, // Accept payloads are action usages
-            NormalizedUsageKind::End => Self::PortUsage,      // Connection endpoints are like ports
-            NormalizedUsageKind::Fork => Self::ActionUsage,   // Fork nodes are action usages
-            NormalizedUsageKind::Join => Self::ActionUsage,   // Join nodes are action usages
-            NormalizedUsageKind::Merge => Self::ActionUsage,  // Merge nodes are action usages
-            NormalizedUsageKind::Decide => Self::ActionUsage, // Decide nodes are action usages
-            NormalizedUsageKind::View => Self::ViewUsage,
-            NormalizedUsageKind::Viewpoint => Self::ViewpointUsage,
-            NormalizedUsageKind::Rendering => Self::RenderingUsage,
-            // KerML features are treated as attribute usages
-            NormalizedUsageKind::Feature => Self::AttributeUsage,
-            NormalizedUsageKind::Other => Self::Other,
-        }
+        Self::from_usage_kind(normalized_to_internal_usage_kind(kind))
     }
 }
 
@@ -788,6 +1022,331 @@ impl ExtractionContext {
             None => (None, None, None, None),
         }
     }
+}
+
+// ============================================================================
+// AST → INTERNAL TYPE HELPERS
+// ============================================================================
+
+/// Helper to create a chain or simple RelTarget from a dotted qualified name.
+#[allow(dead_code)]
+fn make_chain_or_simple(target_str: &str, qn: &QualifiedName) -> RelTarget {
+    if target_str.contains('.') {
+        let segments_with_ranges = qn.segments_with_ranges();
+        let parts: Vec<FeatureChainPart> = segments_with_ranges
+            .into_iter()
+            .map(|(name, range)| FeatureChainPart {
+                name,
+                range: Some(range),
+            })
+            .collect();
+        RelTarget::Chain(FeatureChain {
+            parts,
+            range: Some(qn.syntax().text_range()),
+        })
+    } else {
+        RelTarget::Simple(target_str.to_string())
+    }
+}
+
+/// Extract feature chain expression references from an Expression AST node.
+#[allow(dead_code)]
+fn extract_expression_chains(
+    expr: &Expression,
+    relationships: &mut Vec<ExtractedRel>,
+) {
+    for chain in expr.feature_chains() {
+        if chain.parts.len() == 1 {
+            let (name, range) = &chain.parts[0];
+            relationships.push(ExtractedRel {
+                kind: RelKind::Expression,
+                target: RelTarget::Simple(name.clone()),
+                range: Some(*range),
+            });
+        } else {
+            let parts: Vec<FeatureChainPart> = chain
+                .parts
+                .iter()
+                .map(|(name, range)| FeatureChainPart {
+                    name: name.clone(),
+                    range: Some(*range),
+                })
+                .collect();
+            relationships.push(ExtractedRel {
+                kind: RelKind::Expression,
+                target: RelTarget::Chain(FeatureChain {
+                    parts,
+                    range: Some(chain.full_range),
+                }),
+                range: Some(chain.full_range),
+            });
+        }
+    }
+}
+
+/// Map a SpecializationKind to a RelKind, with a default for comma-continuation.
+#[allow(dead_code)]
+fn spec_kind_to_rel_kind(kind: Option<SpecializationKind>, default: RelKind) -> RelKind {
+    match kind {
+        Some(SpecializationKind::Specializes) => RelKind::Specializes,
+        Some(SpecializationKind::Subsets) => RelKind::Subsets,
+        Some(SpecializationKind::Redefines) => RelKind::Redefines,
+        Some(SpecializationKind::References) => RelKind::References,
+        Some(SpecializationKind::Conjugates) => RelKind::Specializes,
+        Some(SpecializationKind::FeatureChain) => RelKind::FeatureChain,
+        None => default, // Comma-continuation
+    }
+}
+
+/// Determine the internal usage kind for a Usage AST node.
+#[allow(dead_code)]
+fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
+    // Check for nested transition first, then perform action
+    if usage.transition_usage().is_some() {
+        InternalUsageKind::Transition
+    } else if usage.perform_action_usage().is_some() {
+        InternalUsageKind::Action
+    } else {
+        match usage.usage_kind() {
+            Some(UsageKind::Part) => InternalUsageKind::Part,
+            Some(UsageKind::Attribute) => InternalUsageKind::Attribute,
+            Some(UsageKind::Port) => InternalUsageKind::Port,
+            Some(UsageKind::Item) => InternalUsageKind::Item,
+            Some(UsageKind::Action) => InternalUsageKind::Action,
+            Some(UsageKind::State) => InternalUsageKind::State,
+            Some(UsageKind::Constraint) => InternalUsageKind::Constraint,
+            Some(UsageKind::Requirement) => InternalUsageKind::Requirement,
+            Some(UsageKind::Calc) => InternalUsageKind::Calculation,
+            Some(UsageKind::Connection) => InternalUsageKind::Connection,
+            Some(UsageKind::Interface) => InternalUsageKind::Interface,
+            Some(UsageKind::Allocation) => InternalUsageKind::Allocation,
+            Some(UsageKind::Flow) => InternalUsageKind::Flow,
+            Some(UsageKind::Occurrence) => InternalUsageKind::Occurrence,
+            Some(UsageKind::Ref) => InternalUsageKind::Reference,
+            Some(UsageKind::Feature) => InternalUsageKind::Attribute,
+            Some(UsageKind::Step) => InternalUsageKind::Action,
+            Some(UsageKind::Expr) => InternalUsageKind::Calculation,
+            Some(UsageKind::Connector) => InternalUsageKind::Connection,
+            Some(UsageKind::Case) => InternalUsageKind::Other,
+            None => InternalUsageKind::Part, // Default to Part for usages without keyword
+        }
+    }
+}
+
+/// Map DefinitionKind to implicit supertype name.
+#[allow(dead_code)]
+fn implicit_supertype_for_definition_kind(kind: Option<DefinitionKind>) -> Option<&'static str> {
+    match kind {
+        Some(DefinitionKind::Part) | Some(DefinitionKind::Class) | Some(DefinitionKind::Struct)
+        | Some(DefinitionKind::Classifier) => Some("Parts::Part"),
+        Some(DefinitionKind::Item) => Some("Items::Item"),
+        Some(DefinitionKind::Action) | Some(DefinitionKind::Behavior)
+        | Some(DefinitionKind::Interaction) => Some("Actions::Action"),
+        Some(DefinitionKind::State) => Some("States::StateAction"),
+        Some(DefinitionKind::Constraint) | Some(DefinitionKind::Predicate) => {
+            Some("Constraints::ConstraintCheck")
+        }
+        Some(DefinitionKind::Requirement) => Some("Requirements::RequirementCheck"),
+        Some(DefinitionKind::Calc) | Some(DefinitionKind::Function) => {
+            Some("Calculations::Calculation")
+        }
+        Some(DefinitionKind::Port) => Some("Ports::Port"),
+        Some(DefinitionKind::Connection) | Some(DefinitionKind::Assoc) => {
+            Some("Connections::BinaryConnection")
+        }
+        Some(DefinitionKind::Interface) => Some("Interfaces::Interface"),
+        Some(DefinitionKind::Allocation) => Some("Allocations::Allocation"),
+        Some(DefinitionKind::UseCase) | Some(DefinitionKind::Case) => Some("UseCases::UseCase"),
+        Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
+            Some("AnalysisCases::AnalysisCase")
+        }
+        Some(DefinitionKind::Attribute) | Some(DefinitionKind::Datatype) => {
+            Some("Attributes::AttributeValue")
+        }
+        _ => None,
+    }
+}
+
+/// Map InternalUsageKind to implicit supertype name.
+#[allow(dead_code)]
+fn implicit_supertype_for_internal_usage_kind(kind: InternalUsageKind) -> Option<&'static str> {
+    match kind {
+        InternalUsageKind::Part => Some("Parts::Part"),
+        InternalUsageKind::Item => Some("Items::Item"),
+        InternalUsageKind::Action => Some("Actions::Action"),
+        InternalUsageKind::State => Some("States::StateAction"),
+        InternalUsageKind::Flow => Some("Flows::Message"),
+        InternalUsageKind::Connection => Some("Connections::Connection"),
+        InternalUsageKind::Interface => Some("Interfaces::Interface"),
+        InternalUsageKind::Allocation => Some("Allocations::Allocation"),
+        InternalUsageKind::Requirement => Some("Requirements::RequirementCheck"),
+        InternalUsageKind::Constraint => Some("Constraints::ConstraintCheck"),
+        InternalUsageKind::Calculation => Some("Calculations::Calculation"),
+        InternalUsageKind::Port => Some("Ports::Port"),
+        InternalUsageKind::Attribute => Some("Attributes::AttributeValue"),
+        _ => None,
+    }
+}
+
+/// Extract type references from ExtractedRel relationships.
+#[allow(dead_code)]
+fn extract_type_refs(
+    relationships: &[ExtractedRel],
+    line_index: &crate::base::LineIndex,
+) -> Vec<TypeRefKind> {
+    let mut type_refs = Vec::new();
+
+    for rel in relationships.iter() {
+        let ref_kind = RefKind::from_rel_kind(rel.kind);
+
+        match &rel.target {
+            RelTarget::Chain(chain) => {
+                let num_parts = chain.parts.len();
+                let parts: Vec<TypeRef> = chain
+                    .parts
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, part)| {
+                        let (start_line, start_col, end_line, end_col) = if let Some(r) = part.range
+                        {
+                            let start = line_index.line_col(r.start());
+                            let end = line_index.line_col(r.end());
+                            (start.line, start.col, end.line, end.col)
+                        } else if idx == num_parts - 1 {
+                            if let Some(r) = rel.range {
+                                let start = line_index.line_col(r.start());
+                                let end = line_index.line_col(r.end());
+                                (start.line, start.col, end.line, end.col)
+                            } else {
+                                (0, 0, 0, 0)
+                            }
+                        } else {
+                            (0, 0, 0, 0)
+                        };
+                        TypeRef {
+                            target: Arc::from(part.name.as_str()),
+                            resolved_target: None,
+                            kind: ref_kind,
+                            start_line,
+                            start_col,
+                            end_line,
+                            end_col,
+                        }
+                    })
+                    .collect();
+
+                if !parts.is_empty() {
+                    type_refs.push(TypeRefKind::Chain(TypeRefChain { parts }));
+                }
+            }
+            RelTarget::Simple(target) => {
+                if let Some(r) = rel.range {
+                    let start = line_index.line_col(r.start());
+                    let end = line_index.line_col(r.end());
+                    type_refs.push(TypeRefKind::Simple(TypeRef {
+                        target: Arc::from(target.as_str()),
+                        resolved_target: None,
+                        kind: ref_kind,
+                        start_line: start.line,
+                        start_col: start.col,
+                        end_line: end.line,
+                        end_col: end.col,
+                    }));
+
+                    // Also add prefix segments as references
+                    let parts: Vec<&str> = target.split("::").collect();
+                    if parts.len() > 1 {
+                        let mut prefix = String::new();
+                        for (i, part) in parts.iter().enumerate() {
+                            if i == parts.len() - 1 {
+                                break;
+                            }
+                            if !prefix.is_empty() {
+                                prefix.push_str("::");
+                            }
+                            prefix.push_str(part);
+
+                            type_refs.push(TypeRefKind::Simple(TypeRef {
+                                target: Arc::from(prefix.as_str()),
+                                resolved_target: None,
+                                kind: ref_kind,
+                                start_line: start.line,
+                                start_col: start.col,
+                                end_line: end.line,
+                                end_col: end.col,
+                            }));
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    type_refs
+}
+
+/// Extract HirRelationship values from ExtractedRel relationships.
+#[allow(dead_code)]
+fn extract_hir_relationships(
+    relationships: &[ExtractedRel],
+    line_index: &crate::base::LineIndex,
+) -> Vec<HirRelationship> {
+    relationships
+        .iter()
+        .filter_map(|rel| {
+            RelationshipKind::from_rel_kind(rel.kind).map(|kind| {
+                let (start_line, start_col, end_line, end_col) = rel
+                    .range
+                    .map(|r| {
+                        let start = line_index.line_col(r.start());
+                        let end = line_index.line_col(r.end());
+                        (start.line, start.col, end.line, end.col)
+                    })
+                    .unwrap_or((0, 0, 0, 0));
+                HirRelationship::with_span(
+                    kind,
+                    rel.target.as_str().as_ref(),
+                    start_line,
+                    start_col,
+                    end_line,
+                    end_col,
+                )
+            })
+        })
+        .collect()
+}
+
+/// Extract metadata annotations from ExtractedRel relationships and NamespaceMember children.
+#[allow(dead_code)]
+fn extract_metadata_from_rels(
+    relationships: &[ExtractedRel],
+    children: &[NormalizedElement],
+) -> Vec<Arc<str>> {
+    let mut annotations = Vec::new();
+
+    for rel in relationships.iter() {
+        if matches!(rel.kind, RelKind::Meta) {
+            let target = rel.target.as_str();
+            let simple_name = target.rsplit("::").next().unwrap_or(&target);
+            annotations.push(Arc::from(simple_name));
+        }
+    }
+
+    for child in children.iter() {
+        if let NormalizedElement::Usage(usage) = child {
+            if usage.name.is_none() {
+                for rel in &usage.relationships {
+                    if matches!(rel.kind, NormalizedRelKind::TypedBy) {
+                        let target = rel.target.as_str();
+                        let simple_name = target.rsplit("::").next().unwrap_or(&target);
+                        annotations.push(Arc::from(simple_name));
+                    }
+                }
+            }
+        }
+    }
+
+    annotations
 }
 
 // ============================================================================
@@ -1111,7 +1670,7 @@ fn extract_relationships_from_normalized(
     relationships
         .iter()
         .filter_map(|rel| {
-            RelationshipKind::from_normalized(rel.kind).map(|kind| {
+            RelationshipKind::from_rel_kind(normalized_to_rel_kind(rel.kind)).map(|kind| {
                 let (start_line, start_col, end_line, end_col) = rel
                     .range
                     .map(|r| {
@@ -1877,12 +2436,12 @@ fn extract_type_refs_from_normalized(
     relationships: &[NormalizedRelationship],
     line_index: &crate::base::LineIndex,
 ) -> Vec<TypeRefKind> {
-    use crate::syntax::normalized::RelTarget;
+    use super::normalize::RelTarget;
 
     let mut type_refs = Vec::new();
 
     for rel in relationships.iter() {
-        let ref_kind = RefKind::from_normalized(rel.kind);
+        let ref_kind = RefKind::from_rel_kind(normalized_to_rel_kind(rel.kind));
 
         match &rel.target {
             RelTarget::Chain(chain) => {

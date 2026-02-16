@@ -366,7 +366,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
 
         // Create FeatureValue + Literal child elements for symbols with values
         if let Some(ref value) = symbol.value {
-            use crate::syntax::normalized::ValueExpression;
+            use crate::parser::ValueExpression;
 
             let fv_id = ElementId::new(format!("{}-fv", symbol.element_id));
             let lit_id = ElementId::new(format!("{}-fv-lit", symbol.element_id));
