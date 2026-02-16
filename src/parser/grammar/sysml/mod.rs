@@ -29,8 +29,9 @@ mod states;
 mod usage;
 
 // Shared imports — pub(super) so submodules get them via `use super::*;`
+pub(super) use super::BaseParser;
 pub(super) use super::kerml::is_name_kind;
-pub(super) use super::kerml_expressions::{ExpressionParser, parse_expression};
+pub(super) use super::kerml_expressions::parse_expression;
 pub(super) use super::{RELATIONSHIP_OPERATORS, STANDALONE_RELATIONSHIP_KEYWORDS};
 pub(super) use crate::parser::syntax_kind::SyntaxKind;
 
@@ -186,35 +187,9 @@ fn is_usage_keyword(kind: SyntaxKind) -> bool {
 /// SysML is a superset of KerML but this trait is independent.
 /// For KerML constructs (package, import, class, struct), use KerMLParser methods.
 /// The main parser implements this trait.
-pub trait SysMLParser: ExpressionParser {
-    // -----------------------------------------------------------------
-    // Core parsing methods
-    // -----------------------------------------------------------------
-
-    /// Get the current token (for text inspection)
-    fn current_token_text(&self) -> Option<&str>;
-
-    /// Parse an identification (name or short name)
-    fn parse_identification(&mut self);
-
-    /// Parse a body (semicolon or braced block)
+pub trait SysMLParser: BaseParser {
+    /// Parse a body (semicolon or braced block with SysML members)
     fn parse_body(&mut self);
-
-    /// Skip trivia except block comments
-    fn skip_trivia_except_block_comments(&mut self);
-
-    /// Parse a comma-separated list of qualified names
-    fn parse_qualified_name_list(&mut self);
-
-    /// Report a parse error
-    fn error(&mut self, message: impl Into<String>);
-
-    /// Error recovery - skip to recovery tokens
-    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]);
-
-    // -----------------------------------------------------------------
-    // SysML namespace member parsing
-    // -----------------------------------------------------------------
 
     /// Parse a namespace member (SysML level)
     ///

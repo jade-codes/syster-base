@@ -3,6 +3,7 @@
 //! Builds a rowan GreenNode tree from tokens.
 //! Supports error recovery and produces a lossless CST.
 
+use super::grammar::BaseParser;
 use super::grammar::kerml::KerMLParser;
 use super::grammar::kerml_expressions::{self, ExpressionParser};
 use super::grammar::sysml::SysMLParser;
@@ -359,18 +360,14 @@ impl<'a> ExpressionParser for Parser<'a> {
     }
 }
 
-/// Implement KerMLParser trait for kerml grammar module
-impl<'a> KerMLParser for Parser<'a> {
+/// Implement BaseParser trait — shared methods used by both KerML and SysML grammars
+impl<'a> BaseParser for Parser<'a> {
     fn current_token_text(&self) -> Option<&str> {
         self.current().map(|t| t.text)
     }
 
     fn parse_identification(&mut self) {
         super::grammar::kerml::parse_identification(self)
-    }
-
-    fn parse_body(&mut self) {
-        super::grammar::kerml::parse_body(self)
     }
 
     fn skip_trivia_except_block_comments(&mut self) {
@@ -390,6 +387,22 @@ impl<'a> KerMLParser for Parser<'a> {
             self.skip_trivia();
             super::grammar::kerml::parse_qualified_name(self, &[]);
         }
+    }
+
+    fn error(&mut self, message: impl Into<String>) {
+        Parser::error(self, message)
+    }
+
+    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]) {
+        Parser::error_recover(self, message, recovery)
+    }
+}
+
+/// Implement KerMLParser trait for kerml grammar module
+impl<'a> KerMLParser for Parser<'a> {
+
+    fn parse_body(&mut self) {
+        super::grammar::kerml::parse_body(self)
     }
 
     fn parse_package(&mut self) {
@@ -435,64 +448,14 @@ impl<'a> KerMLParser for Parser<'a> {
     fn parse_flow_usage(&mut self) {
         super::grammar::kerml::parse_flow_usage(self)
     }
-
-    fn error(&mut self, message: impl Into<String>) {
-        Parser::error(self, message)
-    }
-
-    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]) {
-        Parser::error_recover(self, message, recovery)
-    }
 }
 
 /// Implement SysMLParser trait for sysml grammar module
 impl<'a> SysMLParser for Parser<'a> {
-    // -----------------------------------------------------------------
-    // Core parsing methods
-    // -----------------------------------------------------------------
-
-    fn current_token_text(&self) -> Option<&str> {
-        self.current().map(|t| t.text)
-    }
-
-    fn parse_identification(&mut self) {
-        super::grammar::kerml::parse_identification(self)
-    }
 
     fn parse_body(&mut self) {
         super::grammar::sysml::parse_body(self)
     }
-
-    fn skip_trivia_except_block_comments(&mut self) {
-        while self
-            .current()
-            .map(|t| t.kind == SyntaxKind::WHITESPACE || t.kind == SyntaxKind::LINE_COMMENT)
-            .unwrap_or(false)
-        {
-            self.bump();
-        }
-    }
-
-    fn parse_qualified_name_list(&mut self) {
-        super::grammar::kerml::parse_qualified_name(self, &[]);
-        while self.at(SyntaxKind::COMMA) {
-            self.bump();
-            self.skip_trivia();
-            super::grammar::kerml::parse_qualified_name(self, &[]);
-        }
-    }
-
-    fn error(&mut self, message: impl Into<String>) {
-        Parser::error(self, message)
-    }
-
-    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]) {
-        Parser::error_recover(self, message, recovery)
-    }
-
-    // -----------------------------------------------------------------
-    // SysML-specific methods
-    // -----------------------------------------------------------------
 
     fn can_start_expression(&self) -> bool {
         matches!(

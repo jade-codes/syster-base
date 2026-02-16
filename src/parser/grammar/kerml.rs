@@ -9,7 +9,7 @@
 //!
 //! Based on kerml.pest grammar.
 
-use super::kerml_expressions::ExpressionParser;
+use super::BaseParser;
 use crate::parser::syntax_kind::SyntaxKind;
 
 /// KerML definition keywords
@@ -73,21 +73,9 @@ pub fn is_standalone_relationship_keyword(kind: SyntaxKind) -> bool {
 ///
 /// Extends ExpressionParser with KerML-specific methods.
 /// The main parser implements this trait.
-pub trait KerMLParser: ExpressionParser {
-    /// Get the current token (for text inspection)
-    fn current_token_text(&self) -> Option<&str>;
-
-    /// Parse an identification (name or short name)
-    fn parse_identification(&mut self);
-
-    /// Parse a body (semicolon or braced block)
+pub trait KerMLParser: BaseParser {
+    /// Parse a body (semicolon or braced block with KerML members)
     fn parse_body(&mut self);
-
-    /// Skip trivia except block comments
-    fn skip_trivia_except_block_comments(&mut self);
-
-    /// Parse a comma-separated list of qualified names
-    fn parse_qualified_name_list(&mut self);
 
     // -----------------------------------------------------------------
     // KerML namespace member parsing
@@ -144,12 +132,6 @@ pub trait KerMLParser: ExpressionParser {
 
     /// Parse a flow usage (KerML item_flow)
     fn parse_flow_usage(&mut self);
-
-    /// Report a parse error
-    fn error(&mut self, message: impl Into<String>);
-
-    /// Error recovery - skip to recovery tokens
-    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]);
 }
 
 // =============================================================================

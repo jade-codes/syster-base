@@ -19,6 +19,34 @@ pub use sysml::SysMLParser;
 use super::syntax_kind::SyntaxKind;
 
 // =============================================================================
+// BaseParser — shared interface for KerML and SysML parsers
+// =============================================================================
+
+/// Methods shared identically between `KerMLParser` and `SysMLParser`.
+///
+/// Both sub-traits extend this, so grammar-specific code bounded on either
+/// trait automatically gains access to these methods.
+pub trait BaseParser: ExpressionParser {
+    /// Get the current token text (for error messages and inspection)
+    fn current_token_text(&self) -> Option<&str>;
+
+    /// Parse an identification (name or short name)
+    fn parse_identification(&mut self);
+
+    /// Skip trivia except block comments
+    fn skip_trivia_except_block_comments(&mut self);
+
+    /// Parse a comma-separated list of qualified names
+    fn parse_qualified_name_list(&mut self);
+
+    /// Report a parse error
+    fn error(&mut self, message: impl Into<String>);
+
+    /// Error recovery — skip to recovery tokens
+    fn error_recover(&mut self, message: impl Into<String>, recovery: &[SyntaxKind]);
+}
+
+// =============================================================================
 // Shared constants used by both KerML and SysML grammars
 // =============================================================================
 
