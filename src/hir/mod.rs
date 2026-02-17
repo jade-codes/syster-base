@@ -38,7 +38,6 @@ mod db;
 mod diagnostics;
 mod ids;
 mod input;
-mod normalize;
 mod resolve;
 mod source;
 mod symbols;
