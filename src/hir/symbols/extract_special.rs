@@ -515,6 +515,7 @@ pub(super) fn extract_connector_from_ast(
 }
 
 /// Extract a SysML ConnectUsage (connect x to y) directly from AST.
+/// Handles both binary (connect a to b) and n-ary (connect (a, b, c, ...)) forms.
 pub(super) fn extract_connect_usage_from_ast(
     symbols: &mut Vec<HirSymbol>,
     ctx: &mut ExtractionContext,
@@ -522,34 +523,39 @@ pub(super) fn extract_connect_usage_from_ast(
 ) {
     let mut rels = Vec::new();
 
+    // Collect all endpoints, not just source/target (supports n-ary connectors)
     if let Some(conn_part) = conn.connector_part() {
-        if let Some(source) = conn_part.source() {
-            if let Some(qn) = source.target() {
-                let target_str = qn.to_string();
-                rels.push(ExtractedRel {
-                    kind: RelKind::ConnectSource,
-                    target: make_chain_or_simple(&target_str, &qn),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
-        }
-        if let Some(target) = conn_part.target() {
-            if let Some(qn) = target.target() {
-                let target_str = qn.to_string();
-                rels.push(ExtractedRel {
-                    kind: RelKind::ConnectTarget,
-                    target: make_chain_or_simple(&target_str, &qn),
-                    range: Some(qn.syntax().text_range()),
-                });
+        for end in conn_part.ends() {
+            // Named endpoints (e.g., `cause1 ::> a`) are handled as children, not rels
+            if end.endpoint_name().is_none() {
+                if let Some(qn) = end.target() {
+                    let target_str = qn.to_string();
+                    rels.push(ExtractedRel {
+                        kind: RelKind::ConnectTarget,
+                        target: make_chain_or_simple(&target_str, &qn),
+                        range: Some(qn.syntax().text_range()),
+                    });
+                }
             }
         }
     }
+
+    // Extract body members (connect can have a body with nested definitions)
+    let body_members: Vec<NamespaceMember> = conn
+        .syntax()
+        .children()
+        .find_map(parser::NamespaceBody::cast)
+        .map(|body| body.members().collect())
+        .unwrap_or_default();
 
     // Extract name from NAME child
     let name_node = conn
         .syntax()
         .children()
         .find_map(parser::Name::cast);
+
+    // Track symbol count before push to find the parent scope afterwards
+    let sym_count_before = symbols.len();
 
     push_special_usage_symbol(
         symbols,
@@ -558,9 +564,83 @@ pub(super) fn extract_connect_usage_from_ast(
         InternalUsageKind::Connection,
         rels,
         conn.syntax().text_range(),
-        Vec::new(),
+        body_members,
         None,
     );
+
+    // Extract named endpoint children (e.g., `cause1 ::> causer1` in `connection { end cause1 ::> causer1; }`)
+    // We need to re-enter the scope that push_special_usage_symbol created and then popped
+    if let Some(conn_part) = conn.connector_part() {
+        let has_named_endpoints = conn_part.ends().any(|e| e.endpoint_name().is_some());
+        if has_named_endpoints {
+            // Find the scope name from the symbol that was just pushed
+            if let Some(parent_sym) = symbols.get(sym_count_before) {
+                let scope_name = parent_sym.name.to_string();
+                ctx.push_scope(&scope_name);
+                for end in conn_part.ends() {
+                    if let Some(endpoint_qn) = end.endpoint_name() {
+                        let endpoint_name = endpoint_qn.to_string();
+                        let mut endpoint_rels = Vec::new();
+                        if let Some(target_qn) = end.target() {
+                            let target_str = target_qn.to_string();
+                            endpoint_rels.push(ExtractedRel {
+                                kind: RelKind::References,
+                                target: make_chain_or_simple(&target_str, &target_qn),
+                                range: Some(target_qn.syntax().text_range()),
+                            });
+                        }
+                        let type_refs =
+                            extract_type_refs(&endpoint_rels, &ctx.line_index);
+                        let relationships =
+                            extract_hir_relationships(&endpoint_rels, &ctx.line_index);
+                        let span = ctx
+                            .range_to_info(Some(endpoint_qn.syntax().text_range()));
+                        let qn = ctx.qualified_name(&endpoint_name);
+                        symbols.push(HirSymbol {
+                            name: Arc::from(endpoint_name.as_str()),
+                            short_name: None,
+                            qualified_name: Arc::from(qn.as_str()),
+                            element_id: new_element_id(),
+                            kind: SymbolKind::from_usage_kind(
+                                InternalUsageKind::End,
+                            ),
+                            file: ctx.file,
+                            start_line: span.start_line,
+                            start_col: span.start_col,
+                            end_line: span.end_line,
+                            end_col: span.end_col,
+                            short_name_start_line: None,
+                            short_name_start_col: None,
+                            short_name_end_line: None,
+                            short_name_end_col: None,
+                            doc: None,
+                            supertypes: Vec::new(),
+                            relationships,
+                            type_refs,
+                            is_public: false,
+                            view_data: None,
+                            metadata_annotations: Vec::new(),
+                            is_abstract: false,
+                            is_variation: false,
+                            is_readonly: false,
+                            is_derived: false,
+                            is_parallel: false,
+                            is_individual: false,
+                            is_end: true,
+                            is_default: false,
+                            is_ordered: false,
+                            is_nonunique: false,
+                            is_portion: false,
+                            direction: None,
+                            multiplicity: None,
+                            value: None,
+                        });
+                    }
+                }
+                ctx.pop_scope();
+            }
+        }
+    }
 }
 
 /// Extract a SendActionUsage (send msg via port) directly from AST.

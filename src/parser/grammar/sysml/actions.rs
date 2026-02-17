@@ -233,9 +233,14 @@ pub fn parse_if_action<P: SysMLParser>(p: &mut P) {
 
         p.skip_trivia();
 
-        // Optional 'else'
+        // Optional 'else' or 'else if'
         if consume_if(p, SyntaxKind::ELSE_KW) {
-            p.parse_body();
+            if p.at(SyntaxKind::IF_KW) {
+                // Chained else-if: else if <expr> { ... } else { ... }
+                parse_if_action(p);
+            } else {
+                p.parse_body();
+            }
         }
     }
 
@@ -248,15 +253,18 @@ pub fn parse_loop_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::WHILE_LOOP_ACTION_USAGE);
 
     // 'while' or 'loop'
+    let is_while = p.at(SyntaxKind::WHILE_KW);
     bump_keyword(p);
 
-    // Optional condition for 'while'
-    if p.can_start_expression() {
+    // Optional condition for 'while' only — 'loop' has no pre-condition
+    // (its body is followed by an optional 'until' post-condition)
+    if is_while && p.can_start_expression() {
         parse_expression(p);
         p.skip_trivia();
     }
 
-    p.parse_body();
+    // Use action body since loop bodies contain action statements (assign, if, etc.)
+    parse_action_body(p);
 
     p.skip_trivia();
 
@@ -282,8 +290,14 @@ pub fn parse_for_loop<P: SysMLParser>(p: &mut P) {
 
     expect_and_skip(p, SyntaxKind::FOR_KW);
 
-    // Loop variable
+    // Loop variable: name [: Type]
     parse_optional_identification(p);
+
+    // Optional typing for loop variable: for n : Integer in ...
+    if p.at(SyntaxKind::COLON) {
+        p.parse_typing();
+        p.skip_trivia();
+    }
 
     // 'in' keyword
     if p.at(SyntaxKind::IN_KW) {
@@ -296,7 +310,8 @@ pub fn parse_for_loop<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
 
-    p.parse_body();
+    // Use action body since for-loop bodies contain action statements
+    parse_action_body(p);
 
     p.finish_node();
 }

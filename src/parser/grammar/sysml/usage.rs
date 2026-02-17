@@ -80,6 +80,12 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
 
+    // Ordering modifiers that may appear before the usage keyword in end features
+    // Pattern: end [0..*] nonunique item selectedProduct: Product[1];
+    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
+        bump_keyword(p);
+    }
+
     let is_constraint = p.at(SyntaxKind::CONSTRAINT_KW);
     let is_action = p.at(SyntaxKind::ACTION_KW);
     let is_calc = p.at(SyntaxKind::CALC_KW);
