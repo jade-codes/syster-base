@@ -460,6 +460,7 @@ mod writer {
             RelationshipKind::Succession => "Succession",
             RelationshipKind::FeatureChaining => "FeatureChaining",
             RelationshipKind::Disjoining => "Disjoining",
+            RelationshipKind::Performs => "PerformActionUsage",
         };
 
         map.insert(

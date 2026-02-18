@@ -25,6 +25,10 @@ use crate::base::FileId;
 use crate::hir::{HirSymbol, SymbolIndex, extract_with_filters};
 use crate::syntax::SyntaxFile;
 
+// ModelFormat trait needed for .write() on Xmi/JsonLd/Yaml
+#[cfg(feature = "interchange")]
+use crate::interchange::ModelFormat;
+
 use super::{
     CompletionItem, DocumentLink, FoldingRange, GotoResult, HoverResult, InlayHint,
     ReferenceResult, SelectionRange, SemanticToken, SymbolInfo,
@@ -34,6 +38,12 @@ use super::{
 ///
 /// Apply changes via `set_file_content()` and `remove_file()`,
 /// then get a consistent snapshot via `analysis()`.
+///
+/// When the `interchange` feature is enabled, `AnalysisHost` also
+/// provides a lazily-cached [`Model`](crate::interchange::Model)
+/// projection via [`model()`](Self::model), navigation delegates,
+/// and format export methods — eliminating the need for a separate
+/// `ModelHost` when working from SysML text.
 #[derive(Clone)]
 pub struct AnalysisHost {
     /// Parsed files stored directly (no Workspace dependency)
@@ -53,6 +63,10 @@ pub struct AnalysisHost {
     /// Persistent cache: qualified_name → element_id
     /// Preserves IDs even when symbols are temporarily removed
     element_id_cache: HashMap<Arc<str>, Arc<str>>,
+    /// Lazily-cached interchange `Model`, built from the `SymbolIndex`.
+    /// Invalidated whenever file content changes.
+    #[cfg(feature = "interchange")]
+    model_cache: Option<crate::interchange::Model>,
 }
 
 impl Default for AnalysisHost {
@@ -73,6 +87,8 @@ impl AnalysisHost {
             removed_files: HashSet::new(),
             needs_full_rebuild: true, // First analysis needs full build
             element_id_cache: HashMap::new(),
+            #[cfg(feature = "interchange")]
+            model_cache: None,
         }
     }
 
@@ -98,6 +114,9 @@ impl AnalysisHost {
 
         // Mark this file as dirty (needs re-extraction)
         self.dirty_files.insert(path_buf);
+        // Invalidate cached Model — symbols changed
+        #[cfg(feature = "interchange")]
+        { self.model_cache = None; }
         result.errors
     }
 
@@ -107,6 +126,9 @@ impl AnalysisHost {
         self.files.remove(&path_buf);
         self.dirty_files.remove(&path_buf);
         self.removed_files.insert(path_buf);
+        // Invalidate cached Model — symbols changed
+        #[cfg(feature = "interchange")]
+        { self.model_cache = None; }
     }
 
     /// Remove a file from storage using PathBuf.
@@ -147,6 +169,9 @@ impl AnalysisHost {
     /// Mark the index as needing full rebuild (call after external changes).
     pub fn mark_dirty(&mut self) {
         self.needs_full_rebuild = true;
+        // Invalidate cached Model — symbols will change on next rebuild
+        #[cfg(feature = "interchange")]
+        { self.model_cache = None; }
     }
 
     /// Check if the index needs updating.
@@ -394,6 +419,148 @@ impl AnalysisHost {
         F: FnMut(&mut HirSymbol),
     {
         self.symbol_index.update_symbols(f);
+        // Invalidate cached Model — symbol metadata changed
+        #[cfg(feature = "interchange")]
+        { self.model_cache = None; }
+    }
+
+    // ── Interchange: Model projection ───────────────────────────────
+
+    /// Get a lazily-cached [`Model`] built from the current `SymbolIndex`.
+    ///
+    /// The model is recomputed only when files have changed since the last
+    /// call. This eliminates the need for a separate `ModelHost::from_text()`
+    /// — the `AnalysisHost` is the single owner of both IDE queries and
+    /// interchange `Model` access.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut host = AnalysisHost::new();
+    /// host.set_file_content("model.sysml", "package P { part def A; }");
+    /// let model = host.model();
+    /// assert!(model.find_by_name("A").len() == 1);
+    /// ```
+    #[cfg(feature = "interchange")]
+    pub fn model(&mut self) -> &crate::interchange::Model {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap()
+    }
+
+    /// Get a mutable reference to the cached [`Model`].
+    ///
+    /// This is useful when you need to perform edits via [`ChangeTracker`]
+    /// on the model and then render the result. The cache is populated
+    /// lazily on first access.
+    ///
+    /// **Note:** mutations applied here are *not* automatically synced
+    /// back to the AnalysisHost's `SymbolIndex`. Use `set_file_content()`
+    /// with the rendered text to update the index after editing.
+    #[cfg(feature = "interchange")]
+    pub fn model_mut(&mut self) -> &mut crate::interchange::Model {
+        self.ensure_model();
+        self.model_cache.as_mut().unwrap()
+    }
+
+    /// Take the cached [`Model`] out of the host, leaving the cache empty.
+    ///
+    /// Useful when you need an owned `Model` for functions that consume it
+    /// (e.g., `restore_element_ids()`). Call [`set_model_cache()`](Self::set_model_cache)
+    /// to put it back for further navigation.
+    #[cfg(feature = "interchange")]
+    pub fn take_model(&mut self) -> Option<crate::interchange::Model> {
+        self.ensure_model();
+        self.model_cache.take()
+    }
+
+    /// Replace the cached model with a new one.
+    ///
+    /// Useful for putting a model back after external transformations
+    /// (e.g., metadata restoration).
+    #[cfg(feature = "interchange")]
+    pub fn set_model_cache(&mut self, model: crate::interchange::Model) {
+        self.model_cache = Some(model);
+    }
+
+    /// Ensure the model cache is populated. Private helper to reduce duplication.
+    #[cfg(feature = "interchange")]
+    fn ensure_model(&mut self) {
+        if self.needs_update() {
+            self.rebuild_index();
+        }
+        if self.model_cache.is_none() {
+            let symbols: Vec<_> = self.symbol_index.all_symbols().cloned().collect();
+            self.model_cache = Some(crate::interchange::model_from_symbols(&symbols));
+        }
+    }
+
+    // ── Interchange: Navigation delegates ────────────────────────────
+
+    /// Views over root elements of the cached model.
+    #[cfg(feature = "interchange")]
+    pub fn root_views(&mut self) -> Vec<crate::interchange::views::ElementView<'_>> {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap().root_views()
+    }
+
+    /// Find elements by declared name in the cached model.
+    #[cfg(feature = "interchange")]
+    pub fn find_by_name(&mut self, name: &str) -> Vec<crate::interchange::views::ElementView<'_>> {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap().find_by_name(name)
+    }
+
+    /// Find an element by fully qualified name in the cached model.
+    #[cfg(feature = "interchange")]
+    pub fn find_by_qualified_name(
+        &mut self,
+        qn: &str,
+    ) -> Option<crate::interchange::views::ElementView<'_>> {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap().find_by_qualified_name(qn)
+    }
+
+    /// View a specific element by ID in the cached model.
+    #[cfg(feature = "interchange")]
+    pub fn view(
+        &mut self,
+        id: &crate::interchange::ElementId,
+    ) -> Option<crate::interchange::views::ElementView<'_>> {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap().view(id)
+    }
+
+    /// Find all elements of a specific metaclass kind in the cached model.
+    #[cfg(feature = "interchange")]
+    pub fn find_by_kind(
+        &mut self,
+        kind: crate::interchange::ElementKind,
+    ) -> Vec<crate::interchange::views::ElementView<'_>> {
+        self.ensure_model();
+        self.model_cache.as_ref().unwrap().find_by_kind(kind)
+    }
+
+    // ── Interchange: Export methods ──────────────────────────────────
+
+    /// Export the cached model to XMI bytes.
+    #[cfg(feature = "interchange")]
+    pub fn to_xmi(&mut self) -> Result<Vec<u8>, crate::interchange::InterchangeError> {
+        self.ensure_model();
+        crate::interchange::Xmi.write(self.model_cache.as_ref().unwrap())
+    }
+
+    /// Export the cached model to JSON-LD bytes.
+    #[cfg(feature = "interchange")]
+    pub fn to_jsonld(&mut self) -> Result<Vec<u8>, crate::interchange::InterchangeError> {
+        self.ensure_model();
+        crate::interchange::JsonLd.write(self.model_cache.as_ref().unwrap())
+    }
+
+    /// Export the cached model to YAML bytes.
+    #[cfg(feature = "interchange")]
+    pub fn to_yaml(&mut self) -> Result<Vec<u8>, crate::interchange::InterchangeError> {
+        self.ensure_model();
+        crate::interchange::Yaml.write(self.model_cache.as_ref().unwrap())
     }
 
     /// Add a model by decompiling it to SysML and adding as a synthetic file.
@@ -429,6 +596,94 @@ impl AnalysisHost {
         // Add as a normal file - the parsing pipeline handles everything
         // The element_id_cache will restore the original IDs during rebuild
         self.set_file_content(virtual_path, &result.text)
+    }
+
+    // ── Interchange: Edit bridge ────────────────────────────────────
+
+    /// Apply a semantic edit to the cached Model and sync back to the host.
+    ///
+    /// This is the single method for performing Model-level edits (rename,
+    /// add, remove, etc.) while keeping the `SymbolIndex` in sync:
+    ///
+    /// 1. Ensure the model cache is populated.
+    /// 2. Build a `SourceMap` from the cached model.
+    /// 3. Call `edit_fn` with `(&mut Model, &mut ChangeTracker)`.
+    /// 4. Render the edits via `render_dirty`.
+    /// 5. Feed the rendered text back into `set_file_content()`.
+    /// 6. Restore element IDs from the edited model.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// host.set_file_content("model.sysml", "package P { part def Vehicle; }");
+    ///
+    /// let result = host.apply_model_edit("model.sysml", |model, tracker| {
+    ///     let id = model.find_by_name("Vehicle")[0].id().clone();
+    ///     tracker.rename(model, &id, "Car");
+    /// });
+    ///
+    /// // AnalysisHost now reflects the rename
+    /// let analysis = host.analysis();
+    /// // analysis.symbol_index().lookup_qualified("P::Car") → Some(...)
+    /// ```
+    #[cfg(feature = "interchange")]
+    pub fn apply_model_edit<F>(
+        &mut self,
+        file_path: &str,
+        edit_fn: F,
+    ) -> crate::interchange::ApplyEditsResult
+    where
+        F: FnOnce(&mut crate::interchange::Model, &mut crate::interchange::ChangeTracker),
+    {
+        use crate::interchange::render::{SourceMap, render_dirty};
+        use crate::interchange::ChangeTracker;
+
+        // 1. Ensure model is built
+        self.ensure_model();
+
+        // 2. Build source map from the current model
+        let (original_text, source_map) =
+            SourceMap::build(self.model_cache.as_ref().unwrap());
+
+        // 3. Apply the edit via the closure
+        let mut tracker = ChangeTracker::new();
+        edit_fn(self.model_cache.as_mut().unwrap(), &mut tracker);
+
+        // 4. Render the edits
+        let rendered_text = render_dirty(
+            &original_text,
+            &source_map,
+            self.model_cache.as_ref().unwrap(),
+            &tracker,
+        );
+
+        // 5. Feed rendered text back into AnalysisHost (re-parses, rebuilds index)
+        let parse_errors = self.set_file_content(file_path, &rendered_text);
+
+        // 6. Rebuild index and restore element IDs from the edited model
+        let _ = self.analysis(); // trigger rebuild
+        if let Some(ref model) = self.model_cache {
+            let model_snapshot = model.clone();
+            self.update_symbols(|symbol| {
+                for element in model_snapshot.elements.values() {
+                    let qn = element
+                        .qualified_name
+                        .as_ref()
+                        .or(element.name.as_ref());
+                    if let Some(name) = qn {
+                        if name.as_ref() == symbol.qualified_name.as_ref() {
+                            symbol.element_id = Arc::from(element.id.as_str());
+                            break;
+                        }
+                    }
+                }
+            });
+        }
+
+        crate::interchange::ApplyEditsResult {
+            rendered_text,
+            parse_errors,
+        }
     }
 }
 
@@ -583,5 +838,231 @@ mod tests {
 
         let analysis = host.analysis();
         assert!(analysis.get_file_id("test.sysml").is_none());
+    }
+
+    // ── Interchange model projection tests ──────────────────────────
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_from_analysis_host() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content(
+            "model.sysml",
+            "package Vehicle {\n    part def Engine;\n    part def Wheel;\n    part engine : Engine;\n}",
+        );
+
+        let model = host.model();
+        assert!(model.element_count() > 0, "model should have elements");
+
+        // Should find declared names
+        assert_eq!(model.find_by_name("Engine").len(), 1);
+        assert_eq!(model.find_by_name("Wheel").len(), 1);
+
+        // Should have root views
+        let roots = model.root_views();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].name(), Some("Vehicle"));
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_cache_invalidation() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def A; }");
+
+        // First access — model is built
+        let count_1 = host.model().element_count();
+        assert!(count_1 > 0);
+
+        // Edit the file — cache should be invalidated
+        host.set_file_content("model.sysml", "package P { part def A; part def B; }");
+
+        // Second access — model should reflect the new content
+        let count_2 = host.model().element_count();
+        assert!(count_2 > count_1, "model should have more elements after edit");
+
+        // Should find the new element
+        assert_eq!(host.model().find_by_name("B").len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_navigation_delegates() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content(
+            "model.sysml",
+            "package Outer { part def Inner; part x : Inner; }",
+        );
+
+        // root_views
+        let roots = host.root_views();
+        assert_eq!(roots.len(), 1);
+        assert_eq!(roots[0].name(), Some("Outer"));
+
+        // find_by_name
+        let inners = host.find_by_name("Inner");
+        assert_eq!(inners.len(), 1);
+        assert_eq!(
+            inners[0].kind(),
+            crate::interchange::ElementKind::PartDefinition
+        );
+
+        // find_by_qualified_name
+        let found = host.find_by_qualified_name("Outer::Inner");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().name(), Some("Inner"));
+
+        // find_by_kind
+        let usages = host.find_by_kind(crate::interchange::ElementKind::PartUsage);
+        assert_eq!(usages.len(), 1);
+        assert_eq!(usages[0].name(), Some("x"));
+
+        // view by ID
+        let id = host.find_by_name("Inner")[0].id().clone();
+        let viewed = host.view(&id);
+        assert!(viewed.is_some());
+        assert_eq!(viewed.unwrap().name(), Some("Inner"));
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_export_xmi_roundtrip() {
+        use crate::interchange::ModelFormat;
+
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def A; }");
+
+        // Export to XMI
+        let xmi_bytes = host.to_xmi().expect("XMI export should succeed");
+        assert!(!xmi_bytes.is_empty());
+
+        // Read back from XMI
+        let model_back = crate::interchange::Xmi
+            .read(&xmi_bytes)
+            .expect("XMI read-back should succeed");
+        assert!(model_back.element_count() > 0);
+        assert_eq!(model_back.find_by_name("A").len(), 1);
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_cache_invalidated_on_remove() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("a.sysml", "package A { part def X; }");
+        host.set_file_content("b.sysml", "package B { part def Y; }");
+
+        // Build cache with both files
+        let count = host.model().element_count();
+        assert!(count > 0);
+
+        // Remove one file — cache should invalidate
+        host.remove_file("b.sysml");
+        assert!(host.model().find_by_name("Y").is_empty(), "Y should be gone after removal");
+        assert_eq!(host.model().find_by_name("X").len(), 1, "X should still exist");
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_model_cache_invalidated_on_mark_dirty() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def A; }");
+
+        // Build cache
+        let _ = host.model();
+
+        // mark_dirty should invalidate
+        host.mark_dirty();
+        // Should still work (rebuilds lazily)
+        assert_eq!(host.model().find_by_name("A").len(), 1);
+    }
+
+    // ── apply_model_edit tests ──────────────────────────────────────
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_apply_model_edit_rename() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def Vehicle; }");
+
+        let result = host.apply_model_edit("model.sysml", |model, tracker| {
+            let id = model.find_by_name("Vehicle")[0].id().clone();
+            tracker.rename(model, &id, "Car");
+        });
+
+        // Rendered text should contain the new name
+        assert!(result.rendered_text.contains("Car"));
+        assert!(!result.rendered_text.contains("Vehicle"));
+
+        // AnalysisHost should reflect the rename in Salsa queries
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().collect();
+        let has_car = symbols.iter().any(|s| s.name.as_ref() == "Car");
+        assert!(has_car, "Should find 'Car' in symbols after rename");
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_apply_model_edit_add_element() {
+        use crate::interchange::model::{Element, ElementId, ElementKind};
+
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def A; }");
+
+        let result = host.apply_model_edit("model.sysml", |model, tracker| {
+            let parent_id = model.find_by_name("P")[0].id().clone();
+            let new_elem = Element::new(ElementId::generate(), ElementKind::PartDefinition)
+                .with_name("B");
+            tracker.add_element(model, new_elem, Some(&parent_id));
+        });
+
+        // Rendered text should contain both elements
+        assert!(result.rendered_text.contains("part def A"));
+        assert!(result.rendered_text.contains("part def B"));
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_apply_model_edit_preserves_ids() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def Vehicle; part def Engine; }");
+
+        // Get the original ID
+        let original_id = host.model().find_by_name("Engine")[0].id().clone();
+
+        // Rename Vehicle → Car (Engine should keep its ID)
+        host.apply_model_edit("model.sysml", |model, tracker| {
+            let id = model.find_by_name("Vehicle")[0].id().clone();
+            tracker.rename(model, &id, "Car");
+        });
+
+        // Engine's ID should be preserved in the symbol index
+        let analysis = host.analysis();
+        let engine_sym = analysis
+            .symbol_index()
+            .all_symbols()
+            .find(|s| s.name.as_ref() == "Engine");
+        assert!(engine_sym.is_some(), "Engine should still exist");
+        assert_eq!(
+            engine_sym.unwrap().element_id.as_ref(),
+            original_id.as_str(),
+            "Engine's element ID should be preserved after sibling rename"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "interchange")]
+    fn test_apply_model_edit_noop() {
+        let mut host = AnalysisHost::new();
+        host.set_file_content("model.sysml", "package P { part def A; }");
+
+        // No-op edit - don't modify anything
+        let result = host.apply_model_edit("model.sysml", |_model, _tracker| {
+            // intentionally empty
+        });
+
+        // Text should be preserved
+        assert!(result.rendered_text.contains("package P"));
+        assert!(result.rendered_text.contains("part def A"));
+        assert!(result.parse_errors.is_empty());
     }
 }

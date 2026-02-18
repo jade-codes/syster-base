@@ -1046,6 +1046,8 @@ pub enum RelationshipKind {
     FeatureChaining,
     /// Disjoining (type disjoint from another type).
     Disjoining,
+    /// Action performs (action usage → action definition).
+    Performs,
 }
 
 impl RelationshipKind {
@@ -1071,6 +1073,7 @@ impl RelationshipKind {
             Self::Succession => "sysml:SuccessionAsUsage",
             Self::FeatureChaining => "kerml:FeatureChaining",
             Self::Disjoining => "kerml:Disjoining",
+            Self::Performs => "sysml:PerformActionUsage",
         }
     }
 
@@ -1097,6 +1100,7 @@ impl RelationshipKind {
             "SuccessionAsUsage" => Some(Self::Succession),
             "FeatureChaining" => Some(Self::FeatureChaining),
             "Disjoining" => Some(Self::Disjoining),
+            "PerformActionUsage" => Some(Self::Performs),
             _ => None,
         }
     }

@@ -487,6 +487,7 @@ mod writer {
             RelationshipKind::Succession => "Succession",
             RelationshipKind::FeatureChaining => "FeatureChaining",
             RelationshipKind::Disjoining => "Disjoining",
+            RelationshipKind::Performs => "PerformActionUsage",
         };
 
         obj.insert("@type".to_string(), json!(rel_type));

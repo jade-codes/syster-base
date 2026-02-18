@@ -50,14 +50,18 @@
 //! ```
 
 pub mod decompile;
+pub mod editing;
 mod error;
 mod format;
+pub mod host;
 pub mod integrate;
 mod jsonld;
 mod kpar;
 pub mod metadata;
 pub mod model;
 pub mod recompile;
+pub mod render;
+pub mod views;
 mod xmi;
 mod yaml;
 
@@ -65,7 +69,8 @@ pub use decompile::{DecompileResult, decompile, decompile_with_source};
 pub use error::InterchangeError;
 pub use format::{FormatCapability, ModelFormat};
 pub use integrate::{
-    apply_metadata_to_host, model_from_database, model_from_symbols, symbols_from_model,
+    ApplyEditsResult, apply_metadata_to_host, model_from_database,
+    model_from_symbols, symbols_from_model,
 };
 pub use jsonld::JsonLd;
 pub use kpar::{Kpar, KparManifest};
@@ -76,6 +81,13 @@ pub use model::{
     Element, ElementId, ElementKind, Model, ModelMetadata, Relationship, RelationshipKind,
 };
 pub use recompile::{restore_element_ids, restore_ids_from_symbols};
+pub use views::{
+    ActionView, ConnectionView, DefinitionView, ElementView, PackageView, PortView,
+    RequirementView, StateView, UsageView,
+};
+pub use host::{ModelHost, ModelHostError};
+pub use editing::ChangeTracker;
+pub use render::{SourceMap, render_dirty};
 pub use xmi::Xmi;
 pub use yaml::Yaml;
 

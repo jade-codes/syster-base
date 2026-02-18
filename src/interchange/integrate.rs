@@ -1,25 +1,21 @@
-//! Integration between interchange Model and RootDatabase.
+//! Integration between interchange Model and AnalysisHost/RootDatabase.
 //!
-//! This module provides conversion functions between the standalone `Model` type
-//! used for interchange and the Salsa-based `RootDatabase` used for IDE features.
+//! This module bridges the two parallel model systems:
 //!
-//! ## Usage
+//! - **AnalysisHost** (Salsa path): parses text → `SymbolIndex` → IDE queries
+//! - **ModelHost** (interchange path): standalone `Model` → semantic edits → `render_dirty`
 //!
-//! ```ignore
-//! use syster::hir::RootDatabase;
-//! use syster::interchange::{Model, Xmi, ModelFormat};
-//! use syster::interchange::integrate::model_from_database;
+//! ## Functions
 //!
-//! // Build a database from parsed files
-//! let db = RootDatabase::new();
-//! // ... add files to database ...
+//! | Function | Direction | Purpose |
+//! |----------|-----------|---------|
+//! | `model_from_symbols()` | HIR → Model | Export symbols to interchange Model |
+//! | `symbols_from_model()` | Model → HIR | Import Model elements as HirSymbols |
+//! | `model_from_database()` | RootDatabase → Model | Export Salsa DB to Model |
+//! | `apply_metadata_to_host()` | Metadata → AnalysisHost | Restore element IDs after decompile |
 //!
-//! // Export to interchange Model
-//! let model = model_from_database(&db);
-//!
-//! // Then serialize to XMI
-//! let xmi_bytes = Xmi.write(&model)?;
-//! ```
+//! For bridging ChangeTracker edits into Salsa queries, use
+//! [`AnalysisHost::apply_model_edit()`](crate::ide::AnalysisHost::apply_model_edit).
 
 use super::model::{
     Element, ElementId, ElementKind, Model, PropertyValue, Relationship, RelationshipKind,
@@ -28,6 +24,7 @@ use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
 };
+use crate::parser::{Direction, Multiplicity};
 use std::sync::Arc;
 
 /// Convert a RootDatabase to a standalone Model for interchange.
@@ -56,7 +53,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             continue;
         }
 
-        let kind = element_kind_to_symbol_kind(element.kind);
+        let kind: SymbolKind = element.kind.into();
 
         // Build qualified name: prefer element's qualified_name (from ownership hierarchy),
         // fallback to name, then id
@@ -153,8 +150,19 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_ordered: element.is_ordered,
             is_nonunique: element.is_nonunique,
             is_portion: element.is_portion,
-            direction: None,    // TODO: Extract from element if available
-            multiplicity: None, // TODO: Extract from element if available
+            direction: element
+                .properties
+                .get("direction")
+                .and_then(|v| match v {
+                    PropertyValue::String(s) => match s.as_ref() {
+                        "in" => Some(Direction::In),
+                        "out" => Some(Direction::Out),
+                        "inout" => Some(Direction::InOut),
+                        _ => None,
+                    },
+                    _ => None,
+                }),
+            multiplicity: extract_multiplicity(element, model),
             value: None,
         };
 
@@ -162,6 +170,74 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
     }
 
     symbols
+}
+
+/// Extract multiplicity from an element's owned `MultiplicityRange` child.
+///
+/// SysML XMI stores multiplicity as a nested child element:
+/// ```xml
+/// <ownedMember xsi:type="MultiplicityRange" ...>
+///   <ownedMember xsi:type="LiteralInteger" value="0"/>   <!-- lower -->
+///   <ownedMember xsi:type="LiteralInteger" value="*"/>   <!-- upper -->
+/// </ownedMember>
+/// ```
+fn extract_multiplicity(element: &Element, model: &Model) -> Option<Multiplicity> {
+    // Find the first owned MultiplicityRange child
+    for child_id in &element.owned_elements {
+        if let Some(child) = model.elements.get(child_id) {
+            if child.kind == ElementKind::MultiplicityRange {
+                return multiplicity_from_range(child, model);
+            }
+            // Sometimes the MultiplicityRange is nested one level deeper
+            // (e.g., inside an OwningMembership)
+            for grandchild_id in &child.owned_elements {
+                if let Some(grandchild) = model.elements.get(grandchild_id) {
+                    if grandchild.kind == ElementKind::MultiplicityRange {
+                        return multiplicity_from_range(grandchild, model);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Build a `Multiplicity` from a `MultiplicityRange` element's literal children.
+fn multiplicity_from_range(range: &Element, model: &Model) -> Option<Multiplicity> {
+    let mut lower: Option<u64> = None;
+    let mut upper: Option<u64> = None;
+
+    for (i, child_id) in range.owned_elements.iter().enumerate() {
+        if let Some(child) = model.elements.get(child_id) {
+            match child.kind {
+                ElementKind::LiteralInteger => {
+                    if let Some(PropertyValue::Integer(v)) = child.properties.get("value") {
+                        let val = (*v).max(0) as u64;
+                        if i == 0 {
+                            lower = Some(val);
+                        } else {
+                            upper = Some(val);
+                        }
+                    }
+                }
+                ElementKind::LiteralInfinity => {
+                    // Infinity is represented as upper = None (None means "*")
+                    if i == 0 {
+                        lower = None;
+                    }
+                    // upper stays None → means unbounded
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Only return if we found at least one bound
+    if lower.is_some() || upper.is_some() {
+        Some(Multiplicity { lower, upper })
+    } else {
+        None
+    }
 }
 
 /// Convert interchange RelationshipKind to HIR RelationshipKind.
@@ -173,65 +249,74 @@ fn relationship_kind_to_hir(kind: &RelationshipKind) -> Option<HirRelKind> {
         RelationshipKind::Subsetting => Some(HirRelKind::Subsets),
         RelationshipKind::Satisfaction => Some(HirRelKind::Satisfies),
         RelationshipKind::Verification => Some(HirRelKind::Verifies),
+        RelationshipKind::Performs => Some(HirRelKind::Performs),
         _ => None, // Other relationship types don't map directly
     }
 }
 
-/// Convert interchange ElementKind to HIR SymbolKind.
-fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
-    match kind {
-        ElementKind::Package | ElementKind::LibraryPackage => SymbolKind::Package,
-        ElementKind::PartDefinition => SymbolKind::PartDefinition,
-        ElementKind::ItemDefinition => SymbolKind::ItemDefinition,
-        ElementKind::ActionDefinition => SymbolKind::ActionDefinition,
-        ElementKind::PortDefinition => SymbolKind::PortDefinition,
-        ElementKind::AttributeDefinition => SymbolKind::AttributeDefinition,
-        ElementKind::ConnectionDefinition => SymbolKind::ConnectionDefinition,
-        ElementKind::InterfaceDefinition => SymbolKind::InterfaceDefinition,
-        ElementKind::AllocationDefinition => SymbolKind::AllocationDefinition,
-        ElementKind::RequirementDefinition => SymbolKind::RequirementDefinition,
-        ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
-        ElementKind::StateDefinition => SymbolKind::StateDefinition,
-        ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
-        ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
-        ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
-        ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
-        ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
-        ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
-        ElementKind::RenderingDefinition => SymbolKind::RenderingDefinition,
-        ElementKind::EnumerationDefinition => SymbolKind::EnumerationDefinition,
-        ElementKind::MetadataDefinition => SymbolKind::MetadataDefinition,
-        // KerML definitions
-        ElementKind::DataType => SymbolKind::DataType,
-        ElementKind::Class => SymbolKind::Class,
-        ElementKind::Structure => SymbolKind::Structure,
-        ElementKind::Behavior => SymbolKind::Behavior,
-        ElementKind::Function => SymbolKind::Function,
-        ElementKind::Association | ElementKind::AssociationStructure => SymbolKind::Association,
-        ElementKind::Interaction => SymbolKind::Interaction,
-        // Usages
-        ElementKind::PartUsage => SymbolKind::PartUsage,
-        ElementKind::ItemUsage => SymbolKind::ItemUsage,
-        ElementKind::ActionUsage => SymbolKind::ActionUsage,
-        ElementKind::PortUsage => SymbolKind::PortUsage,
-        ElementKind::AttributeUsage => SymbolKind::AttributeUsage,
-        ElementKind::ConnectionUsage => SymbolKind::ConnectionUsage,
-        ElementKind::InterfaceUsage => SymbolKind::InterfaceUsage,
-        ElementKind::AllocationUsage => SymbolKind::AllocationUsage,
-        ElementKind::RequirementUsage => SymbolKind::RequirementUsage,
-        ElementKind::ConstraintUsage => SymbolKind::ConstraintUsage,
-        ElementKind::StateUsage => SymbolKind::StateUsage,
-        ElementKind::TransitionUsage => SymbolKind::TransitionUsage,
-        ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
-        ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
-        ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
-        ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
-        // Other
-        ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
-            SymbolKind::Import
+/// Convert interchange `ElementKind` to HIR `SymbolKind`.
+///
+/// This is a lossy, many-to-one mapping: several `ElementKind` variants
+/// (e.g. `LibraryPackage`, `AssociationStructure`, import/comment variants)
+/// collapse into a single `SymbolKind`.
+impl From<ElementKind> for SymbolKind {
+    fn from(kind: ElementKind) -> Self {
+        match kind {
+            ElementKind::Package | ElementKind::LibraryPackage => SymbolKind::Package,
+            ElementKind::PartDefinition => SymbolKind::PartDefinition,
+            ElementKind::ItemDefinition => SymbolKind::ItemDefinition,
+            ElementKind::ActionDefinition => SymbolKind::ActionDefinition,
+            ElementKind::PortDefinition => SymbolKind::PortDefinition,
+            ElementKind::AttributeDefinition => SymbolKind::AttributeDefinition,
+            ElementKind::ConnectionDefinition => SymbolKind::ConnectionDefinition,
+            ElementKind::InterfaceDefinition => SymbolKind::InterfaceDefinition,
+            ElementKind::AllocationDefinition => SymbolKind::AllocationDefinition,
+            ElementKind::RequirementDefinition => SymbolKind::RequirementDefinition,
+            ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
+            ElementKind::StateDefinition => SymbolKind::StateDefinition,
+            ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
+            ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
+            ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
+            ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
+            ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
+            ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
+            ElementKind::RenderingDefinition => SymbolKind::RenderingDefinition,
+            ElementKind::EnumerationDefinition => SymbolKind::EnumerationDefinition,
+            ElementKind::MetadataDefinition => SymbolKind::MetadataDefinition,
+            // KerML definitions
+            ElementKind::DataType => SymbolKind::DataType,
+            ElementKind::Class => SymbolKind::Class,
+            ElementKind::Structure => SymbolKind::Structure,
+            ElementKind::Behavior => SymbolKind::Behavior,
+            ElementKind::Function => SymbolKind::Function,
+            ElementKind::Association | ElementKind::AssociationStructure => {
+                SymbolKind::Association
+            }
+            ElementKind::Interaction => SymbolKind::Interaction,
+            // Usages
+            ElementKind::PartUsage => SymbolKind::PartUsage,
+            ElementKind::ItemUsage => SymbolKind::ItemUsage,
+            ElementKind::ActionUsage => SymbolKind::ActionUsage,
+            ElementKind::PortUsage => SymbolKind::PortUsage,
+            ElementKind::AttributeUsage => SymbolKind::AttributeUsage,
+            ElementKind::ConnectionUsage => SymbolKind::ConnectionUsage,
+            ElementKind::InterfaceUsage => SymbolKind::InterfaceUsage,
+            ElementKind::AllocationUsage => SymbolKind::AllocationUsage,
+            ElementKind::RequirementUsage => SymbolKind::RequirementUsage,
+            ElementKind::ConstraintUsage => SymbolKind::ConstraintUsage,
+            ElementKind::StateUsage => SymbolKind::StateUsage,
+            ElementKind::TransitionUsage => SymbolKind::TransitionUsage,
+            ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
+            ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
+            ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
+            ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
+            // Other
+            ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
+                SymbolKind::Import
+            }
+            ElementKind::Comment | ElementKind::Documentation => SymbolKind::Comment,
+            _ => SymbolKind::Other,
         }
-        ElementKind::Comment | ElementKind::Documentation => SymbolKind::Comment,
-        _ => SymbolKind::Other,
     }
 }
 
@@ -253,7 +338,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
     for symbol in symbols {
         // Use the symbol's element_id to preserve UUIDs across round-trips
         let id = ElementId::new(symbol.element_id.as_ref());
-        let kind = symbol_kind_to_element_kind(symbol.kind);
+        let kind: ElementKind = symbol.kind.into();
 
         // Determine ownership from qualified name, then look up owner's element_id
         let owner = if symbol.qualified_name.contains("::") {
@@ -429,7 +514,7 @@ fn hir_relationship_kind_to_model(kind: &crate::hir::RelationshipKind) -> Option
         HirRelKind::Subsets => Some(RelationshipKind::Subsetting),
         HirRelKind::References => None, // Not a first-class relationship in interchange
         HirRelKind::Satisfies => Some(RelationshipKind::Satisfaction),
-        HirRelKind::Performs => None, // TODO: Add to interchange model if needed
+        HirRelKind::Performs => Some(RelationshipKind::Performs),
         HirRelKind::Exhibits => None,
         HirRelKind::Includes => None,
         HirRelKind::Asserts => None,
@@ -437,60 +522,65 @@ fn hir_relationship_kind_to_model(kind: &crate::hir::RelationshipKind) -> Option
     }
 }
 
-/// Convert HIR SymbolKind to interchange ElementKind.
-fn symbol_kind_to_element_kind(kind: crate::hir::SymbolKind) -> ElementKind {
-    use crate::hir::SymbolKind;
-    match kind {
-        SymbolKind::Package => ElementKind::Package,
-        SymbolKind::PartDefinition => ElementKind::PartDefinition,
-        SymbolKind::ItemDefinition => ElementKind::ItemDefinition,
-        SymbolKind::ActionDefinition => ElementKind::ActionDefinition,
-        SymbolKind::PortDefinition => ElementKind::PortDefinition,
-        SymbolKind::AttributeDefinition => ElementKind::AttributeDefinition,
-        SymbolKind::ConnectionDefinition => ElementKind::ConnectionDefinition,
-        SymbolKind::InterfaceDefinition => ElementKind::InterfaceDefinition,
-        SymbolKind::AllocationDefinition => ElementKind::AllocationDefinition,
-        SymbolKind::RequirementDefinition => ElementKind::RequirementDefinition,
-        SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
-        SymbolKind::StateDefinition => ElementKind::StateDefinition,
-        SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
-        SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
-        SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
-        SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
-        SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
-        SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
-        SymbolKind::RenderingDefinition => ElementKind::RenderingDefinition,
-        SymbolKind::EnumerationDefinition => ElementKind::EnumerationDefinition,
-        // KerML definitions
-        SymbolKind::DataType => ElementKind::DataType,
-        SymbolKind::Class => ElementKind::Class,
-        SymbolKind::Structure => ElementKind::Structure,
-        SymbolKind::Behavior => ElementKind::Behavior,
-        SymbolKind::Function => ElementKind::Function,
-        SymbolKind::Association => ElementKind::Association,
-        SymbolKind::MetadataDefinition => ElementKind::MetadataDefinition,
-        SymbolKind::Interaction => ElementKind::Interaction,
-        // Usages
-        SymbolKind::PartUsage => ElementKind::PartUsage,
-        SymbolKind::ItemUsage => ElementKind::ItemUsage,
-        SymbolKind::ActionUsage => ElementKind::ActionUsage,
-        SymbolKind::PortUsage => ElementKind::PortUsage,
-        SymbolKind::AttributeUsage => ElementKind::AttributeUsage,
-        SymbolKind::ConnectionUsage => ElementKind::ConnectionUsage,
-        SymbolKind::InterfaceUsage => ElementKind::InterfaceUsage,
-        SymbolKind::AllocationUsage => ElementKind::AllocationUsage,
-        SymbolKind::RequirementUsage => ElementKind::RequirementUsage,
-        SymbolKind::ConstraintUsage => ElementKind::ConstraintUsage,
-        SymbolKind::StateUsage => ElementKind::StateUsage,
-        SymbolKind::TransitionUsage => ElementKind::TransitionUsage,
-        SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
-        SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
-        SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
-        SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
-        // Other
-        SymbolKind::Import => ElementKind::Import,
-        SymbolKind::Comment => ElementKind::Comment,
-        _ => ElementKind::Other,
+/// Convert HIR `SymbolKind` to interchange `ElementKind`.
+///
+/// Inverse of `From<ElementKind> for SymbolKind` (modulo lossy many-to-one
+/// arms: e.g. `SymbolKind::Package` maps to `ElementKind::Package`, not
+/// `LibraryPackage`).
+impl From<SymbolKind> for ElementKind {
+    fn from(kind: SymbolKind) -> Self {
+        match kind {
+            SymbolKind::Package => ElementKind::Package,
+            SymbolKind::PartDefinition => ElementKind::PartDefinition,
+            SymbolKind::ItemDefinition => ElementKind::ItemDefinition,
+            SymbolKind::ActionDefinition => ElementKind::ActionDefinition,
+            SymbolKind::PortDefinition => ElementKind::PortDefinition,
+            SymbolKind::AttributeDefinition => ElementKind::AttributeDefinition,
+            SymbolKind::ConnectionDefinition => ElementKind::ConnectionDefinition,
+            SymbolKind::InterfaceDefinition => ElementKind::InterfaceDefinition,
+            SymbolKind::AllocationDefinition => ElementKind::AllocationDefinition,
+            SymbolKind::RequirementDefinition => ElementKind::RequirementDefinition,
+            SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
+            SymbolKind::StateDefinition => ElementKind::StateDefinition,
+            SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
+            SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
+            SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
+            SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
+            SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
+            SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
+            SymbolKind::RenderingDefinition => ElementKind::RenderingDefinition,
+            SymbolKind::EnumerationDefinition => ElementKind::EnumerationDefinition,
+            // KerML definitions
+            SymbolKind::DataType => ElementKind::DataType,
+            SymbolKind::Class => ElementKind::Class,
+            SymbolKind::Structure => ElementKind::Structure,
+            SymbolKind::Behavior => ElementKind::Behavior,
+            SymbolKind::Function => ElementKind::Function,
+            SymbolKind::Association => ElementKind::Association,
+            SymbolKind::MetadataDefinition => ElementKind::MetadataDefinition,
+            SymbolKind::Interaction => ElementKind::Interaction,
+            // Usages
+            SymbolKind::PartUsage => ElementKind::PartUsage,
+            SymbolKind::ItemUsage => ElementKind::ItemUsage,
+            SymbolKind::ActionUsage => ElementKind::ActionUsage,
+            SymbolKind::PortUsage => ElementKind::PortUsage,
+            SymbolKind::AttributeUsage => ElementKind::AttributeUsage,
+            SymbolKind::ConnectionUsage => ElementKind::ConnectionUsage,
+            SymbolKind::InterfaceUsage => ElementKind::InterfaceUsage,
+            SymbolKind::AllocationUsage => ElementKind::AllocationUsage,
+            SymbolKind::RequirementUsage => ElementKind::RequirementUsage,
+            SymbolKind::ConstraintUsage => ElementKind::ConstraintUsage,
+            SymbolKind::StateUsage => ElementKind::StateUsage,
+            SymbolKind::TransitionUsage => ElementKind::TransitionUsage,
+            SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
+            SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
+            SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
+            SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
+            // Other
+            SymbolKind::Import => ElementKind::Import,
+            SymbolKind::Comment => ElementKind::Comment,
+            _ => ElementKind::Other,
+        }
     }
 }
 
@@ -534,6 +624,15 @@ pub fn apply_metadata_to_host(
             }
         }
     });
+}
+
+/// Result of applying ChangeTracker edits to an AnalysisHost.
+#[derive(Debug)]
+pub struct ApplyEditsResult {
+    /// The new SysML text after edits (rendered via `render_dirty`).
+    pub rendered_text: String,
+    /// Parse errors from re-parsing the rendered text.
+    pub parse_errors: Vec<crate::syntax::parser::ParseError>,
 }
 
 #[cfg(test)]
