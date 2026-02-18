@@ -3,19 +3,17 @@
 use std::sync::Arc;
 
 use crate::parser::{
-    self, AstNode, Definition as AstDefinition, DefinitionKind, Expression,
-    NamespaceMember, SpecializationKind, SyntaxKind,
+    self, AstNode, Definition as AstDefinition, DefinitionKind, Expression, NamespaceMember,
+    SpecializationKind, SyntaxKind,
 };
 
-use super::context::{strip_quotes, ExtractionContext};
+use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member_into_symbols;
 use super::helpers::{
     extract_expression_chains, extract_hir_relationships, extract_metadata_from_ast_context,
     extract_type_refs, implicit_supertype_for_definition_kind,
 };
-use super::types::{
-    ExtractedRel, HirSymbol, RelKind, RelTarget, SymbolKind, new_element_id,
-};
+use super::types::{ExtractedRel, HirSymbol, RelKind, RelTarget, SymbolKind, new_element_id};
 
 /// Extract relationships from a Definition AST node into ExtractedRel values.
 fn extract_definition_rels_from_ast(def: &AstDefinition) -> Vec<ExtractedRel> {

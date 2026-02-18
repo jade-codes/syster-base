@@ -400,7 +400,6 @@ impl<'a> BaseParser for Parser<'a> {
 
 /// Implement KerMLParser trait for kerml grammar module
 impl<'a> KerMLParser for Parser<'a> {
-
     fn parse_body(&mut self) {
         super::grammar::kerml::parse_body(self)
     }
@@ -452,7 +451,6 @@ impl<'a> KerMLParser for Parser<'a> {
 
 /// Implement SysMLParser trait for sysml grammar module
 impl<'a> SysMLParser for Parser<'a> {
-
     fn parse_body(&mut self) {
         super::grammar::sysml::parse_body(self)
     }

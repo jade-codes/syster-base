@@ -292,7 +292,10 @@ pub(super) fn parse_comma_separated_names<P: KerMLParser>(p: &mut P) {
 /// Check if current position looks like a qualified name (with dots/::) followed by specific keywords.
 /// This helps distinguish between identification and direct endpoint syntax.
 /// Returns true if we see: name.name... (or name::name...) followed by one of target_kinds
-pub(super) fn looks_like_qualified_name_before<P: KerMLParser>(p: &P, target_kinds: &[SyntaxKind]) -> bool {
+pub(super) fn looks_like_qualified_name_before<P: KerMLParser>(
+    p: &P,
+    target_kinds: &[SyntaxKind],
+) -> bool {
     if !p.at_name_token() {
         return false;
     }

@@ -22,7 +22,9 @@ fn parses_sysml(input: &str) -> bool {
 #[case("connection def MyConn {}")]
 #[case("connection def MyConnection;")]
 #[case("connection def MyConnection { }")]
-#[case("connection def ProductSelection { item info: SelectionInfo; end [0..1] item cart: ShoppingCart[1]; end [0..*] nonunique item selectedProduct: Product[1]; }")]
+#[case(
+    "connection def ProductSelection { item info: SelectionInfo; end [0..1] item cart: ShoppingCart[1]; end [0..*] nonunique item selectedProduct: Product[1]; }"
+)]
 #[case("connection def C { end [1] item a: A; }")]
 #[case("connection def C { end [0..*] ordered item x: X; }")]
 fn test_connection_def(#[case] input: &str) {

@@ -116,7 +116,9 @@ impl AnalysisHost {
         self.dirty_files.insert(path_buf);
         // Invalidate cached Model — symbols changed
         #[cfg(feature = "interchange")]
-        { self.model_cache = None; }
+        {
+            self.model_cache = None;
+        }
         result.errors
     }
 
@@ -128,7 +130,9 @@ impl AnalysisHost {
         self.removed_files.insert(path_buf);
         // Invalidate cached Model — symbols changed
         #[cfg(feature = "interchange")]
-        { self.model_cache = None; }
+        {
+            self.model_cache = None;
+        }
     }
 
     /// Remove a file from storage using PathBuf.
@@ -171,7 +175,9 @@ impl AnalysisHost {
         self.needs_full_rebuild = true;
         // Invalidate cached Model — symbols will change on next rebuild
         #[cfg(feature = "interchange")]
-        { self.model_cache = None; }
+        {
+            self.model_cache = None;
+        }
     }
 
     /// Check if the index needs updating.
@@ -421,7 +427,9 @@ impl AnalysisHost {
         self.symbol_index.update_symbols(f);
         // Invalidate cached Model — symbol metadata changed
         #[cfg(feature = "interchange")]
-        { self.model_cache = None; }
+        {
+            self.model_cache = None;
+        }
     }
 
     // ── Interchange: Model projection ───────────────────────────────
@@ -517,7 +525,10 @@ impl AnalysisHost {
         qn: &str,
     ) -> Option<crate::interchange::views::ElementView<'_>> {
         self.ensure_model();
-        self.model_cache.as_ref().unwrap().find_by_qualified_name(qn)
+        self.model_cache
+            .as_ref()
+            .unwrap()
+            .find_by_qualified_name(qn)
     }
 
     /// View a specific element by ID in the cached model.
@@ -635,15 +646,14 @@ impl AnalysisHost {
     where
         F: FnOnce(&mut crate::interchange::Model, &mut crate::interchange::ChangeTracker),
     {
-        use crate::interchange::render::{SourceMap, render_dirty};
         use crate::interchange::ChangeTracker;
+        use crate::interchange::render::{SourceMap, render_dirty};
 
         // 1. Ensure model is built
         self.ensure_model();
 
         // 2. Build source map from the current model
-        let (original_text, source_map) =
-            SourceMap::build(self.model_cache.as_ref().unwrap());
+        let (original_text, source_map) = SourceMap::build(self.model_cache.as_ref().unwrap());
 
         // 3. Apply the edit via the closure
         let mut tracker = ChangeTracker::new();
@@ -666,10 +676,7 @@ impl AnalysisHost {
             let model_snapshot = model.clone();
             self.update_symbols(|symbol| {
                 for element in model_snapshot.elements.values() {
-                    let qn = element
-                        .qualified_name
-                        .as_ref()
-                        .or(element.name.as_ref());
+                    let qn = element.qualified_name.as_ref().or(element.name.as_ref());
                     if let Some(name) = qn {
                         if name.as_ref() == symbol.qualified_name.as_ref() {
                             symbol.element_id = Arc::from(element.id.as_str());
@@ -879,7 +886,10 @@ mod tests {
 
         // Second access — model should reflect the new content
         let count_2 = host.model().element_count();
-        assert!(count_2 > count_1, "model should have more elements after edit");
+        assert!(
+            count_2 > count_1,
+            "model should have more elements after edit"
+        );
 
         // Should find the new element
         assert_eq!(host.model().find_by_name("B").len(), 1);
@@ -957,8 +967,15 @@ mod tests {
 
         // Remove one file — cache should invalidate
         host.remove_file("b.sysml");
-        assert!(host.model().find_by_name("Y").is_empty(), "Y should be gone after removal");
-        assert_eq!(host.model().find_by_name("X").len(), 1, "X should still exist");
+        assert!(
+            host.model().find_by_name("Y").is_empty(),
+            "Y should be gone after removal"
+        );
+        assert_eq!(
+            host.model().find_by_name("X").len(),
+            1,
+            "X should still exist"
+        );
     }
 
     #[test]
@@ -1010,8 +1027,8 @@ mod tests {
 
         let result = host.apply_model_edit("model.sysml", |model, tracker| {
             let parent_id = model.find_by_name("P")[0].id().clone();
-            let new_elem = Element::new(ElementId::generate(), ElementKind::PartDefinition)
-                .with_name("B");
+            let new_elem =
+                Element::new(ElementId::generate(), ElementKind::PartDefinition).with_name("B");
             tracker.add_element(model, new_elem, Some(&parent_id));
         });
 
@@ -1024,7 +1041,10 @@ mod tests {
     #[cfg(feature = "interchange")]
     fn test_apply_model_edit_preserves_ids() {
         let mut host = AnalysisHost::new();
-        host.set_file_content("model.sysml", "package P { part def Vehicle; part def Engine; }");
+        host.set_file_content(
+            "model.sysml",
+            "package P { part def Vehicle; part def Engine; }",
+        );
 
         // Get the original ID
         let original_id = host.model().find_by_name("Engine")[0].id().clone();

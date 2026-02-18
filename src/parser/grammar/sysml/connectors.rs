@@ -436,7 +436,6 @@ pub fn parse_binding_or_succession<P: SysMLParser>(p: &mut P) {
 }
 
 /// VariantUsage = 'variant' ...
-
 pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 

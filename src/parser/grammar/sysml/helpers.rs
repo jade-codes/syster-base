@@ -88,7 +88,10 @@ pub(super) fn peek_past_name_for<P: SysMLParser>(p: &P, target: SyntaxKind) -> b
 }
 
 /// Helper to peek past optional identifier and get next significant token
-pub(super) fn peek_past_optional_name<P: SysMLParser>(p: &P, mut lookahead: usize) -> (usize, SyntaxKind) {
+pub(super) fn peek_past_optional_name<P: SysMLParser>(
+    p: &P,
+    mut lookahead: usize,
+) -> (usize, SyntaxKind) {
     lookahead = skip_trivia_lookahead(p, lookahead);
     let mut next = p.peek_kind(lookahead);
     if next == SyntaxKind::IDENT {
@@ -312,4 +315,3 @@ pub(super) fn parse_inline_action<P: SysMLParser>(p: &mut P) {
     parse_action_body(p);
     p.finish_node();
 }
-

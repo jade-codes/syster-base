@@ -65,34 +65,22 @@ pub(super) fn extract_from_ast_member(
         NamespaceMember::Comment(comment) => {
             extract_comment_from_ast(&mut result.symbols, ctx, comment)
         }
-        NamespaceMember::Alias(alias) => {
-            extract_alias_from_ast(&mut result.symbols, ctx, alias)
-        }
-        NamespaceMember::Import(import) => {
-            extract_import_from_ast(result, ctx, import)
-        }
+        NamespaceMember::Alias(alias) => extract_alias_from_ast(&mut result.symbols, ctx, alias),
+        NamespaceMember::Import(import) => extract_import_from_ast(result, ctx, import),
         NamespaceMember::Dependency(dep) => {
             extract_dependency_from_ast(&mut result.symbols, ctx, dep)
         }
         // Phase 3: package extractors
-        NamespaceMember::Package(pkg) => {
-            extract_package_from_ast(result, ctx, pkg)
-        }
-        NamespaceMember::LibraryPackage(pkg) => {
-            extract_library_package_from_ast(result, ctx, pkg)
-        }
+        NamespaceMember::Package(pkg) => extract_package_from_ast(result, ctx, pkg),
+        NamespaceMember::LibraryPackage(pkg) => extract_library_package_from_ast(result, ctx, pkg),
         // Phase 6: filter/expose — consume AST directly
-        NamespaceMember::Filter(filter) => {
-            extract_filter_from_ast(result, ctx, filter)
-        }
+        NamespaceMember::Filter(filter) => extract_filter_from_ast(result, ctx, filter),
         // Phase 4: definition extraction
         NamespaceMember::Definition(def) => {
             extract_definition_from_ast(&mut result.symbols, ctx, def)
         }
         // Phase 5: usage extraction (main Usage variant)
-        NamespaceMember::Usage(usage) => {
-            extract_usage_from_ast(&mut result.symbols, ctx, usage)
-        }
+        NamespaceMember::Usage(usage) => extract_usage_from_ast(&mut result.symbols, ctx, usage),
         // Phase 5: special NamespaceMember variants → extract as usage
         NamespaceMember::Metadata(meta) => {
             extract_metadata_member_from_ast(&mut result.symbols, ctx, meta)
@@ -144,21 +132,15 @@ pub(super) fn extract_from_ast_member_into_symbols(
     member: &NamespaceMember,
 ) {
     match member {
-        NamespaceMember::Comment(comment) => {
-            extract_comment_from_ast(symbols, ctx, comment)
-        }
-        NamespaceMember::Alias(alias) => {
-            extract_alias_from_ast(symbols, ctx, alias)
-        }
+        NamespaceMember::Comment(comment) => extract_comment_from_ast(symbols, ctx, comment),
+        NamespaceMember::Alias(alias) => extract_alias_from_ast(symbols, ctx, alias),
         NamespaceMember::Import(import) => {
             // For nested imports (inside definitions), ignore filters
             let mut result = ExtractionResult::default();
             extract_import_from_ast(&mut result, ctx, import);
             symbols.extend(result.symbols);
         }
-        NamespaceMember::Dependency(dep) => {
-            extract_dependency_from_ast(symbols, ctx, dep)
-        }
+        NamespaceMember::Dependency(dep) => extract_dependency_from_ast(symbols, ctx, dep),
         NamespaceMember::Package(pkg) => {
             let mut result = ExtractionResult::default();
             extract_package_from_ast(&mut result, ctx, pkg);
@@ -172,48 +154,22 @@ pub(super) fn extract_from_ast_member_into_symbols(
         NamespaceMember::Filter(_) => {
             // Filters inside definitions don't produce symbols
         }
-        NamespaceMember::Definition(def) => {
-            extract_definition_from_ast(symbols, ctx, def)
-        }
-        NamespaceMember::Usage(usage) => {
-            extract_usage_from_ast(symbols, ctx, usage)
-        }
-        NamespaceMember::Metadata(meta) => {
-            extract_metadata_member_from_ast(symbols, ctx, meta)
-        }
-        NamespaceMember::Bind(bind) => {
-            extract_bind_from_ast(symbols, ctx, bind)
-        }
-        NamespaceMember::Succession(succ) => {
-            extract_succession_from_ast(symbols, ctx, succ)
-        }
-        NamespaceMember::Transition(trans) => {
-            extract_bare_transition_from_ast(symbols, ctx, trans)
-        }
-        NamespaceMember::Connector(conn) => {
-            extract_connector_from_ast(symbols, ctx, conn)
-        }
-        NamespaceMember::ConnectUsage(conn) => {
-            extract_connect_usage_from_ast(symbols, ctx, conn)
-        }
-        NamespaceMember::SendAction(send) => {
-            extract_send_action_from_ast(symbols, ctx, send)
-        }
+        NamespaceMember::Definition(def) => extract_definition_from_ast(symbols, ctx, def),
+        NamespaceMember::Usage(usage) => extract_usage_from_ast(symbols, ctx, usage),
+        NamespaceMember::Metadata(meta) => extract_metadata_member_from_ast(symbols, ctx, meta),
+        NamespaceMember::Bind(bind) => extract_bind_from_ast(symbols, ctx, bind),
+        NamespaceMember::Succession(succ) => extract_succession_from_ast(symbols, ctx, succ),
+        NamespaceMember::Transition(trans) => extract_bare_transition_from_ast(symbols, ctx, trans),
+        NamespaceMember::Connector(conn) => extract_connector_from_ast(symbols, ctx, conn),
+        NamespaceMember::ConnectUsage(conn) => extract_connect_usage_from_ast(symbols, ctx, conn),
+        NamespaceMember::SendAction(send) => extract_send_action_from_ast(symbols, ctx, send),
         NamespaceMember::AcceptAction(accept) => {
             extract_accept_action_from_ast(symbols, ctx, accept)
         }
-        NamespaceMember::StateSubaction(sub) => {
-            extract_state_subaction_from_ast(symbols, ctx, sub)
-        }
-        NamespaceMember::ControlNode(node) => {
-            extract_control_node_from_ast(symbols, ctx, node)
-        }
-        NamespaceMember::ForLoop(for_loop) => {
-            extract_for_loop_from_ast(symbols, ctx, for_loop)
-        }
-        NamespaceMember::IfAction(if_action) => {
-            extract_if_action_from_ast(symbols, ctx, if_action)
-        }
+        NamespaceMember::StateSubaction(sub) => extract_state_subaction_from_ast(symbols, ctx, sub),
+        NamespaceMember::ControlNode(node) => extract_control_node_from_ast(symbols, ctx, node),
+        NamespaceMember::ForLoop(for_loop) => extract_for_loop_from_ast(symbols, ctx, for_loop),
+        NamespaceMember::IfAction(if_action) => extract_if_action_from_ast(symbols, ctx, if_action),
         NamespaceMember::WhileLoop(while_loop) => {
             extract_while_loop_from_ast(symbols, ctx, while_loop)
         }

@@ -5,9 +5,7 @@
 
 use std::sync::Arc;
 
-use crate::parser::{
-    DefinitionKind, Expression, QualifiedName, Usage, UsageKind,
-};
+use crate::parser::{DefinitionKind, Expression, QualifiedName, Usage, UsageKind};
 
 use super::types::{
     ExtractedRel, FeatureChain, FeatureChainPart, HirRelationship, InternalUsageKind, RefKind,
@@ -36,10 +34,7 @@ pub(super) fn make_chain_or_simple(target_str: &str, qn: &QualifiedName) -> RelT
 }
 
 /// Extract feature chain expression references from an Expression AST node.
-pub(super) fn extract_expression_chains(
-    expr: &Expression,
-    relationships: &mut Vec<ExtractedRel>,
-) {
+pub(super) fn extract_expression_chains(expr: &Expression, relationships: &mut Vec<ExtractedRel>) {
     for chain in expr.feature_chains() {
         if chain.parts.len() == 1 {
             let (name, range) = &chain.parts[0];
@@ -104,12 +99,17 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
 }
 
 /// Map DefinitionKind to implicit supertype name.
-pub(super) fn implicit_supertype_for_definition_kind(kind: Option<DefinitionKind>) -> Option<&'static str> {
+pub(super) fn implicit_supertype_for_definition_kind(
+    kind: Option<DefinitionKind>,
+) -> Option<&'static str> {
     match kind {
-        Some(DefinitionKind::Part) | Some(DefinitionKind::Class) | Some(DefinitionKind::Struct)
+        Some(DefinitionKind::Part)
+        | Some(DefinitionKind::Class)
+        | Some(DefinitionKind::Struct)
         | Some(DefinitionKind::Classifier) => Some("Parts::Part"),
         Some(DefinitionKind::Item) => Some("Items::Item"),
-        Some(DefinitionKind::Action) | Some(DefinitionKind::Behavior)
+        Some(DefinitionKind::Action)
+        | Some(DefinitionKind::Behavior)
         | Some(DefinitionKind::Interaction) => Some("Actions::Action"),
         Some(DefinitionKind::State) => Some("States::StateAction"),
         Some(DefinitionKind::Constraint) | Some(DefinitionKind::Predicate) => {
@@ -137,7 +137,9 @@ pub(super) fn implicit_supertype_for_definition_kind(kind: Option<DefinitionKind
 }
 
 /// Map InternalUsageKind to implicit supertype name.
-pub(super) fn implicit_supertype_for_internal_usage_kind(kind: InternalUsageKind) -> Option<&'static str> {
+pub(super) fn implicit_supertype_for_internal_usage_kind(
+    kind: InternalUsageKind,
+) -> Option<&'static str> {
     match kind {
         InternalUsageKind::Part => Some("Parts::Part"),
         InternalUsageKind::Item => Some("Items::Item"),

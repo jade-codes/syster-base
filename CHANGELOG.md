@@ -5,6 +5,27 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.0-alpha] - 2026-02-18
+
+### Changed
+
+- **Unified AnalysisHost & ModelHost architecture**: `AnalysisHost` is now the single entry-point for both IDE queries and interchange operations
+  - Added cached `Model` projection via `AnalysisHost::model()`, computed from the shared `SymbolIndex`
+  - Added `AnalysisHost::apply_model_edit()` for edit→render→re-parse round-trips
+  - Added navigation delegates (`root_views`, `find_by_name`, `find_by_qualified_name`, `view`, `find_by_kind`) and export methods (`to_xmi`, `to_jsonld`, `to_yaml`) on `AnalysisHost`
+  - CLI migrated off `ModelHost` — all commands now use the shared `AnalysisHost`
+
+### Removed
+
+- **`ModelHost::from_text()`**: Removed (created a duplicate `RootDatabase`). Use `AnalysisHost::set_file_content()` + `model()` instead. Format I/O constructors (`from_xmi`, `from_kpar`, etc.) are unchanged.
+- **`apply_edits_to_host()`**: Removed in favor of `AnalysisHost::apply_model_edit()`, which internalizes the text round-trip.
+
+### Added
+
+- **`RelationshipKind::Performs`**: New variant for action-performs relationships, with XMI/JSON-LD/YAML serialization support
+- **`From` trait impls**: `impl From<ElementKind> for SymbolKind` and `impl From<SymbolKind> for ElementKind` replace private mapping functions in `integrate.rs`
+- **Direction & multiplicity extraction**: Interchange model import now populates `direction` (from element properties) and `multiplicity` (from nested `MultiplicityRange`/`LiteralInteger` children)
+
 ## [0.3.6-alpha] - 2026-02-12
 
 ### Fixed

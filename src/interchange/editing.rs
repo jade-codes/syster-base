@@ -23,9 +23,7 @@
 //! assert_eq!(dirty.len(), 1);
 //! ```
 
-use super::model::{
-    Element, ElementId, Model, PropertyValue, Relationship, RelationshipKind,
-};
+use super::model::{Element, ElementId, Model, PropertyValue, Relationship, RelationshipKind};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -122,12 +120,7 @@ impl ChangeTracker {
     }
 
     /// Set an element's short name.
-    pub fn set_short_name(
-        &mut self,
-        model: &mut Model,
-        id: &ElementId,
-        short_name: Option<&str>,
-    ) {
+    pub fn set_short_name(&mut self, model: &mut Model, id: &ElementId, short_name: Option<&str>) {
         if let Some(el) = model.get_mut(id) {
             el.short_name = short_name.map(Arc::from);
             self.modified.insert(id.clone());
@@ -246,12 +239,7 @@ impl ChangeTracker {
     }
 
     /// Move an element to a new owner.
-    pub fn reparent(
-        &mut self,
-        model: &mut Model,
-        id: &ElementId,
-        new_owner: &ElementId,
-    ) {
+    pub fn reparent(&mut self, model: &mut Model, id: &ElementId, new_owner: &ElementId) {
         // Remove from old owner
         if let Some(el) = model.get(id) {
             if let Some(old_owner_id) = el.owner.clone() {
@@ -290,8 +278,8 @@ impl ModelHost {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::model::ElementKind;
+    use super::*;
 
     fn host(source: &str) -> ModelHost {
         ModelHost::from_text(source).expect("should parse")

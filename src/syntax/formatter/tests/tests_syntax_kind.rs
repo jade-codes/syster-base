@@ -93,11 +93,7 @@ fn test_roundtrip_trivia_tokens() {
 /// Test round-trip conversion for literal tokens
 #[test]
 fn test_roundtrip_literal_tokens() {
-    assert_roundtrip_conversion(&[
-        SyntaxKind::IDENT,
-        SyntaxKind::INTEGER,
-        SyntaxKind::STRING,
-    ]);
+    assert_roundtrip_conversion(&[SyntaxKind::IDENT, SyntaxKind::INTEGER, SyntaxKind::STRING]);
 }
 
 /// Test round-trip conversion for punctuation tokens
@@ -326,7 +322,7 @@ fn test_kind_to_raw_uniqueness() {
 fn test_roundtrip_boundary_values() {
     assert_roundtrip_conversion(&[
         SyntaxKind::WHITESPACE, // First variant (0)
-        SyntaxKind::TOMBSTONE,        // Last variant
+        SyntaxKind::TOMBSTONE,  // Last variant
     ]);
 }
 

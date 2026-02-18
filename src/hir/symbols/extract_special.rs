@@ -7,11 +7,9 @@ use std::sync::Arc;
 
 use rowan::TextRange;
 
-use crate::parser::{
-    self, AstNode, NamespaceMember, SyntaxKind,
-};
+use crate::parser::{self, AstNode, NamespaceMember, SyntaxKind};
 
-use super::context::{strip_quotes, ExtractionContext};
+use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member_into_symbols;
 use super::helpers::{
     extract_expression_chains, extract_hir_relationships, extract_metadata_from_ast_context,
@@ -22,13 +20,13 @@ use super::types::{
     TypeRefKind, new_element_id,
 };
 
-
 /// Common helper for special usage variants (bind, succession, connector, etc.).
 ///
 /// These variants have simpler AST structure than general usages — no boolean
 /// flags, no direction/multiplicity/value. This function handles the
 /// anonymous/named split logic once, so each variant only needs to provide
 /// the name, kind, relationships, range, body members, and optional doc.
+#[allow(clippy::too_many_arguments)]
 fn push_special_usage_symbol(
     symbols: &mut Vec<HirSymbol>,
     ctx: &mut ExtractionContext,
@@ -182,9 +180,7 @@ fn push_special_usage_symbol(
                 .map(|r| Arc::from(r.target.as_str().as_ref()))
                 .collect();
 
-            let is_expression_scope =
-                rels.iter()
-                    .all(|r| matches!(r.kind, RelKind::Expression));
+            let is_expression_scope = rels.iter().all(|r| matches!(r.kind, RelKind::Expression));
             let is_connection_kind = matches!(
                 kind,
                 InternalUsageKind::Connection
@@ -549,10 +545,7 @@ pub(super) fn extract_connect_usage_from_ast(
         .unwrap_or_default();
 
     // Extract name from NAME child
-    let name_node = conn
-        .syntax()
-        .children()
-        .find_map(parser::Name::cast);
+    let name_node = conn.syntax().children().find_map(parser::Name::cast);
 
     // Track symbol count before push to find the parent scope afterwards
     let sym_count_before = symbols.len();
@@ -589,21 +582,17 @@ pub(super) fn extract_connect_usage_from_ast(
                                 range: Some(target_qn.syntax().text_range()),
                             });
                         }
-                        let type_refs =
-                            extract_type_refs(&endpoint_rels, &ctx.line_index);
+                        let type_refs = extract_type_refs(&endpoint_rels, &ctx.line_index);
                         let relationships =
                             extract_hir_relationships(&endpoint_rels, &ctx.line_index);
-                        let span = ctx
-                            .range_to_info(Some(endpoint_qn.syntax().text_range()));
+                        let span = ctx.range_to_info(Some(endpoint_qn.syntax().text_range()));
                         let qn = ctx.qualified_name(&endpoint_name);
                         symbols.push(HirSymbol {
                             name: Arc::from(endpoint_name.as_str()),
                             short_name: None,
                             qualified_name: Arc::from(qn.as_str()),
                             element_id: new_element_id(),
-                            kind: SymbolKind::from_usage_kind(
-                                InternalUsageKind::End,
-                            ),
+                            kind: SymbolKind::from_usage_kind(InternalUsageKind::End),
                             file: ctx.file,
                             start_line: span.start_line,
                             start_col: span.start_col,
@@ -657,10 +646,7 @@ pub(super) fn extract_send_action_from_ast(
         .unwrap_or_default();
 
     // Extract name — first inside the node, then check preceding sibling
-    let mut name_node = send
-        .syntax()
-        .children()
-        .find_map(parser::Name::cast);
+    let mut name_node = send.syntax().children().find_map(parser::Name::cast);
 
     if name_node.is_none() {
         if let Some(prev_sibling) = send.syntax().prev_sibling() {
@@ -774,7 +760,10 @@ pub(super) fn extract_accept_action_from_ast(
         if parser::Name::cast(prev_sibling).is_some() {
             if let Some(inner_name) = accept.syntax().children().find_map(parser::Name::cast) {
                 if let Some(pname) = inner_name.text() {
-                    let name_str = name_node.as_ref().and_then(|n| n.text()).unwrap_or_default();
+                    let name_str = name_node
+                        .as_ref()
+                        .and_then(|n| n.text())
+                        .unwrap_or_default();
                     let name_str = strip_quotes(&name_str);
                     // If the preceding sibling gave us the name, inner_name is payload
                     // Push the payload as a child of the accept action
@@ -791,7 +780,8 @@ pub(super) fn extract_accept_action_from_ast(
                     let pname = strip_quotes(&pname);
                     let payload_qn = format!("{}::{}::{}", ctx.prefix, name_str, pname);
                     let payload_type_refs = extract_type_refs(&payload_rels, &ctx.line_index);
-                    let payload_hir_rels = extract_hir_relationships(&payload_rels, &ctx.line_index);
+                    let payload_hir_rels =
+                        extract_hir_relationships(&payload_rels, &ctx.line_index);
                     let payload_supertypes: Vec<Arc<str>> = payload_rels
                         .iter()
                         .filter(|r| matches!(r.kind, RelKind::TypedBy))

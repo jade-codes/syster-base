@@ -2,11 +2,9 @@
 
 use std::sync::Arc;
 
-use crate::parser::{
-    self, AstNode, ElementFilter, LibraryPackage, Package as AstPackage,
-};
+use crate::parser::{self, AstNode, ElementFilter, LibraryPackage, Package as AstPackage};
 
-use super::context::{strip_quotes, ExtractionContext};
+use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member;
 use super::types::{
     ExtractionResult, HirSymbol, RefKind, SymbolKind, TypeRef, TypeRefKind, new_element_id,

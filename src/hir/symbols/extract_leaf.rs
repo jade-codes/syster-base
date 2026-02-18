@@ -3,14 +3,14 @@
 use std::sync::Arc;
 
 use crate::parser::{
-    Alias as AstAlias, AstNode, Comment as AstComment,
-    Dependency as AstDependency, Import as AstImport,
+    Alias as AstAlias, AstNode, Comment as AstComment, Dependency as AstDependency,
+    Import as AstImport,
 };
 
-use super::context::{strip_quotes, ExtractionContext};
+use super::context::{ExtractionContext, strip_quotes};
 use super::helpers::{extract_type_refs, make_chain_or_simple};
 use super::types::{
-    ExtractionResult, ExtractedRel, HirSymbol, RefKind, RelKind, RelTarget, SymbolKind, TypeRef,
+    ExtractedRel, ExtractionResult, HirSymbol, RefKind, RelKind, RelTarget, SymbolKind, TypeRef,
     TypeRefKind, new_element_id,
 };
 
@@ -117,10 +117,7 @@ pub(super) fn extract_alias_from_ast(
         .and_then(|n| n.short_name())
         .and_then(|sn| sn.text());
 
-    let target_str = alias
-        .target()
-        .map(|t| t.to_string())
-        .unwrap_or_default();
+    let target_str = alias.target().map(|t| t.to_string()).unwrap_or_default();
     let target_range = alias.target().map(|t| t.syntax().text_range());
     let name_range = alias.name().map(|n| n.syntax().text_range());
 

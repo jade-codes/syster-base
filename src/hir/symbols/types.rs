@@ -8,9 +8,7 @@ use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::base::FileId;
-use crate::parser::{
-    DefinitionKind, Direction, Multiplicity, ValueExpression,
-};
+use crate::parser::{DefinitionKind, Direction, Multiplicity, ValueExpression};
 use rowan::TextRange;
 
 // ============================================================================
@@ -658,9 +656,7 @@ impl SymbolKind {
             Some(DefinitionKind::Constraint) => Self::ConstraintDefinition,
             Some(DefinitionKind::State) => Self::StateDefinition,
             Some(DefinitionKind::Calc) => Self::CalculationDefinition,
-            Some(DefinitionKind::Case) | Some(DefinitionKind::UseCase) => {
-                Self::UseCaseDefinition
-            }
+            Some(DefinitionKind::Case) | Some(DefinitionKind::UseCase) => Self::UseCaseDefinition,
             Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
                 Self::AnalysisCaseDefinition
             }

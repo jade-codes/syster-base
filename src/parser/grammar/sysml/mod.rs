@@ -49,8 +49,8 @@ pub(super) use self::usage::*;
 
 // Public API — visible outside sysml module (used by parser.rs, rule_parser.rs)
 pub use self::body::{parse_body, parse_case_body, parse_metadata_body, parse_sysml_calc_body};
-pub use self::definitions::parse_definition_or_usage;
 pub use self::connectors::{parse_binding_or_succession, parse_connect_usage};
+pub use self::definitions::parse_definition_or_usage;
 pub use self::definitions::{
     parse_constraint_body, parse_dependency, parse_filter, parse_metadata_usage,
     parse_redefines_feature_member, parse_shorthand_feature_member, parse_variant_usage,

@@ -855,12 +855,7 @@ impl<'a> DecompileContext<'a> {
                                         ) => {
                                             format!(" = {}", v)
                                         }
-                                        (
-                                            ElementKind::NullExpression,
-                                            _,
-                                        ) => {
-                                            " = null".to_string()
-                                        }
+                                        (ElementKind::NullExpression, _) => " = null".to_string(),
                                         (
                                             ElementKind::FeatureReferenceExpression,
                                             super::model::PropertyValue::String(s),

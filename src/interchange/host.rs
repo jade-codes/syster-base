@@ -168,8 +168,7 @@ impl ModelHost {
 
     /// Export to YAML bytes.
     pub fn to_yaml(&self) -> Result<Vec<u8>, ModelHostError> {
-        Yaml.write(&self.model)
-            .map_err(ModelHostError::Interchange)
+        Yaml.write(&self.model).map_err(ModelHostError::Interchange)
     }
 
     // ── Statistics ──────────────────────────────────────────────────
@@ -265,8 +264,7 @@ mod tests {
 
     #[test]
     fn host_from_text_basic() {
-        let host = ModelHost::from_text("package P { part def A; }")
-            .expect("should parse");
+        let host = ModelHost::from_text("package P { part def A; }").expect("should parse");
 
         assert!(host.element_count() > 0);
         assert!(host.source().is_some());
@@ -278,10 +276,9 @@ mod tests {
 
     #[test]
     fn host_find_by_name() {
-        let host = ModelHost::from_text(
-            "package P { part def Vehicle; part def Wheel; part w: Wheel; }",
-        )
-        .expect("should parse");
+        let host =
+            ModelHost::from_text("package P { part def Vehicle; part def Wheel; part w: Wheel; }")
+                .expect("should parse");
 
         let vehicles = host.find_by_name("Vehicle");
         assert_eq!(vehicles.len(), 1);
@@ -294,8 +291,7 @@ mod tests {
 
     #[test]
     fn host_find_by_qualified_name() {
-        let host =
-            ModelHost::from_text("package Outer { part def Inner; }").expect("should parse");
+        let host = ModelHost::from_text("package Outer { part def Inner; }").expect("should parse");
 
         let found = host.find_by_qualified_name("Outer::Inner");
         assert!(found.is_some());
@@ -304,9 +300,8 @@ mod tests {
 
     #[test]
     fn host_find_by_kind() {
-        let host =
-            ModelHost::from_text("package P { part def A; part def B; part x: A; }")
-                .expect("should parse");
+        let host = ModelHost::from_text("package P { part def A; part def B; part x: A; }")
+            .expect("should parse");
 
         let defs = host.find_by_kind(ElementKind::PartDefinition);
         assert_eq!(defs.len(), 2);

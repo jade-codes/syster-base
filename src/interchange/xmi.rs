@@ -443,15 +443,15 @@ mod reader {
                                 .parse::<f64>()
                                 .map(PropertyValue::Real)
                                 .unwrap_or(PropertyValue::String(Arc::from(value.as_str()))),
-                            ElementKind::LiteralBoolean => {
-                                PropertyValue::Boolean(value == "true")
-                            }
+                            ElementKind::LiteralBoolean => PropertyValue::Boolean(value == "true"),
                             _ => PropertyValue::String(Arc::from(value.as_str())),
                         }
                     } else {
                         PropertyValue::String(Arc::from(value.as_str()))
                     };
-                    element.properties.insert(Arc::from(key.as_str()), prop_value);
+                    element
+                        .properties
+                        .insert(Arc::from(key.as_str()), prop_value);
                 }
 
                 // Set owner if we have a parent, and track child order

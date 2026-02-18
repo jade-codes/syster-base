@@ -3,12 +3,12 @@
 use std::sync::Arc;
 
 use crate::parser::{
-    self, AstNode, Expression, Multiplicity, NamespaceMember,
-    MetadataUsage, QualifiedName, SpecializationKind, SyntaxKind, Usage,
+    self, AstNode, Expression, MetadataUsage, Multiplicity, NamespaceMember, QualifiedName,
+    SpecializationKind, SyntaxKind, Usage,
 };
 use rowan::TextRange;
 
-use super::context::{strip_quotes, ExtractionContext};
+use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member_into_symbols;
 use super::helpers::{
     determine_usage_kind, extract_expression_chains, extract_hir_relationships,
@@ -475,10 +475,8 @@ fn collect_endpoint_children_from_ast(
                     });
                 }
                 let type_refs = extract_type_refs(&endpoint_rels, &ctx.line_index);
-                let relationships =
-                    extract_hir_relationships(&endpoint_rels, &ctx.line_index);
-                let span =
-                    ctx.range_to_info(Some(endpoint_qn.syntax().text_range()));
+                let relationships = extract_hir_relationships(&endpoint_rels, &ctx.line_index);
+                let span = ctx.range_to_info(Some(endpoint_qn.syntax().text_range()));
                 let qn = ctx.qualified_name(&endpoint_name);
                 symbols.push(HirSymbol {
                     name: Arc::from(endpoint_name.as_str()),
@@ -533,8 +531,7 @@ fn collect_transition_payload_from_ast(
             let payload_text = accept_name.text();
             let payload_short = accept_name.short_name().and_then(|sn| sn.text());
             let payload_range = accept_name.syntax().text_range();
-            let payload_short_range =
-                accept_name.short_name().map(|sn| sn.syntax().text_range());
+            let payload_short_range = accept_name.short_name().map(|sn| sn.syntax().text_range());
 
             let mut payload_rels = Vec::new();
             if let Some(typing) = trans.accept_typing() {
@@ -556,8 +553,7 @@ fn collect_transition_payload_from_ast(
             }
 
             let type_refs = extract_type_refs(&payload_rels, &ctx.line_index);
-            let relationships =
-                extract_hir_relationships(&payload_rels, &ctx.line_index);
+            let relationships = extract_hir_relationships(&payload_rels, &ctx.line_index);
             let supertypes: Vec<Arc<str>> = payload_rels
                 .iter()
                 .filter(|r| matches!(r.kind, RelKind::TypedBy))
@@ -682,15 +678,15 @@ pub(super) fn extract_usage_from_ast(
         match effective_name.as_ref().and_then(|n| n.text()) {
             Some(n) => strip_quotes(&n),
             None => {
-            // Attach typing refs to parent for anonymous usages
-            if !type_refs.is_empty() {
-                if let Some(parent) = symbols
-                    .iter_mut()
-                    .rev()
-                    .find(|s| s.qualified_name.as_ref() == ctx.prefix)
-                {
-                    if parent.kind != SymbolKind::Package {
-                        let typing_refs: Vec<_> = type_refs
+                // Attach typing refs to parent for anonymous usages
+                if !type_refs.is_empty() {
+                    if let Some(parent) = symbols
+                        .iter_mut()
+                        .rev()
+                        .find(|s| s.qualified_name.as_ref() == ctx.prefix)
+                    {
+                        if parent.kind != SymbolKind::Package {
+                            let typing_refs: Vec<_> = type_refs
                             .iter()
                             .filter(
                                 |tr| {
@@ -699,126 +695,125 @@ pub(super) fn extract_usage_from_ast(
                             )
                             .cloned()
                             .collect();
-                        parent.type_refs.extend(typing_refs);
-                    }
-                }
-            }
-
-            // Generate unique anonymous scope
-            let line = ctx
-                .line_index
-                .line_col(usage.syntax().text_range().start())
-                .line;
-            let anon_scope = rels
-                .iter()
-                .find(|r| !matches!(r.kind, RelKind::Expression))
-                .map(|r| {
-                    let prefix = rel_kind_to_anon_prefix(r.kind);
-                    ctx.next_anon_scope(prefix, &r.target.as_str(), line)
-                })
-                .unwrap_or_else(|| ctx.next_anon_scope("anon", "", line));
-
-            let qualified_name = ctx.qualified_name(&anon_scope);
-            let kind = SymbolKind::from_usage_kind(usage_kind);
-            let anon_span_range = rels
-                .iter()
-                .find(|r| !matches!(r.kind, RelKind::Expression))
-                .and_then(|r| r.range)
-                .or(Some(usage.syntax().text_range()));
-            let span = ctx.range_to_info(anon_span_range);
-
-            // Build supertypes for anonymous symbol
-            let mut anon_supertypes: Vec<Arc<str>> = rels
-                .iter()
-                .filter(|r| {
-                    matches!(
-                        r.kind,
-                        RelKind::TypedBy
-                            | RelKind::Subsets
-                            | RelKind::Specializes
-                            | RelKind::Redefines
-                            | RelKind::Satisfies
-                            | RelKind::Verifies
-                    )
-                })
-                .map(|r| Arc::from(r.target.as_str().as_ref()))
-                .collect();
-
-            let is_expression_scope =
-                rels.iter()
-                    .all(|r| matches!(r.kind, RelKind::Expression));
-            let is_connection_kind = matches!(
-                usage_kind,
-                InternalUsageKind::Connection
-                    | InternalUsageKind::Flow
-                    | InternalUsageKind::Interface
-                    | InternalUsageKind::Allocation
-            );
-
-            if !is_expression_scope && !is_connection_kind {
-                if let Some(parent) = symbols
-                    .iter()
-                    .rev()
-                    .find(|s| s.qualified_name.as_ref() == ctx.prefix)
-                {
-                    for supertype in &parent.supertypes {
-                        if !anon_supertypes.contains(supertype) {
-                            anon_supertypes.push(supertype.clone());
+                            parent.type_refs.extend(typing_refs);
                         }
                     }
                 }
-            }
 
-            symbols.push(HirSymbol {
-                file: ctx.file,
-                name: Arc::from(anon_scope.as_str()),
-                short_name: None,
-                qualified_name: Arc::from(qualified_name.as_str()),
-                element_id: new_element_id(),
-                kind,
-                start_line: span.start_line,
-                start_col: span.start_col,
-                end_line: span.end_line,
-                end_col: span.end_col,
-                short_name_start_line: None,
-                short_name_start_col: None,
-                short_name_end_line: None,
-                short_name_end_col: None,
-                supertypes: anon_supertypes,
-                relationships: relationships.clone(),
-                type_refs,
-                doc: None,
-                is_public: false,
-                view_data: None,
-                metadata_annotations: metadata_annotations.clone(),
-                is_abstract: usage.is_abstract(),
-                is_variation: usage.is_variation(),
-                is_readonly: usage.is_readonly(),
-                is_derived: usage.is_derived(),
-                is_parallel: usage.is_parallel(),
-                is_individual: usage.is_individual(),
-                is_end: usage.is_end(),
-                is_default: usage.is_default(),
-                is_ordered: usage.is_ordered(),
-                is_nonunique: usage.is_nonunique(),
-                is_portion: usage.is_portion(),
-                direction: usage.direction(),
-                multiplicity: usage.multiplicity().map(|(lo, hi)| Multiplicity {
-                    lower: lo,
-                    upper: hi,
-                }),
-                value: None,
-            });
+                // Generate unique anonymous scope
+                let line = ctx
+                    .line_index
+                    .line_col(usage.syntax().text_range().start())
+                    .line;
+                let anon_scope = rels
+                    .iter()
+                    .find(|r| !matches!(r.kind, RelKind::Expression))
+                    .map(|r| {
+                        let prefix = rel_kind_to_anon_prefix(r.kind);
+                        ctx.next_anon_scope(prefix, &r.target.as_str(), line)
+                    })
+                    .unwrap_or_else(|| ctx.next_anon_scope("anon", "", line));
 
-            ctx.push_scope(&anon_scope);
-            collect_endpoint_children_from_ast(usage, symbols, ctx);
-            collect_transition_payload_from_ast(usage, symbols, ctx);
-            for child in &body_members {
-                extract_from_ast_member_into_symbols(symbols, ctx, child);
+                let qualified_name = ctx.qualified_name(&anon_scope);
+                let kind = SymbolKind::from_usage_kind(usage_kind);
+                let anon_span_range = rels
+                    .iter()
+                    .find(|r| !matches!(r.kind, RelKind::Expression))
+                    .and_then(|r| r.range)
+                    .or(Some(usage.syntax().text_range()));
+                let span = ctx.range_to_info(anon_span_range);
+
+                // Build supertypes for anonymous symbol
+                let mut anon_supertypes: Vec<Arc<str>> = rels
+                    .iter()
+                    .filter(|r| {
+                        matches!(
+                            r.kind,
+                            RelKind::TypedBy
+                                | RelKind::Subsets
+                                | RelKind::Specializes
+                                | RelKind::Redefines
+                                | RelKind::Satisfies
+                                | RelKind::Verifies
+                        )
+                    })
+                    .map(|r| Arc::from(r.target.as_str().as_ref()))
+                    .collect();
+
+                let is_expression_scope =
+                    rels.iter().all(|r| matches!(r.kind, RelKind::Expression));
+                let is_connection_kind = matches!(
+                    usage_kind,
+                    InternalUsageKind::Connection
+                        | InternalUsageKind::Flow
+                        | InternalUsageKind::Interface
+                        | InternalUsageKind::Allocation
+                );
+
+                if !is_expression_scope && !is_connection_kind {
+                    if let Some(parent) = symbols
+                        .iter()
+                        .rev()
+                        .find(|s| s.qualified_name.as_ref() == ctx.prefix)
+                    {
+                        for supertype in &parent.supertypes {
+                            if !anon_supertypes.contains(supertype) {
+                                anon_supertypes.push(supertype.clone());
+                            }
+                        }
+                    }
+                }
+
+                symbols.push(HirSymbol {
+                    file: ctx.file,
+                    name: Arc::from(anon_scope.as_str()),
+                    short_name: None,
+                    qualified_name: Arc::from(qualified_name.as_str()),
+                    element_id: new_element_id(),
+                    kind,
+                    start_line: span.start_line,
+                    start_col: span.start_col,
+                    end_line: span.end_line,
+                    end_col: span.end_col,
+                    short_name_start_line: None,
+                    short_name_start_col: None,
+                    short_name_end_line: None,
+                    short_name_end_col: None,
+                    supertypes: anon_supertypes,
+                    relationships: relationships.clone(),
+                    type_refs,
+                    doc: None,
+                    is_public: false,
+                    view_data: None,
+                    metadata_annotations: metadata_annotations.clone(),
+                    is_abstract: usage.is_abstract(),
+                    is_variation: usage.is_variation(),
+                    is_readonly: usage.is_readonly(),
+                    is_derived: usage.is_derived(),
+                    is_parallel: usage.is_parallel(),
+                    is_individual: usage.is_individual(),
+                    is_end: usage.is_end(),
+                    is_default: usage.is_default(),
+                    is_ordered: usage.is_ordered(),
+                    is_nonunique: usage.is_nonunique(),
+                    is_portion: usage.is_portion(),
+                    direction: usage.direction(),
+                    multiplicity: usage.multiplicity().map(|(lo, hi)| Multiplicity {
+                        lower: lo,
+                        upper: hi,
+                    }),
+                    value: None,
+                });
+
+                ctx.push_scope(&anon_scope);
+                collect_endpoint_children_from_ast(usage, symbols, ctx);
+                collect_transition_payload_from_ast(usage, symbols, ctx);
+                for child in &body_members {
+                    extract_from_ast_member_into_symbols(symbols, ctx, child);
+                }
+                ctx.pop_scope();
+                return;
             }
-            ctx.pop_scope();
-            return;
-        }
         }
     };
 
@@ -1024,8 +1019,7 @@ pub(super) fn extract_metadata_member_from_ast(
         .body()
         .map(|b| b.members().collect())
         .unwrap_or_default();
-    let metadata_annotations =
-        extract_metadata_from_ast_context(&rels, children.iter().cloned());
+    let metadata_annotations = extract_metadata_from_ast_context(&rels, children.iter().cloned());
 
     // Metadata usages are anonymous — attach typing refs to parent
     if !type_refs.is_empty() {
@@ -1037,11 +1031,7 @@ pub(super) fn extract_metadata_member_from_ast(
             if parent.kind != SymbolKind::Package {
                 let typing_refs: Vec<_> = type_refs
                     .iter()
-                    .filter(
-                        |tr| {
-                            matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy)
-                        },
-                    )
+                    .filter(|tr| matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::TypedBy))
                     .cloned()
                     .collect();
                 parent.type_refs.extend(typing_refs);
@@ -1135,4 +1125,3 @@ pub(super) fn extract_metadata_member_from_ast(
         ctx.pop_scope();
     }
 }
-

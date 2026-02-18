@@ -2,7 +2,6 @@ use super::*;
 
 /// PrimaryExpression = BaseExpression (FeatureChain | ArrowInvocation)*
 /// Per pest: primary_expression defined in each grammar - handles feature chains, arrow ops, indexing
-
 /// Handle .name feature chain
 fn handle_feature_chain<P: ExpressionParser>(p: &mut P) {
     p.bump(); // .

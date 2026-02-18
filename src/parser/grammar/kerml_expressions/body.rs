@@ -4,7 +4,6 @@ use super::*;
 /// Used for arrow invocation bodies like: ->collect { in x; x + 1 }
 /// Per Pest body_expression_body: only 'in' parameters are allowed (not out/inout)
 /// Per pest: Arrow operation bodies are grammar-specific implementations
-
 /// Check if current position looks like a typed parameter (name : Type;)
 fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
     let mut lookahead = 1;

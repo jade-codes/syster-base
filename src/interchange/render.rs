@@ -158,7 +158,12 @@ impl<'a> SourceMapBuilder<'a> {
     }
 
     /// Map direct children of an element to spans within the parent's text.
-    fn map_children(&mut self, parent: &super::model::Element, parent_start: usize, parent_text: &str) {
+    fn map_children(
+        &mut self,
+        parent: &super::model::Element,
+        parent_start: usize,
+        parent_text: &str,
+    ) {
         for child_id in &parent.owned_elements {
             if let Some(child_el) = self.model.get(child_id) {
                 // Skip relationship/transparent elements
@@ -346,13 +351,16 @@ mod tests {
 
         let (start, end) = span.unwrap();
         let region = &text[start..end];
-        assert!(region.contains("package P"), "region should contain package P, got: {region}");
+        assert!(
+            region.contains("package P"),
+            "region should contain package P, got: {region}"
+        );
     }
 
     #[test]
     fn source_map_maps_children() {
-        let host = ModelHost::from_text("package P { part def A; part def B; }")
-            .expect("should parse");
+        let host =
+            ModelHost::from_text("package P { part def A; part def B; }").expect("should parse");
         let (text, sm) = SourceMap::build(host.model());
 
         let a_id = host.find_by_name("A")[0].id().clone();
@@ -365,7 +373,10 @@ mod tests {
         // If A has a span, verify it's reasonable
         if let Some((start, end)) = sm.span(&a_id) {
             let region = &text[start..end];
-            assert!(region.contains("A"), "A's region should contain 'A', got: {region}");
+            assert!(
+                region.contains("A"),
+                "A's region should contain 'A', got: {region}"
+            );
         }
     }
 
@@ -380,9 +391,15 @@ mod tests {
         tracker.rename(host.model_mut(), &v_id, "Car");
 
         let patched = render_dirty(&text, &sm, host.model(), &tracker);
-        assert!(patched.contains("Car"), "should contain renamed 'Car': {patched}");
+        assert!(
+            patched.contains("Car"),
+            "should contain renamed 'Car': {patched}"
+        );
         // Wheel should be preserved
-        assert!(patched.contains("Wheel"), "should still contain 'Wheel': {patched}");
+        assert!(
+            patched.contains("Wheel"),
+            "should still contain 'Wheel': {patched}"
+        );
     }
 
     #[test]
@@ -415,8 +432,8 @@ mod tests {
 
     #[test]
     fn render_dirty_remove_element() {
-        let mut host = ModelHost::from_text("package P { part def A; part def B; }")
-            .expect("should parse");
+        let mut host =
+            ModelHost::from_text("package P { part def A; part def B; }").expect("should parse");
         let (text, sm) = SourceMap::build(host.model());
 
         let mut tracker = ChangeTracker::new();
@@ -450,15 +467,16 @@ mod tests {
 
     #[test]
     fn build_subtree_model_preserves_relationships() {
-        let host = ModelHost::from_text(
-            "package P { part def Base; part def Derived :> Base; }",
-        )
-        .expect("should parse");
+        let host = ModelHost::from_text("package P { part def Base; part def Derived :> Base; }")
+            .expect("should parse");
 
         let p_id = host.find_by_name("P")[0].id().clone();
         let sub = build_subtree_model(host.model(), &p_id);
 
-        assert!(sub.element_count() >= 3, "should have P, Base, Derived (and possibly rel elements)");
+        assert!(
+            sub.element_count() >= 3,
+            "should have P, Base, Derived (and possibly rel elements)"
+        );
         assert!(sub.relationship_count() >= 1, "should have specialization");
     }
 }

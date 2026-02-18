@@ -2,7 +2,6 @@ use super::*;
 
 /// BaseExpression = LiteralExpression | FeatureReferenceExpression | InvocationExpression | '(' SequenceExpression ')' | NewExpression | IfExpression
 /// Per pest: primary_expression defined in each grammar - this is the base/atomic expression parsing
-
 /// Handle literal values (integers, strings, booleans, null)
 fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
     if p.at_any(&[

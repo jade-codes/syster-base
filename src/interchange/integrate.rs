@@ -150,18 +150,15 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_ordered: element.is_ordered,
             is_nonunique: element.is_nonunique,
             is_portion: element.is_portion,
-            direction: element
-                .properties
-                .get("direction")
-                .and_then(|v| match v {
-                    PropertyValue::String(s) => match s.as_ref() {
-                        "in" => Some(Direction::In),
-                        "out" => Some(Direction::Out),
-                        "inout" => Some(Direction::InOut),
-                        _ => None,
-                    },
+            direction: element.properties.get("direction").and_then(|v| match v {
+                PropertyValue::String(s) => match s.as_ref() {
+                    "in" => Some(Direction::In),
+                    "out" => Some(Direction::Out),
+                    "inout" => Some(Direction::InOut),
                     _ => None,
-                }),
+                },
+                _ => None,
+            }),
             multiplicity: extract_multiplicity(element, model),
             value: None,
         };
@@ -289,9 +286,7 @@ impl From<ElementKind> for SymbolKind {
             ElementKind::Structure => SymbolKind::Structure,
             ElementKind::Behavior => SymbolKind::Behavior,
             ElementKind::Function => SymbolKind::Function,
-            ElementKind::Association | ElementKind::AssociationStructure => {
-                SymbolKind::Association
-            }
+            ElementKind::Association | ElementKind::AssociationStructure => SymbolKind::Association,
             ElementKind::Interaction => SymbolKind::Interaction,
             // Usages
             ElementKind::PartUsage => SymbolKind::PartUsage,
@@ -426,8 +421,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     _ => None,
                 };
                 if let Some(ek) = element_kind {
-                    let mut rel_element =
-                        Element::new(rel_id.clone(), ek).with_owner(id.clone());
+                    let mut rel_element = Element::new(rel_id.clone(), ek).with_owner(id.clone());
                     // Store target as attribute so the XMI writer emits it
                     // and the reader can reconstruct the relationship
                     let target_attr = match ek {
@@ -481,8 +475,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
             };
 
             // Create the literal element
-            let mut lit_element =
-                Element::new(lit_id.clone(), lit_kind).with_owner(fv_id.clone());
+            let mut lit_element = Element::new(lit_id.clone(), lit_kind).with_owner(fv_id.clone());
             lit_element
                 .properties
                 .insert(Arc::from("value"), lit_prop_value);

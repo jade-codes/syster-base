@@ -137,7 +137,6 @@ pub(super) fn parse_textual_representation<P: SysMLParser>(p: &mut P) {
 
 /// Definition or Usage - determined by presence of 'def' keyword
 /// Per pest: package_body_item = { (metadata_usage | visibility_prefix? ~ (package_member | import_alias)) ~ ";"? }
-
 pub fn parse_dependency<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::DEPENDENCY);
 
@@ -299,7 +298,6 @@ fn is_definition_or_usage_start<P: SysMLParser>(p: &P) -> bool {
 /// Per pest: binding_connector = { "bind" ~ connector_end ~ "=" ~ connector_end ~ (";"|connector_body) }
 /// Per pest: connector_end = { multiplicity? ~ owned_feature_chain }
 /// Pattern: bind [mult] <source> = [mult] <target> <body|semicolon>
-
 pub fn parse_variant_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 

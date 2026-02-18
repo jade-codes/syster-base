@@ -231,13 +231,16 @@ fn test_accept_action_payload_scoping() {
     let s_symbols: Vec<_> = symbols.iter().filter(|s| s.name.as_ref() == "S").collect();
     // Should have exactly 1 ItemDefinition of S
     assert_eq!(
-        s_symbols.iter().filter(|s| s.kind == SymbolKind::ItemDefinition).count(),
+        s_symbols
+            .iter()
+            .filter(|s| s.kind == SymbolKind::ItemDefinition)
+            .count(),
         1
     );
     // The payload S from `action aa accept S` should be scoped under aa
-    let aa_payload = s_symbols.iter().find(|s| {
-        s.qualified_name.as_ref().contains("aa::S")
-    });
+    let aa_payload = s_symbols
+        .iter()
+        .find(|s| s.qualified_name.as_ref().contains("aa::S"));
     assert!(
         aa_payload.is_some(),
         "Payload S from 'action aa accept S' should have qname containing 'aa::S'"

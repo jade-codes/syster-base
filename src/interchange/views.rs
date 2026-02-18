@@ -226,7 +226,9 @@ impl<'m> ElementView<'m> {
     /// Try to interpret this element as a package.
     pub fn as_package(&self) -> Option<PackageView<'m>> {
         match self.element.kind {
-            ElementKind::Package | ElementKind::LibraryPackage => Some(PackageView { inner: *self }),
+            ElementKind::Package | ElementKind::LibraryPackage => {
+                Some(PackageView { inner: *self })
+            }
             _ => None,
         }
     }
@@ -274,9 +276,7 @@ impl<'m> ElementView<'m> {
     /// Try to interpret this element as a port (def or usage).
     pub fn as_port(&self) -> Option<PortView<'m>> {
         match self.element.kind {
-            ElementKind::PortDefinition | ElementKind::PortUsage => {
-                Some(PortView { inner: *self })
-            }
+            ElementKind::PortDefinition | ElementKind::PortUsage => Some(PortView { inner: *self }),
             _ => None,
         }
     }
@@ -790,9 +790,7 @@ mod tests {
 
     #[test]
     fn view_definition_supertypes() {
-        let model = model_from_text(
-            "package P { part def Vehicle; part def Car :> Vehicle; }",
-        );
+        let model = model_from_text("package P { part def Vehicle; part def Car :> Vehicle; }");
 
         let car_views = model.find_by_name("Car");
         assert_eq!(car_views.len(), 1);
@@ -828,9 +826,8 @@ mod tests {
 
     #[test]
     fn view_package_definitions_and_usages() {
-        let model = model_from_text(
-            "package P { part def A; part def B; part x: A; attribute y; }",
-        );
+        let model =
+            model_from_text("package P { part def A; part def B; part x: A; attribute y; }");
 
         let pkg = model.root_views()[0]
             .as_package()
@@ -845,9 +842,7 @@ mod tests {
 
     #[test]
     fn view_find_by_kind() {
-        let model = model_from_text(
-            "package P { part def A; part def B; part x: A; }",
-        );
+        let model = model_from_text("package P { part def A; part def B; part x: A; }");
 
         let part_defs = model.find_by_kind(ElementKind::PartDefinition);
         assert_eq!(part_defs.len(), 2);
