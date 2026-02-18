@@ -94,9 +94,7 @@ impl ModelFormat for Yaml {
 #[cfg(feature = "interchange")]
 mod reader {
     use super::*;
-    use crate::interchange::model::{
-        Element, ElementId, ElementKind, PropertyValue, Relationship, RelationshipKind,
-    };
+    use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue};
     use serde_yaml::Value;
     use std::sync::Arc;
 
@@ -116,8 +114,8 @@ mod reader {
             match value {
                 Value::Mapping(map) => {
                     // Single item - element or relationship
-                    if let Some(rel) = parse_relationship(&map) {
-                        model.relationships.push(rel);
+                    if let Some((id, kind, source, target, owner)) = parse_relationship(&map) {
+                        model.add_rel(id, kind, source, target, owner);
                     } else if let Some(element) = parse_element(&map)? {
                         model.add_element(element);
                     }
@@ -127,8 +125,10 @@ mod reader {
                     for item in seq {
                         if let Value::Mapping(map) = item {
                             // Try relationship first
-                            if let Some(rel) = parse_relationship(&map) {
-                                model.relationships.push(rel);
+                            if let Some((id, kind, source, target, owner)) =
+                                parse_relationship(&map)
+                            {
+                                model.add_rel(id, kind, source, target, owner);
                             } else if let Some(element) = parse_element(&map)? {
                                 model.add_element(element);
                             }
@@ -148,49 +148,25 @@ mod reader {
     }
 
     /// Parse a YAML mapping as a Relationship if it has source/target fields.
-    fn parse_relationship(map: &serde_yaml::Mapping) -> Option<Relationship> {
+    /// Returns (id, ElementKind, source, target, owner) tuple.
+    fn parse_relationship(
+        map: &serde_yaml::Mapping,
+    ) -> Option<(String, ElementKind, String, String, Option<ElementId>)> {
         // Must have @id, @type, source, and target
         let id = get_string(map, "@id")?;
         let type_str = get_string(map, "@type")?;
 
-        // Check if this is a relationship type
-        let kind = match type_str.as_str() {
-            "Specialization" | "Subclassification" => RelationshipKind::Specialization,
-            "FeatureTyping" => RelationshipKind::FeatureTyping,
-            "Subsetting" => RelationshipKind::Subsetting,
-            "Redefinition" => RelationshipKind::Redefinition,
-            "Conjugation" => RelationshipKind::Conjugation,
-            "Membership" => RelationshipKind::Membership,
-            "OwningMembership" => RelationshipKind::OwningMembership,
-            "FeatureMembership" => RelationshipKind::FeatureMembership,
-            "NamespaceImport" => RelationshipKind::NamespaceImport,
-            "MembershipImport" => RelationshipKind::MembershipImport,
-            "Dependency" => RelationshipKind::Dependency,
-            "SatisfyRequirementUsage" => RelationshipKind::Satisfaction,
-            "RequirementVerificationMembership" => RelationshipKind::Verification,
-            "AllocationUsage" => RelationshipKind::Allocation,
-            "ConnectionUsage" => RelationshipKind::Connection,
-            "FlowConnectionUsage" => RelationshipKind::FlowConnection,
-            "Succession" => RelationshipKind::Succession,
-            "FeatureChaining" => RelationshipKind::FeatureChaining,
-            "Disjoining" => RelationshipKind::Disjoining,
-            _ => return None, // Not a relationship type
-        };
-
-        // Get source
+        // Must have source and target to be a relationship
         let source = get_ref_id(map, "source")?;
-
-        // Get target
         let target = get_ref_id(map, "target")?;
 
-        let mut rel = Relationship::new(id, kind, source, target);
+        // Parse the kind from the type string
+        let kind = ElementKind::from_xmi_type(&type_str);
 
         // Get owner if present
-        if let Some(owner_id) = get_ref_id(map, "owner") {
-            rel.owner = Some(ElementId::new(owner_id));
-        }
+        let owner = get_ref_id(map, "owner").map(ElementId::new);
 
-        Some(rel)
+        Some((id, kind, source, target, owner))
     }
 
     /// Parse a YAML mapping into an Element.
@@ -400,7 +376,7 @@ use reader::YamlReader;
 #[cfg(feature = "interchange")]
 mod writer {
     use super::*;
-    use crate::interchange::model::{Element, PropertyValue, Relationship, RelationshipKind};
+    use crate::interchange::model::{Element, PropertyValue};
     use serde_yaml::{Mapping, Value};
 
     pub struct YamlWriter;
@@ -413,14 +389,16 @@ mod writer {
         pub fn write(&self, model: &Model) -> Result<Vec<u8>, InterchangeError> {
             let mut all_items: Vec<Value> = Vec::new();
 
-            // Add all elements
+            // Add all elements (non-relationship)
             for element in model.iter_elements() {
-                all_items.push(element_to_yaml(element));
+                if element.relationship.is_none() {
+                    all_items.push(element_to_yaml(element));
+                }
             }
 
-            // Add all relationships as separate objects
-            for relationship in &model.relationships {
-                all_items.push(relationship_to_yaml(relationship));
+            // Add all relationship elements as separate objects
+            for rel_element in model.iter_relationship_elements() {
+                all_items.push(rel_element_to_yaml(rel_element));
             }
 
             let output = if all_items.len() == 1 {
@@ -435,67 +413,47 @@ mod writer {
         }
     }
 
-    /// Convert a Relationship to YAML Value.
-    fn relationship_to_yaml(rel: &Relationship) -> Value {
+    /// Convert a relationship Element to YAML Value.
+    fn rel_element_to_yaml(element: &Element) -> Value {
         let mut map = Mapping::new();
 
-        // @type based on relationship kind
-        let rel_type = match rel.kind {
-            RelationshipKind::Specialization => "Specialization",
-            RelationshipKind::FeatureTyping => "FeatureTyping",
-            RelationshipKind::Subsetting => "Subsetting",
-            RelationshipKind::Redefinition => "Redefinition",
-            RelationshipKind::Conjugation => "Conjugation",
-            RelationshipKind::Membership => "Membership",
-            RelationshipKind::OwningMembership => "OwningMembership",
-            RelationshipKind::FeatureMembership => "FeatureMembership",
-            RelationshipKind::NamespaceImport => "NamespaceImport",
-            RelationshipKind::MembershipImport => "MembershipImport",
-            RelationshipKind::Dependency => "Dependency",
-            RelationshipKind::Satisfaction => "SatisfyRequirementUsage",
-            RelationshipKind::Verification => "RequirementVerificationMembership",
-            RelationshipKind::Allocation => "AllocationUsage",
-            RelationshipKind::Connection => "ConnectionUsage",
-            RelationshipKind::FlowConnection => "FlowConnectionUsage",
-            RelationshipKind::Succession => "Succession",
-            RelationshipKind::FeatureChaining => "FeatureChaining",
-            RelationshipKind::Disjoining => "Disjoining",
-            RelationshipKind::Performs => "PerformActionUsage",
-        };
-
+        // @type from ElementKind
         map.insert(
             Value::String("@type".to_string()),
-            Value::String(rel_type.to_string()),
+            Value::String(element.kind.jsonld_type().to_string()),
         );
         map.insert(
             Value::String("@id".to_string()),
-            Value::String(rel.id.as_str().to_string()),
+            Value::String(element.id.as_str().to_string()),
         );
 
-        // source as reference
-        let mut source_map = Mapping::new();
-        source_map.insert(
-            Value::String("@id".to_string()),
-            Value::String(rel.source.as_str().to_string()),
-        );
-        map.insert(
-            Value::String("source".to_string()),
-            Value::Mapping(source_map),
-        );
-
-        // target as reference
-        let mut target_map = Mapping::new();
-        target_map.insert(
-            Value::String("@id".to_string()),
-            Value::String(rel.target.as_str().to_string()),
-        );
-        map.insert(
-            Value::String("target".to_string()),
-            Value::Mapping(target_map),
-        );
+        if let Some(ref rd) = element.relationship {
+            if let Some(src) = rd.source() {
+                let mut source_map = Mapping::new();
+                source_map.insert(
+                    Value::String("@id".to_string()),
+                    Value::String(src.as_str().to_string()),
+                );
+                map.insert(
+                    Value::String("source".to_string()),
+                    Value::Mapping(source_map),
+                );
+            }
+            if let Some(tgt) = rd.target() {
+                let mut target_map = Mapping::new();
+                target_map.insert(
+                    Value::String("@id".to_string()),
+                    Value::String(tgt.as_str().to_string()),
+                );
+                map.insert(
+                    Value::String("target".to_string()),
+                    Value::Mapping(target_map),
+                );
+            }
+        }
 
         // owner if present
-        if let Some(ref owner_id) = rel.owner {
+        if let Some(ref owner_id) = element.owner {
             let mut owner_map = Mapping::new();
             owner_map.insert(
                 Value::String("@id".to_string()),

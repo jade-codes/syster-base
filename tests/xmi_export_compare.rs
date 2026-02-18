@@ -48,38 +48,30 @@ fn export_for_comparison() {
 
     // Debug: show FeatureTyping relationships
     eprintln!("\n=== FeatureTyping relationships ===");
-    for rel in &model.relationships {
+    for rel in model.iter_relationship_elements() {
         if format!("{:?}", rel.kind) == "FeatureTyping" {
-            let src_name = model
-                .elements
-                .get(&rel.source)
-                .and_then(|e| e.name.as_ref());
-            let tgt_name = model
-                .elements
-                .get(&rel.target)
-                .and_then(|e| e.name.as_ref());
+            let src_id = rel.source().unwrap();
+            let tgt_id = rel.target().unwrap();
+            let src_name = model.elements.get(src_id).and_then(|e| e.name.as_ref());
+            let tgt_name = model.elements.get(tgt_id).and_then(|e| e.name.as_ref());
             eprintln!(
                 "  {} ({:?}) -> {} ({:?})",
-                rel.source, src_name, rel.target, tgt_name
+                src_id, src_name, tgt_id, tgt_name
             );
         }
     }
 
     // Debug: show Subsetting relationships
     eprintln!("\n=== Subsetting relationships ===");
-    for rel in &model.relationships {
+    for rel in model.iter_relationship_elements() {
         if format!("{:?}", rel.kind) == "Subsetting" {
-            let src_name = model
-                .elements
-                .get(&rel.source)
-                .and_then(|e| e.name.as_ref());
-            let tgt_name = model
-                .elements
-                .get(&rel.target)
-                .and_then(|e| e.name.as_ref());
+            let src_id = rel.source().unwrap();
+            let tgt_id = rel.target().unwrap();
+            let src_name = model.elements.get(src_id).and_then(|e| e.name.as_ref());
+            let tgt_name = model.elements.get(tgt_id).and_then(|e| e.name.as_ref());
             eprintln!(
                 "  {} ({:?}) subsets {} ({:?})",
-                rel.source, src_name, rel.target, tgt_name
+                src_id, src_name, tgt_id, tgt_name
             );
         }
     }
@@ -93,19 +85,15 @@ fn export_for_comparison() {
     }
     // Debug: show FeatureChaining relationships
     eprintln!("\n=== FeatureChaining relationships ===");
-    for rel in &model.relationships {
+    for rel in model.iter_relationship_elements() {
         if format!("{:?}", rel.kind) == "FeatureChaining" {
-            let src_name = model
-                .elements
-                .get(&rel.source)
-                .and_then(|e| e.name.as_ref());
-            let tgt_name = model
-                .elements
-                .get(&rel.target)
-                .and_then(|e| e.name.as_ref());
+            let src_id = rel.source().unwrap();
+            let tgt_id = rel.target().unwrap();
+            let src_name = model.elements.get(src_id).and_then(|e| e.name.as_ref());
+            let tgt_name = model.elements.get(tgt_id).and_then(|e| e.name.as_ref());
             eprintln!(
                 "  {} ({:?}) chains {} ({:?})",
-                rel.source, src_name, rel.target, tgt_name
+                src_id, src_name, tgt_id, tgt_name
             );
         }
     }
@@ -131,7 +119,7 @@ fn debug_ports_roundtrip() {
     eprintln!(
         "\nOriginal: {} elements, {} relationships",
         model.elements.len(),
-        model.relationships.len()
+        model.relationship_count()
     );
 
     // Count Subclassification elements
@@ -162,7 +150,7 @@ fn debug_ports_roundtrip() {
     eprintln!(
         "\nReimported: {} elements, {} relationships",
         model2.elements.len(),
-        model2.relationships.len()
+        model2.relationship_count()
     );
 
     // Find missing elements
@@ -178,10 +166,12 @@ fn debug_ports_roundtrip() {
     }
 
     // Show relationships
-    if !model.relationships.is_empty() {
+    if model.relationship_count() > 0 {
         eprintln!("\nOriginal relationships (first 5):");
-        for rel in model.relationships.iter().take(5) {
-            eprintln!("  {:?}: {} -> {}", rel.kind, rel.source, rel.target);
+        for rel in model.iter_relationship_elements().take(5) {
+            let src = rel.source().map(|s| s.as_str()).unwrap_or("?");
+            let tgt = rel.target().map(|t| t.as_str()).unwrap_or("?");
+            eprintln!("  {:?}: {} -> {}", rel.kind, src, tgt);
         }
     }
 }

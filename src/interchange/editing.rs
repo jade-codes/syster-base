@@ -23,7 +23,7 @@
 //! assert_eq!(dirty.len(), 1);
 //! ```
 
-use super::model::{Element, ElementId, Model, PropertyValue, Relationship, RelationshipKind};
+use super::model::{Element, ElementId, ElementKind, Model, PropertyValue};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -40,8 +40,8 @@ pub struct ChangeTracker {
     created: HashSet<ElementId>,
     /// Element IDs that have been removed.
     removed: HashSet<ElementId>,
-    /// Relationship indices that were added.
-    added_relationships: Vec<usize>,
+    /// Relationship element IDs that were added.
+    added_relationships: HashSet<ElementId>,
 }
 
 impl ChangeTracker {
@@ -131,6 +131,8 @@ impl ChangeTracker {
     pub fn set_abstract(&mut self, model: &mut Model, id: &ElementId, value: bool) {
         if let Some(el) = model.get_mut(id) {
             el.is_abstract = value;
+            el.properties
+                .insert(Arc::from("isAbstract"), PropertyValue::Boolean(value));
             self.modified.insert(id.clone());
         }
     }
@@ -139,6 +141,8 @@ impl ChangeTracker {
     pub fn set_variation(&mut self, model: &mut Model, id: &ElementId, value: bool) {
         if let Some(el) = model.get_mut(id) {
             el.is_variation = value;
+            el.properties
+                .insert(Arc::from("isVariation"), PropertyValue::Boolean(value));
             self.modified.insert(id.clone());
         }
     }
@@ -167,6 +171,10 @@ impl ChangeTracker {
 
     /// Add a new element to the model.
     /// If `owner_id` is Some, the element will be owned by that element.
+    ///
+    /// Non-relationship elements are automatically wrapped in an
+    /// `OwningMembership` or `FeatureMembership` intermediary (per KerML),
+    /// unless the parent is already a membership.
     pub fn add_element(
         &mut self,
         model: &mut Model,
@@ -176,11 +184,44 @@ impl ChangeTracker {
         let id = element.id.clone();
 
         if let Some(parent_id) = owner_id {
-            element.owner = Some(parent_id.clone());
-            // Add to parent's owned_elements
-            if let Some(parent) = model.get_mut(parent_id) {
-                parent.owned_elements.push(id.clone());
-                self.modified.insert(parent_id.clone());
+            // Decide whether to wrap in a membership.
+            // Skip wrapping when:
+            //  - the child is itself a relationship or membership
+            //  - the parent is already a membership (already wrapped)
+            //  - the parent is a relationship (relationships own their
+            //    ownedRelatedElement directly, e.g. FeatureValue → LiteralString)
+            let needs_wrap = !element.kind.is_relationship()
+                && !element.kind.is_membership()
+                && model.get(parent_id).map_or(false, |p| {
+                    !p.kind.is_membership() && !p.kind.is_relationship()
+                });
+
+            if needs_wrap {
+                // Create a membership wrapper between parent and child
+                let m_kind = ElementKind::membership_kind_for(element.kind);
+                let m_id = ElementId::new(format!("{}-m", id.as_str()));
+
+                let mut membership = Element::new(m_id.clone(), m_kind);
+                membership.owner = Some(parent_id.clone());
+                membership.owned_elements.push(id.clone());
+
+                // Child is owned by the membership, not the parent
+                element.owner = Some(m_id.clone());
+
+                // Parent owns the membership
+                if let Some(parent) = model.get_mut(parent_id) {
+                    parent.owned_elements.push(m_id.clone());
+                    self.modified.insert(parent_id.clone());
+                }
+
+                model.add_element(membership);
+            } else {
+                // Relationship or parent is already a membership — direct child
+                element.owner = Some(parent_id.clone());
+                if let Some(parent) = model.get_mut(parent_id) {
+                    parent.owned_elements.push(id.clone());
+                    self.modified.insert(parent_id.clone());
+                }
             }
         }
 
@@ -192,7 +233,23 @@ impl ChangeTracker {
 
     /// Remove an element from the model.
     /// Also removes it from its owner's owned_elements list.
+    /// If the owner is a membership wrapper that would be left empty,
+    /// the membership is removed too.
     pub fn remove_element(&mut self, model: &mut Model, id: &ElementId) -> Option<Element> {
+        // Check if the owner is a membership wrapper that would be left empty
+        let membership_to_remove =
+            model
+                .get(id)
+                .and_then(|el| el.owner.as_ref())
+                .and_then(|owner_id| {
+                    model
+                        .get(owner_id)
+                        .filter(|owner| {
+                            owner.kind.is_membership() && owner.owned_elements.len() <= 1
+                        })
+                        .map(|_| owner_id.clone())
+                });
+
         // Remove from parent's owned_elements
         if let Some(el) = model.get(id) {
             if let Some(owner_id) = el.owner.clone() {
@@ -203,13 +260,39 @@ impl ChangeTracker {
             }
         }
 
+        // If the owner was a membership that's now empty, remove it too
+        if let Some(m_id) = membership_to_remove {
+            if let Some(m_el) = model.get(&m_id) {
+                if let Some(grandparent_id) = m_el.owner.clone() {
+                    if let Some(gp) = model.get_mut(&grandparent_id) {
+                        gp.owned_elements.retain(|child| *child != m_id);
+                        self.modified.insert(grandparent_id);
+                    }
+                }
+            }
+            model.roots.retain(|r| *r != m_id);
+            model.elements.swap_remove(&m_id);
+            self.removed.insert(m_id);
+        }
+
         // Remove from roots if it was a root
         model.roots.retain(|r| r != id);
 
         // Remove relationships involving this element
-        model
-            .relationships
-            .retain(|r| &r.source != id && &r.target != id);
+        // Remove relationship elements from the elements map
+        let rel_element_ids: Vec<ElementId> = model
+            .elements
+            .values()
+            .filter(|e| {
+                e.relationship
+                    .as_ref()
+                    .map_or(false, |rd| rd.source.contains(id) || rd.target.contains(id))
+            })
+            .map(|e| e.id.clone())
+            .collect();
+        for rel_id in rel_element_ids {
+            model.elements.swap_remove(&rel_id);
+        }
 
         let removed = model.elements.swap_remove(id);
         if removed.is_some() {
@@ -226,41 +309,103 @@ impl ChangeTracker {
         &mut self,
         model: &mut Model,
         id: impl Into<ElementId>,
-        kind: RelationshipKind,
+        kind: ElementKind,
         source: impl Into<ElementId>,
         target: impl Into<ElementId>,
     ) {
         let source_id: ElementId = source.into();
-        let rel = Relationship::new(id, kind, source_id.clone(), target);
-        let idx = model.relationships.len();
-        model.add_relationship(rel);
-        self.added_relationships.push(idx);
+        let rel_id = model.add_rel(id, kind, source_id.clone(), target, None);
+        self.added_relationships.insert(rel_id);
         self.modified.insert(source_id);
     }
 
     /// Move an element to a new owner.
     pub fn reparent(&mut self, model: &mut Model, id: &ElementId, new_owner: &ElementId) {
-        // Remove from old owner
-        if let Some(el) = model.get(id) {
-            if let Some(old_owner_id) = el.owner.clone() {
-                if let Some(old_parent) = model.get_mut(&old_owner_id) {
-                    old_parent.owned_elements.retain(|child| child != id);
-                    self.modified.insert(old_owner_id);
+        // Determine if the child is wrapped in a membership
+        let membership_id = model
+            .get(id)
+            .and_then(|el| el.owner.as_ref())
+            .and_then(|owner_id| {
+                model
+                    .get(owner_id)
+                    .filter(|owner| owner.kind.is_membership())
+                    .map(|_| owner_id.clone())
+            });
+
+        if let Some(m_id) = membership_id {
+            // Move the membership wrapper (which carries the child)
+            // Remove membership from its old parent (the logical grandparent)
+            if let Some(m_el) = model.get(&m_id) {
+                if let Some(gp_id) = m_el.owner.clone() {
+                    if let Some(gp) = model.get_mut(&gp_id) {
+                        gp.owned_elements.retain(|child| *child != m_id);
+                        self.modified.insert(gp_id);
+                    }
+                }
+            }
+            // If the membership was a root, remove it from roots
+            model.roots.retain(|r| *r != m_id);
+
+            // Re-parent membership to new_owner
+            if let Some(m_el) = model.get_mut(&m_id) {
+                m_el.owner = Some(new_owner.clone());
+            }
+            if let Some(new_parent) = model.get_mut(new_owner) {
+                new_parent.owned_elements.push(m_id.clone());
+                self.modified.insert(new_owner.clone());
+            }
+        } else {
+            // No membership wrapper — element is either a root or a relationship.
+            // Detach from old parent (if any).
+            if let Some(el) = model.get(id) {
+                if let Some(old_owner_id) = el.owner.clone() {
+                    if let Some(old_parent) = model.get_mut(&old_owner_id) {
+                        old_parent.owned_elements.retain(|child| child != id);
+                        self.modified.insert(old_owner_id);
+                    }
+                }
+            }
+            // If the element was a root, remove it from roots
+            model.roots.retain(|r| r != id);
+
+            // For non-relationship elements, create a membership wrapper
+            // so the invariant holds (all content children are wrapped).
+            let should_wrap = model.get(id).map_or(false, |el| {
+                !el.kind.is_relationship() && !el.kind.is_membership()
+            }) && model.get(new_owner).map_or(false, |p| {
+                !p.kind.is_membership() && !p.kind.is_relationship()
+            });
+
+            if should_wrap {
+                let kind = model.get(id).unwrap().kind;
+                let m_kind = ElementKind::membership_kind_for(kind);
+                let m_id = ElementId::new(format!("{}-m", id.as_str()));
+
+                let mut membership = Element::new(m_id.clone(), m_kind);
+                membership.owner = Some(new_owner.clone());
+                membership.owned_elements.push(id.clone());
+
+                if let Some(el) = model.get_mut(id) {
+                    el.owner = Some(m_id.clone());
+                }
+                if let Some(new_parent) = model.get_mut(new_owner) {
+                    new_parent.owned_elements.push(m_id.clone());
+                    self.modified.insert(new_owner.clone());
+                }
+                model.add_element(membership);
+            } else {
+                // Relationship element — direct child, no wrapper needed
+                if let Some(el) = model.get_mut(id) {
+                    el.owner = Some(new_owner.clone());
+                }
+                if let Some(new_parent) = model.get_mut(new_owner) {
+                    new_parent.owned_elements.push(id.clone());
+                    self.modified.insert(new_owner.clone());
                 }
             }
         }
 
-        // Set new owner
-        if let Some(el) = model.get_mut(id) {
-            el.owner = Some(new_owner.clone());
-            self.modified.insert(id.clone());
-        }
-
-        // Add to new owner's children
-        if let Some(new_parent) = model.get_mut(new_owner) {
-            new_parent.owned_elements.push(id.clone());
-            self.modified.insert(new_owner.clone());
-        }
+        self.modified.insert(id.clone());
     }
 }
 
@@ -419,7 +564,7 @@ mod tests {
         t.add_relationship(
             h.model_mut(),
             ElementId::generate(),
-            RelationshipKind::Specialization,
+            ElementKind::Specialization,
             derived_id.clone(),
             base_id.clone(),
         );
@@ -427,11 +572,11 @@ mod tests {
         assert!(t.is_dirty(&derived_id));
         assert!(h.model().relationship_count() > 0);
 
-        // Check the relationship exists
-        let rels: Vec<_> = h.model().relationships_from(&derived_id).collect();
+        // Check the relationship exists via element-based query
+        let rels: Vec<_> = h.model().rel_elements_from(&derived_id).collect();
         let has_spec = rels
             .iter()
-            .any(|r| r.kind == RelationshipKind::Specialization && r.target == base_id);
+            .any(|r| r.kind == ElementKind::Specialization && r.target() == Some(&base_id));
         assert!(has_spec, "should have specialization relationship");
     }
 

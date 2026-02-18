@@ -192,6 +192,11 @@ pub enum ElementKind {
     Disjoining,
     Unioning,
 
+    // Dependency and requirement relationships
+    Dependency,
+    Satisfaction,
+    Verification,
+
     // Comments and documentation
     Comment,
     Documentation,
@@ -305,8 +310,69 @@ impl ElementKind {
                 | Self::Intersecting
                 | Self::Disjoining
                 | Self::Unioning
+                | Self::Dependency
+                | Self::Satisfaction
+                | Self::Verification
                 | Self::Annotation
         )
+    }
+
+    /// Returns true if this is a membership relationship — an ownership
+    /// intermediary in the KerML metamodel.
+    ///
+    /// Per KerML, every ownership edge passes through a Membership (or subtype).
+    /// Membership elements are transparent containers: traversal helpers like
+    /// `Model::owned_members()` "look through" them to reach the actual content.
+    pub fn is_membership(&self) -> bool {
+        matches!(
+            self,
+            Self::OwningMembership
+                | Self::FeatureMembership
+                | Self::ReturnParameterMembership
+                | Self::ParameterMembership
+                | Self::EndFeatureMembership
+                | Self::ResultExpressionMembership
+        )
+    }
+
+    /// Returns true if this element kind is a Feature (or Feature subtype)
+    /// in the KerML metamodel.
+    ///
+    /// Feature children of Types are owned through `FeatureMembership`;
+    /// other children use `OwningMembership`.
+    pub fn is_feature_kind(&self) -> bool {
+        self.is_usage()
+            || matches!(
+                self,
+                Self::Connector
+                    | Self::BindingConnector
+                    | Self::Succession
+                    | Self::Flow
+                    | Self::MultiplicityRange
+                    | Self::LiteralInteger
+                    | Self::LiteralReal
+                    | Self::LiteralInfinity
+                    | Self::LiteralBoolean
+                    | Self::LiteralString
+                    | Self::NullExpression
+                    | Self::FeatureReferenceExpression
+                    | Self::OperatorExpression
+                    | Self::InvocationExpression
+                    | Self::FeatureChainExpression
+                    | Self::ConstructorExpression
+            )
+    }
+
+    /// Pick the appropriate membership kind for wrapping this child element.
+    ///
+    /// Returns `FeatureMembership` if the child is a Feature subtype,
+    /// otherwise `OwningMembership`.
+    pub fn membership_kind_for(child_kind: ElementKind) -> ElementKind {
+        if child_kind.is_feature_kind() {
+            Self::FeatureMembership
+        } else {
+            Self::OwningMembership
+        }
     }
 
     /// Returns true if this element kind is rendered inline in decompiled
@@ -472,6 +538,9 @@ impl ElementKind {
             Self::Intersecting => "kerml:Intersecting",
             Self::Disjoining => "kerml:Disjoining",
             Self::Unioning => "kerml:Unioning",
+            Self::Dependency => "kerml:Dependency",
+            Self::Satisfaction => "sysml:SatisfyRequirementUsage",
+            Self::Verification => "sysml:RequirementVerificationMembership",
             Self::Comment => "kerml:Comment",
             Self::Documentation => "kerml:Documentation",
             Self::TextualRepresentation => "kerml:TextualRepresentation",
@@ -579,6 +648,9 @@ impl ElementKind {
             Self::Intersecting => "sysml:Intersecting",
             Self::Disjoining => "sysml:Disjoining",
             Self::Unioning => "sysml:Unioning",
+            Self::Dependency => "sysml:Dependency",
+            Self::Satisfaction => "sysml:SatisfyRequirementUsage",
+            Self::Verification => "sysml:RequirementVerificationMembership",
             Self::Comment => "sysml:Comment",
             Self::Documentation => "sysml:Documentation",
             Self::TextualRepresentation => "sysml:TextualRepresentation",
@@ -691,6 +763,9 @@ impl ElementKind {
             "Intersecting" => Self::Intersecting,
             "Disjoining" => Self::Disjoining,
             "Unioning" => Self::Unioning,
+            "Dependency" => Self::Dependency,
+            "SatisfyRequirementUsage" => Self::Satisfaction,
+            "RequirementVerificationMembership" => Self::Verification,
             "Comment" => Self::Comment,
             "Documentation" => Self::Documentation,
             "TextualRepresentation" => Self::TextualRepresentation,
@@ -759,6 +834,9 @@ pub struct Element {
     pub visibility: Visibility,
     /// Additional properties as key-value pairs (IndexMap preserves order).
     pub properties: IndexMap<Arc<str>, PropertyValue>,
+    /// Relationship-specific data (source/target).
+    /// Present when this element represents a relationship edge.
+    pub relationship: Option<RelationshipData>,
 }
 
 impl Element {
@@ -786,7 +864,59 @@ impl Element {
             is_portion: false,
             visibility: Visibility::Public,
             properties: IndexMap::new(),
+            relationship: None,
         }
+    }
+
+    /// Create a new relationship element with the given source and target.
+    ///
+    /// This is a convenience constructor for elements where
+    /// `kind.is_relationship()` is true.
+    pub fn new_relationship(
+        id: impl Into<ElementId>,
+        kind: ElementKind,
+        source: impl Into<ElementId>,
+        target: impl Into<ElementId>,
+    ) -> Self {
+        Self {
+            relationship: Some(RelationshipData::new(source, target)),
+            ..Self::new(id, kind)
+        }
+    }
+
+    /// Returns `true` if this element carries relationship data.
+    pub fn is_relationship_element(&self) -> bool {
+        self.relationship.is_some()
+    }
+
+    /// Get the relationship data, if this element is a relationship.
+    pub fn as_relationship(&self) -> Option<&RelationshipData> {
+        self.relationship.as_ref()
+    }
+
+    /// Get a mutable reference to the relationship data.
+    pub fn as_relationship_mut(&mut self) -> Option<&mut RelationshipData> {
+        self.relationship.as_mut()
+    }
+
+    /// Get the first source element ID (convenience for relationship elements).
+    pub fn source(&self) -> Option<&ElementId> {
+        self.relationship.as_ref()?.source()
+    }
+
+    /// Get the first target element ID (convenience for relationship elements).
+    pub fn target(&self) -> Option<&ElementId> {
+        self.relationship.as_ref()?.target()
+    }
+
+    /// Set relationship data on this element.
+    pub fn with_relationship(
+        mut self,
+        source: impl Into<ElementId>,
+        target: impl Into<ElementId>,
+    ) -> Self {
+        self.relationship = Some(RelationshipData::new(source, target));
+        self
     }
 
     /// Set the name.
@@ -810,6 +940,12 @@ impl Element {
     /// Set the owner.
     pub fn with_owner(mut self, owner: impl Into<ElementId>) -> Self {
         self.owner = Some(owner.into());
+        self
+    }
+
+    /// Set the owner from an `Option<ElementId>`.
+    pub fn with_owner_opt(mut self, owner: Option<ElementId>) -> Self {
+        self.owner = owner;
         self
     }
 
@@ -966,146 +1102,59 @@ impl From<ElementId> for PropertyValue {
 }
 
 // ============================================================================
-// RELATIONSHIP
+// RELATIONSHIP DATA (on Element)
+// ============================================================================
+
+/// Relationship-specific data stored on an `Element`.
+///
+/// When an element's `ElementKind::is_relationship()` is true, this carries
+/// the source/target references that make it a relationship edge.
+/// This is the first step toward the KerML metamodel where every
+/// Relationship IS an Element.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RelationshipData {
+    /// Source element(s) of the relationship.
+    pub source: Vec<ElementId>,
+    /// Target element(s) of the relationship.
+    pub target: Vec<ElementId>,
+}
+
+impl RelationshipData {
+    /// Create relationship data with a single source and target.
+    pub fn new(source: impl Into<ElementId>, target: impl Into<ElementId>) -> Self {
+        Self {
+            source: vec![source.into()],
+            target: vec![target.into()],
+        }
+    }
+
+    /// Create relationship data with multiple sources and targets.
+    pub fn new_multi(sources: Vec<ElementId>, targets: Vec<ElementId>) -> Self {
+        Self {
+            source: sources,
+            target: targets,
+        }
+    }
+
+    /// Get the first source element ID, if any.
+    pub fn source(&self) -> Option<&ElementId> {
+        self.source.first()
+    }
+
+    /// Get the first target element ID, if any.
+    pub fn target(&self) -> Option<&ElementId> {
+        self.target.first()
+    }
+}
+
+// ============================================================================
+// RELATIONSHIP (legacy — will be removed in Phase 5)
 // ============================================================================
 
 /// A relationship between two elements.
 ///
-/// In the KerML/SysML metamodel, relationships are first-class elements.
-/// This struct captures the essential information for interchange.
-#[derive(Clone, Debug)]
-pub struct Relationship {
-    /// Unique identifier for the relationship itself.
-    pub id: ElementId,
-    /// The kind of relationship.
-    pub kind: RelationshipKind,
-    /// The source element ID.
-    pub source: ElementId,
-    /// The target element ID.
-    pub target: ElementId,
-    /// The owning element (usually the source).
-    pub owner: Option<ElementId>,
-}
-
-impl Relationship {
-    /// Create a new relationship.
-    pub fn new(
-        id: impl Into<ElementId>,
-        kind: RelationshipKind,
-        source: impl Into<ElementId>,
-        target: impl Into<ElementId>,
-    ) -> Self {
-        Self {
-            id: id.into(),
-            kind,
-            source: source.into(),
-            target: target.into(),
-            owner: None,
-        }
-    }
-}
-
-/// The kind of relationship.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub enum RelationshipKind {
-    /// Specialization (general → specific).
-    Specialization,
-    /// Feature typing (feature → type).
-    FeatureTyping,
-    /// Subsetting (feature → subsetted feature).
-    Subsetting,
-    /// Redefinition (feature → redefined feature).
-    Redefinition,
-    /// Conjugation (conjugated port → original).
-    Conjugation,
-    /// Membership (namespace → member).
-    Membership,
-    /// Owning membership (owner → owned).
-    OwningMembership,
-    /// Feature membership (type → feature).
-    FeatureMembership,
-    /// Namespace import.
-    NamespaceImport,
-    /// Membership import.
-    MembershipImport,
-    /// Dependency.
-    Dependency,
-    /// Requirement satisfaction.
-    Satisfaction,
-    /// Requirement verification.
-    Verification,
-    /// Allocation.
-    Allocation,
-    /// Connection.
-    Connection,
-    /// Flow connection.
-    FlowConnection,
-    /// Succession.
-    Succession,
-    /// Feature chaining.
-    FeatureChaining,
-    /// Disjoining (type disjoint from another type).
-    Disjoining,
-    /// Action performs (action usage → action definition).
-    Performs,
-}
-
-impl RelationshipKind {
-    /// Get the XMI type name.
-    pub fn xmi_type(&self) -> &'static str {
-        match self {
-            Self::Specialization => "kerml:Specialization",
-            Self::FeatureTyping => "kerml:FeatureTyping",
-            Self::Subsetting => "kerml:Subsetting",
-            Self::Redefinition => "kerml:Redefinition",
-            Self::Conjugation => "kerml:Conjugation",
-            Self::Membership => "kerml:Membership",
-            Self::OwningMembership => "kerml:OwningMembership",
-            Self::FeatureMembership => "kerml:FeatureMembership",
-            Self::NamespaceImport => "kerml:NamespaceImport",
-            Self::MembershipImport => "kerml:MembershipImport",
-            Self::Dependency => "kerml:Dependency",
-            Self::Satisfaction => "sysml:SatisfyRequirementUsage",
-            Self::Verification => "sysml:RequirementVerificationMembership",
-            Self::Allocation => "sysml:AllocationUsage",
-            Self::Connection => "sysml:ConnectionUsage",
-            Self::FlowConnection => "sysml:FlowConnectionUsage",
-            Self::Succession => "sysml:SuccessionAsUsage",
-            Self::FeatureChaining => "kerml:FeatureChaining",
-            Self::Disjoining => "kerml:Disjoining",
-            Self::Performs => "sysml:PerformActionUsage",
-        }
-    }
-
-    /// Parse from XMI type name.
-    pub fn from_xmi_type(xmi_type: &str) -> Option<Self> {
-        let type_name = xmi_type.rsplit(':').next().unwrap_or(xmi_type);
-        match type_name {
-            "Specialization" => Some(Self::Specialization),
-            "FeatureTyping" => Some(Self::FeatureTyping),
-            "Subsetting" => Some(Self::Subsetting),
-            "Redefinition" => Some(Self::Redefinition),
-            "Conjugation" => Some(Self::Conjugation),
-            "Membership" => Some(Self::Membership),
-            "OwningMembership" => Some(Self::OwningMembership),
-            "FeatureMembership" => Some(Self::FeatureMembership),
-            "NamespaceImport" => Some(Self::NamespaceImport),
-            "MembershipImport" => Some(Self::MembershipImport),
-            "Dependency" => Some(Self::Dependency),
-            "SatisfyRequirementUsage" => Some(Self::Satisfaction),
-            "RequirementVerificationMembership" => Some(Self::Verification),
-            "AllocationUsage" => Some(Self::Allocation),
-            "ConnectionUsage" => Some(Self::Connection),
-            "FlowConnectionUsage" => Some(Self::FlowConnection),
-            "SuccessionAsUsage" => Some(Self::Succession),
-            "FeatureChaining" => Some(Self::FeatureChaining),
-            "Disjoining" => Some(Self::Disjoining),
-            "PerformActionUsage" => Some(Self::Performs),
-            _ => None,
-        }
-    }
-}
-
+/// **Deprecated**: This separate struct will be removed once all code
+/// migrates to using `Element` with `RelationshipData`.  See
 // ============================================================================
 // MODEL
 // ============================================================================
@@ -1120,8 +1169,6 @@ impl RelationshipKind {
 pub struct Model {
     /// All elements by ID (IndexMap preserves insertion order for deterministic serialization).
     pub elements: IndexMap<ElementId, Element>,
-    /// All relationships.
-    pub relationships: Vec<Relationship>,
     /// Root element IDs (top-level packages).
     pub roots: Vec<ElementId>,
     /// Metadata about the model.
@@ -1145,9 +1192,22 @@ impl Model {
         &self.elements.get(&id).unwrap().id
     }
 
-    /// Add a relationship to the model.
-    pub fn add_relationship(&mut self, relationship: Relationship) {
-        self.relationships.push(relationship);
+    /// Add a relationship as an `Element` with `RelationshipData`.
+    ///
+    /// The element is stored in `self.elements` only.
+    pub fn add_rel(
+        &mut self,
+        id: impl Into<ElementId>,
+        kind: ElementKind,
+        source: impl Into<ElementId>,
+        target: impl Into<ElementId>,
+        owner: Option<ElementId>,
+    ) -> ElementId {
+        let id = id.into();
+        let element = Element::new_relationship(id.clone(), kind, source.into(), target.into())
+            .with_owner_opt(owner);
+        self.elements.insert(id.clone(), element);
+        id
     }
 
     /// Get an element by ID.
@@ -1170,24 +1230,59 @@ impl Model {
         self.roots.iter().filter_map(|id| self.elements.get(id))
     }
 
-    /// Get relationships where the given element is the source.
-    pub fn relationships_from<'a>(
+    // ── Relationship queries ────────────────────────────────────────
+
+    /// Get relationship **elements** where the given element is a source.
+    ///
+    /// This queries `self.elements` (not `self.relationships`), returning
+    /// `&Element` values that have `RelationshipData` with a matching source.
+    pub fn rel_elements_from<'a>(
         &'a self,
         source: &'a ElementId,
-    ) -> impl Iterator<Item = &'a Relationship> {
-        self.relationships
-            .iter()
-            .filter(move |r| &r.source == source)
+    ) -> impl Iterator<Item = &'a Element> {
+        self.elements.values().filter(move |e| {
+            e.relationship
+                .as_ref()
+                .map_or(false, |rd| rd.source.contains(source))
+        })
     }
 
-    /// Get relationships where the given element is the target.
-    pub fn relationships_to<'a>(
+    /// Get relationship **elements** where the given element is a target.
+    pub fn rel_elements_to<'a>(
         &'a self,
         target: &'a ElementId,
-    ) -> impl Iterator<Item = &'a Relationship> {
-        self.relationships
-            .iter()
-            .filter(move |r| &r.target == target)
+    ) -> impl Iterator<Item = &'a Element> {
+        self.elements.values().filter(move |e| {
+            e.relationship
+                .as_ref()
+                .map_or(false, |rd| rd.target.contains(target))
+        })
+    }
+
+    /// Get relationship elements of a specific `ElementKind` from a source.
+    pub fn rel_elements_of_kind<'a>(
+        &'a self,
+        source: &'a ElementId,
+        kind: ElementKind,
+    ) -> impl Iterator<Item = &'a Element> {
+        self.rel_elements_from(source)
+            .filter(move |e| e.kind == kind)
+    }
+
+    /// Resolve the first target element of a relationship element.
+    pub fn rel_target<'a>(&'a self, rel_element: &'a Element) -> Option<&'a Element> {
+        rel_element.target().and_then(|tid| self.get(tid))
+    }
+
+    /// Get relationship elements owned by a given element, optionally filtered by kind.
+    pub fn rel_elements_owned_by<'a>(
+        &'a self,
+        owner_id: &'a ElementId,
+        kind: ElementKind,
+    ) -> impl Iterator<Item = &'a Element> {
+        self.elements.values().filter(move |e| {
+            e.kind == kind && e.relationship.is_some() && e.owner.as_ref() == Some(owner_id)
+        })
     }
 
     /// Get the number of elements.
@@ -1195,9 +1290,125 @@ impl Model {
         self.elements.len()
     }
 
-    /// Get the number of relationships.
+    /// Get the number of relationships (counts relationship elements).
     pub fn relationship_count(&self) -> usize {
-        self.relationships.len()
+        self.elements
+            .values()
+            .filter(|e| e.relationship.is_some())
+            .count()
+    }
+
+    /// Iterate over all relationship elements.
+    pub fn iter_relationship_elements(&self) -> impl Iterator<Item = &Element> {
+        self.elements.values().filter(|e| e.relationship.is_some())
+    }
+
+    // ── Membership traversal ────────────────────────────────────────
+
+    /// Get the "content" children of an element, looking through Membership
+    /// wrappers.
+    ///
+    /// In the KerML metamodel, non-relationship children are wrapped in
+    /// `OwningMembership` / `FeatureMembership` intermediaries.  This method
+    /// transparently "unwraps" them so callers see the actual definitions,
+    /// usages, and other content elements.
+    ///
+    /// For models **without** membership wrappers (legacy or HIR-synthesized
+    /// before Phase 6), this falls back to returning direct non-relationship
+    /// children — so it works with both representation styles.
+    pub fn owned_members(&self, id: &ElementId) -> Vec<&Element> {
+        let element = match self.get(id) {
+            Some(e) => e,
+            None => return Vec::new(),
+        };
+        let mut result = Vec::new();
+        for child_id in &element.owned_elements {
+            if let Some(child) = self.get(child_id) {
+                if child.kind.is_membership() {
+                    // Look through the membership to its children
+                    for grandchild_id in &child.owned_elements {
+                        if let Some(gc) = self.get(grandchild_id) {
+                            if !gc.kind.is_relationship() {
+                                result.push(gc);
+                            }
+                        }
+                    }
+                } else if !child.kind.is_relationship() {
+                    // Direct non-relationship child (legacy / unwrapped)
+                    result.push(child);
+                }
+            }
+        }
+        result
+    }
+
+    /// Wrap all direct non-relationship, non-membership children of every
+    /// element in `OwningMembership` or `FeatureMembership` intermediaries.
+    ///
+    /// After calling this, the ownership tree matches the KerML metamodel:
+    /// ```text
+    /// Package
+    /// └── OwningMembership        (generated)
+    ///     └── PartDefinition
+    ///         ├── FeatureTyping    (relationship — direct child, no wrapper)
+    ///         └── FeatureMembership  (generated)
+    ///             └── AttributeUsage
+    /// ```
+    ///
+    /// Idempotent: elements whose parent is already a membership are skipped.
+    pub fn wrap_children_in_memberships(&mut self) {
+        // Collect (child_id, child_kind, parent_id) for elements that need wrapping.
+        let to_wrap: Vec<(ElementId, ElementKind, ElementId)> = self
+            .elements
+            .values()
+            .filter(|e| {
+                // Has an owner
+                if let Some(ref owner_id) = e.owner {
+                    // Not a relationship (relationships are direct ownedRelationship children)
+                    if e.kind.is_relationship() {
+                        return false;
+                    }
+                    // Not already a membership itself
+                    if e.kind.is_membership() {
+                        return false;
+                    }
+                    // Parent is not already a membership (i.e. not already wrapped)
+                    // AND parent is not a relationship (relationships own their
+                    // related elements directly, not through memberships —
+                    // e.g. FeatureValue → LiteralString stays direct)
+                    if let Some(owner) = self.elements.get(owner_id) {
+                        return !owner.kind.is_membership() && !owner.kind.is_relationship();
+                    }
+                }
+                false
+            })
+            .map(|e| (e.id.clone(), e.kind, e.owner.clone().unwrap()))
+            .collect();
+
+        for (child_id, child_kind, parent_id) in to_wrap {
+            let m_kind = ElementKind::membership_kind_for(child_kind);
+            let m_id = ElementId::new(format!("{}-m", child_id.as_str()));
+
+            // Create membership element
+            let mut membership = Element::new(m_id.clone(), m_kind);
+            membership.owner = Some(parent_id.clone());
+            membership.owned_elements.push(child_id.clone());
+
+            // Re-parent child: child.owner = membership
+            if let Some(child) = self.elements.get_mut(&child_id) {
+                child.owner = Some(m_id.clone());
+            }
+
+            // In parent's owned_elements: replace child_id → m_id
+            if let Some(parent) = self.elements.get_mut(&parent_id) {
+                if let Some(pos) = parent.owned_elements.iter().position(|id| *id == child_id) {
+                    parent.owned_elements[pos] = m_id.clone();
+                }
+            }
+
+            // Insert the membership element
+            self.elements.insert(m_id, membership);
+        }
     }
 }
 
@@ -1275,18 +1486,13 @@ mod tests {
         model.add_element(Element::new("def1", ElementKind::PartDefinition).with_name("Base"));
         model.add_element(Element::new("def2", ElementKind::PartDefinition).with_name("Derived"));
 
-        model.add_relationship(Relationship::new(
-            "rel1",
-            RelationshipKind::Specialization,
-            "def2",
-            "def1",
-        ));
+        model.add_rel("rel1", ElementKind::Specialization, "def2", "def1", None);
 
         assert_eq!(model.relationship_count(), 1);
         let source_id = ElementId::new("def2");
-        let rels: Vec<_> = model.relationships_from(&source_id).collect();
+        let rels: Vec<_> = model.rel_elements_from(&source_id).collect();
         assert_eq!(rels.len(), 1);
-        assert_eq!(rels[0].target.as_str(), "def1");
+        assert_eq!(rels[0].target().unwrap().as_str(), "def1");
     }
 
     #[test]
@@ -1302,6 +1508,147 @@ mod tests {
             let xmi_type = kind.xmi_type();
             let parsed = ElementKind::from_xmi_type(xmi_type);
             assert_eq!(kind, parsed, "Failed roundtrip for {xmi_type}");
+        }
+    }
+
+    // ── Phase 1: RelationshipData tests ────────────────────────────
+
+    #[test]
+    fn test_relationship_data_new() {
+        let rd = RelationshipData::new("src1", "tgt1");
+        assert_eq!(rd.source().unwrap().as_str(), "src1");
+        assert_eq!(rd.target().unwrap().as_str(), "tgt1");
+        assert_eq!(rd.source.len(), 1);
+        assert_eq!(rd.target.len(), 1);
+    }
+
+    #[test]
+    fn test_relationship_data_multi() {
+        let rd = RelationshipData::new_multi(
+            vec![ElementId::new("s1"), ElementId::new("s2")],
+            vec![ElementId::new("t1")],
+        );
+        assert_eq!(rd.source.len(), 2);
+        assert_eq!(rd.target.len(), 1);
+        assert_eq!(rd.source().unwrap().as_str(), "s1");
+    }
+
+    #[test]
+    fn test_element_new_has_no_relationship_data() {
+        let e = Element::new("e1", ElementKind::Package);
+        assert!(!e.is_relationship_element());
+        assert!(e.as_relationship().is_none());
+        assert!(e.source().is_none());
+        assert!(e.target().is_none());
+    }
+
+    #[test]
+    fn test_element_new_relationship() {
+        let e = Element::new_relationship("rel1", ElementKind::Specialization, "derived", "base");
+        assert!(e.is_relationship_element());
+        assert_eq!(e.source().unwrap().as_str(), "derived");
+        assert_eq!(e.target().unwrap().as_str(), "base");
+        assert_eq!(e.kind, ElementKind::Specialization);
+    }
+
+    #[test]
+    fn test_element_with_relationship_builder() {
+        let e = Element::new("rel2", ElementKind::FeatureTyping)
+            .with_name("typing1")
+            .with_relationship("feature1", "type1");
+        assert!(e.is_relationship_element());
+        assert_eq!(e.name.as_deref(), Some("typing1"));
+        assert_eq!(e.source().unwrap().as_str(), "feature1");
+        assert_eq!(e.target().unwrap().as_str(), "type1");
+    }
+
+    #[test]
+    fn test_element_as_relationship_mut() {
+        let mut e = Element::new_relationship("rel3", ElementKind::Subsetting, "sub", "super");
+        let rd = e.as_relationship_mut().unwrap();
+        rd.target.push(ElementId::new("super2"));
+        assert_eq!(e.as_relationship().unwrap().target.len(), 2);
+    }
+
+    // ── Phase 4: Element-based relationship creation tests ────────
+
+    #[test]
+    fn test_add_rel_creates_element() {
+        let mut model = Model::new();
+        model.add_element(Element::new("a", ElementKind::PartDefinition).with_name("A"));
+        model.add_element(Element::new("b", ElementKind::PartDefinition).with_name("B"));
+
+        model.add_rel("rel1", ElementKind::Specialization, "b", "a", None);
+
+        // Element store has the relationship element
+        assert_eq!(model.relationship_count(), 1);
+        let rel_el = model.get(&ElementId::new("rel1")).unwrap();
+        assert!(rel_el.is_relationship_element());
+        assert_eq!(rel_el.kind, ElementKind::Specialization);
+        assert_eq!(rel_el.source().unwrap().as_str(), "b");
+        assert_eq!(rel_el.target().unwrap().as_str(), "a");
+    }
+
+    #[test]
+    fn test_add_rel_preserves_owner() {
+        let mut model = Model::new();
+        model.add_element(Element::new("feat", ElementKind::Feature));
+        model.add_element(Element::new("typ", ElementKind::Class));
+
+        model.add_rel(
+            "rel_t",
+            ElementKind::FeatureTyping,
+            "feat",
+            "typ",
+            Some(ElementId::new("feat")),
+        );
+
+        let el = model.get(&ElementId::new("rel_t")).unwrap();
+        assert_eq!(el.owner.as_ref().unwrap().as_str(), "feat");
+    }
+
+    #[test]
+    fn test_add_rel_does_not_duplicate() {
+        let mut model = Model::new();
+
+        // Pre-insert an element with the same ID
+        let existing = Element::new("rel_x", ElementKind::FeatureTyping).with_name("pre-existing");
+        model.add_element(existing);
+
+        // add_rel overwrites (it's an insert into IndexMap)
+        model.add_rel("rel_x", ElementKind::FeatureTyping, "s", "t", None);
+
+        let el = model.get(&ElementId::new("rel_x")).unwrap();
+        // After add_rel, the element is the relationship element (overwritten)
+        assert!(el.is_relationship_element());
+        assert_eq!(model.relationship_count(), 1);
+    }
+
+    #[test]
+    fn test_relationship_element_kinds_are_relationships() {
+        let kinds = [
+            ElementKind::Specialization,
+            ElementKind::FeatureTyping,
+            ElementKind::Subsetting,
+            ElementKind::Redefinition,
+            ElementKind::Membership,
+            ElementKind::OwningMembership,
+            ElementKind::FeatureMembership,
+            ElementKind::NamespaceImport,
+            ElementKind::MembershipImport,
+            ElementKind::FeatureChaining,
+            ElementKind::Disjoining,
+            ElementKind::Dependency,
+            ElementKind::Satisfaction,
+            ElementKind::Verification,
+        ];
+
+        for ek in kinds {
+            assert!(
+                ek.is_relationship(),
+                "{:?} should be a relationship ElementKind",
+                ek
+            );
         }
     }
 }

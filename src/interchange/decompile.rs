@@ -15,7 +15,7 @@
 //! ```
 
 use super::metadata::{ElementMeta, ImportMetadata, SourceInfo};
-use super::model::{Element, ElementId, ElementKind, Model, RelationshipKind, Visibility};
+use super::model::{Element, ElementId, ElementKind, Model, Visibility};
 use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::Arc;
@@ -99,6 +99,17 @@ impl<'a> DecompileContext<'a> {
         let Some(element) = self.model.elements.get(&id) else {
             return id.as_str().to_string();
         };
+
+        // Skip relationship/membership wrappers — they don't contribute to
+        // the qualified name path.  Recurse to the first non-relationship
+        // ancestor so that "Package → OwningMembership → PartDef" produces
+        // "Package::PartDef" rather than "Package::<membership-id>::PartDef".
+        if element.kind.is_relationship() {
+            if let Some(owner_id) = &element.owner {
+                return self.compute_qualified_name(owner_id.clone());
+            }
+            return id.as_str().to_string();
+        }
 
         // Use declared name, or fall back to element ID
         let name = element
@@ -653,13 +664,10 @@ impl<'a> DecompileContext<'a> {
     fn format_specializations(&self, element_id: &ElementId) -> String {
         let specializations: Vec<&str> = self
             .model
-            .relationships
-            .iter()
-            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::Specialization)
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
+            .rel_elements_of_kind(element_id, ElementKind::Specialization)
+            .filter_map(|re| {
+                re.target()
+                    .and_then(|tid| self.model.elements.get(tid))
                     .and_then(|e| e.name.as_deref())
             })
             .collect();
@@ -674,10 +682,8 @@ impl<'a> DecompileContext<'a> {
     fn format_typing(&self, element_id: &ElementId) -> String {
         let mut types: Vec<String> = self
             .model
-            .relationships
-            .iter()
-            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::FeatureTyping)
-            .filter_map(|r| self.get_element_ref_name(&r.target))
+            .rel_elements_of_kind(element_id, ElementKind::FeatureTyping)
+            .filter_map(|re| re.target().and_then(|tid| self.get_element_ref_name(tid)))
             .collect();
 
         // Also check for href-based typing (cross-file references)
@@ -721,15 +727,10 @@ impl<'a> DecompileContext<'a> {
     /// Get imports for an element (namespace imports).
     fn get_namespace_imports(&self, element_id: &ElementId) -> Vec<String> {
         self.model
-            .relationships
-            .iter()
-            .filter(|r| {
-                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::NamespaceImport
-            })
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
+            .rel_elements_owned_by(element_id, ElementKind::NamespaceImport)
+            .filter_map(|re| {
+                re.target()
+                    .and_then(|tid| self.model.elements.get(tid))
                     .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
                     .map(|n| format!("{}::*", n))
             })
@@ -739,15 +740,10 @@ impl<'a> DecompileContext<'a> {
     /// Get imports for an element (membership imports).
     fn get_membership_imports(&self, element_id: &ElementId) -> Vec<String> {
         self.model
-            .relationships
-            .iter()
-            .filter(|r| {
-                r.owner == Some(element_id.clone()) && r.kind == RelationshipKind::MembershipImport
-            })
-            .filter_map(|r| {
-                self.model
-                    .elements
-                    .get(&r.target)
+            .rel_elements_owned_by(element_id, ElementKind::MembershipImport)
+            .filter_map(|re| {
+                re.target()
+                    .and_then(|tid| self.model.elements.get(tid))
                     .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
                     .map(|n| n.to_string())
             })
@@ -771,10 +767,8 @@ impl<'a> DecompileContext<'a> {
     fn format_subsetting(&self, element_id: &ElementId) -> String {
         let subsets: Vec<String> = self
             .model
-            .relationships
-            .iter()
-            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::Subsetting)
-            .filter_map(|r| self.get_element_ref_name(&r.target))
+            .rel_elements_of_kind(element_id, ElementKind::Subsetting)
+            .filter_map(|re| re.target().and_then(|tid| self.get_element_ref_name(tid)))
             .collect();
 
         if subsets.is_empty() {
@@ -788,10 +782,11 @@ impl<'a> DecompileContext<'a> {
     fn format_redefinition(&self, element_id: &ElementId) -> String {
         let redefines: Vec<String> = self
             .model
-            .relationships
-            .iter()
-            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::Redefinition)
-            .filter_map(|r| self.get_qualified_element_ref(&r.target))
+            .rel_elements_of_kind(element_id, ElementKind::Redefinition)
+            .filter_map(|re| {
+                re.target()
+                    .and_then(|tid| self.get_qualified_element_ref(tid))
+            })
             .collect();
 
         if redefines.is_empty() {
@@ -805,10 +800,8 @@ impl<'a> DecompileContext<'a> {
     fn format_chaining(&self, element_id: &ElementId) -> String {
         let chains: Vec<String> = self
             .model
-            .relationships
-            .iter()
-            .filter(|r| &r.source == element_id && r.kind == RelationshipKind::FeatureChaining)
-            .filter_map(|r| self.get_chaining_ref(&r.target))
+            .rel_elements_of_kind(element_id, ElementKind::FeatureChaining)
+            .filter_map(|re| re.target().and_then(|tid| self.get_chaining_ref(tid)))
             .collect();
 
         if chains.is_empty() {
@@ -1007,7 +1000,6 @@ fn property_to_json(value: &super::model::PropertyValue) -> serde_json::Value {
 
 #[cfg(test)]
 mod tests {
-    use super::super::model::Relationship;
     use super::*;
 
     #[test]
@@ -1123,13 +1115,13 @@ mod tests {
         model.roots.push(ElementId::from("derived-1"));
 
         // Specialization relationship
-        let rel = Relationship::new(
+        model.add_rel(
             "rel-1",
-            RelationshipKind::Specialization,
+            ElementKind::Specialization,
             "derived-1",
             "base-1",
+            None,
         );
-        model.relationships.push(rel);
 
         let result = decompile(&model);
 
@@ -1163,8 +1155,13 @@ mod tests {
         model.roots.push(pkg_id);
 
         // Typing relationship
-        let rel = Relationship::new("rel-1", RelationshipKind::FeatureTyping, "usage-1", "def-1");
-        model.relationships.push(rel);
+        model.add_rel(
+            "rel-1",
+            ElementKind::FeatureTyping,
+            "usage-1",
+            "def-1",
+            None,
+        );
 
         let result = decompile(&model);
 
@@ -1261,14 +1258,13 @@ mod tests {
         model.roots.push(ElementId::from("pkg-1"));
 
         // Namespace import relationship (owned by pkg)
-        let mut rel = Relationship::new(
+        model.add_rel(
             "import-1",
-            RelationshipKind::NamespaceImport,
+            ElementKind::NamespaceImport,
             "pkg-1",
             "target-1",
+            Some(ElementId::from("pkg-1")),
         );
-        rel.owner = Some(ElementId::from("pkg-1"));
-        model.relationships.push(rel);
 
         let result = decompile(&model);
 
@@ -1290,8 +1286,13 @@ mod tests {
         model.roots.push(ElementId::from("derived-1"));
 
         // Subsetting relationship
-        let rel = Relationship::new("rel-1", RelationshipKind::Subsetting, "derived-1", "base-1");
-        model.relationships.push(rel);
+        model.add_rel(
+            "rel-1",
+            ElementKind::Subsetting,
+            "derived-1",
+            "base-1",
+            None,
+        );
 
         let result = decompile(&model);
 
@@ -1313,8 +1314,13 @@ mod tests {
         model.roots.push(ElementId::from("redef-1"));
 
         // Redefinition relationship
-        let rel = Relationship::new("rel-1", RelationshipKind::Redefinition, "redef-1", "orig-1");
-        model.relationships.push(rel);
+        model.add_rel(
+            "rel-1",
+            ElementKind::Redefinition,
+            "redef-1",
+            "orig-1",
+            None,
+        );
 
         let result = decompile(&model);
 
@@ -1345,20 +1351,16 @@ mod tests {
         model.roots.push(ElementId::from("feat-1"));
 
         // Typing relationship
-        model.relationships.push(Relationship::new(
+        model.add_rel(
             "rel-1",
-            RelationshipKind::FeatureTyping,
+            ElementKind::FeatureTyping,
             "feat-1",
             "type-1",
-        ));
+            None,
+        );
 
         // Subsetting relationship
-        model.relationships.push(Relationship::new(
-            "rel-2",
-            RelationshipKind::Subsetting,
-            "feat-1",
-            "base-1",
-        ));
+        model.add_rel("rel-2", ElementKind::Subsetting, "feat-1", "base-1", None);
 
         let result = decompile(&model);
 

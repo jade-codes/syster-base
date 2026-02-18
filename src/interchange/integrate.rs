@@ -17,9 +17,7 @@
 //! For bridging ChangeTracker edits into Salsa queries, use
 //! [`AnalysisHost::apply_model_edit()`](crate::ide::AnalysisHost::apply_model_edit).
 
-use super::model::{
-    Element, ElementId, ElementKind, Model, PropertyValue, Relationship, RelationshipKind,
-};
+use super::model::{Element, ElementId, ElementKind, Model, PropertyValue};
 use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
@@ -79,16 +77,14 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
 
         // Collect relationships where this element is the source
         let relationships: Vec<HirRelationship> = model
-            .relationships
-            .iter()
-            .filter(|r| r.source.as_str() == element.id.as_str())
-            .filter_map(|r| {
-                let hir_kind = relationship_kind_to_hir(&r.kind)?;
+            .rel_elements_from(&element.id)
+            .filter_map(|re| {
+                let hir_kind = element_kind_to_hir(re.kind)?;
 
                 // Look up target element to get its qualified name (HIR uses names, not UUIDs)
-                let target_name: Arc<str> = model
-                    .elements
-                    .get(&r.target)
+                let target_name: Arc<str> = re
+                    .target()
+                    .and_then(|tid| model.elements.get(tid))
                     .and_then(|target_elem| {
                         target_elem
                             .qualified_name
@@ -96,7 +92,11 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
                             .or_else(|| target_elem.name.clone())
                     })
                     .map(|n| n.to_string().into())
-                    .unwrap_or_else(|| r.target.as_str().into()); // Fallback to ID if not found
+                    .unwrap_or_else(|| {
+                        re.target()
+                            .map(|tid| tid.as_str().into())
+                            .unwrap_or_else(|| "".into())
+                    }); // Fallback to ID if not found
 
                 Some(HirRelationship {
                     kind: hir_kind,
@@ -237,17 +237,17 @@ fn multiplicity_from_range(range: &Element, model: &Model) -> Option<Multiplicit
     }
 }
 
-/// Convert interchange RelationshipKind to HIR RelationshipKind.
-fn relationship_kind_to_hir(kind: &RelationshipKind) -> Option<HirRelKind> {
+/// Convert an element-based relationship kind to HIR relationship kind.
+fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
     match kind {
-        RelationshipKind::Specialization => Some(HirRelKind::Specializes),
-        RelationshipKind::FeatureTyping => Some(HirRelKind::TypedBy),
-        RelationshipKind::Redefinition => Some(HirRelKind::Redefines),
-        RelationshipKind::Subsetting => Some(HirRelKind::Subsets),
-        RelationshipKind::Satisfaction => Some(HirRelKind::Satisfies),
-        RelationshipKind::Verification => Some(HirRelKind::Verifies),
-        RelationshipKind::Performs => Some(HirRelKind::Performs),
-        _ => None, // Other relationship types don't map directly
+        ElementKind::Specialization => Some(HirRelKind::Specializes),
+        ElementKind::FeatureTyping => Some(HirRelKind::TypedBy),
+        ElementKind::Redefinition => Some(HirRelKind::Redefines),
+        ElementKind::Subsetting => Some(HirRelKind::Subsets),
+        ElementKind::Satisfaction => Some(HirRelKind::Satisfies),
+        ElementKind::Verification => Some(HirRelKind::Verifies),
+        ElementKind::ActionUsage => Some(HirRelKind::Performs), // Performs maps to ActionUsage
+        _ => None,
     }
 }
 
@@ -376,8 +376,8 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         }
         // Extract relationships from the symbol
         for hir_rel in &symbol.relationships {
-            let rel_kind = hir_relationship_kind_to_model(&hir_rel.kind);
-            if let Some(rel_kind) = rel_kind {
+            let element_kind = hir_relationship_kind_to_element_kind(&hir_rel.kind);
+            if let Some(ek) = element_kind {
                 rel_counter += 1;
                 let rel_id = ElementId::new(format!("rel_{}", rel_counter));
 
@@ -406,39 +406,32 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         ElementId::new(hir_rel.target.as_ref())
                     });
 
-                let relationship =
-                    Relationship::new(rel_id.clone(), rel_kind, id.clone(), target_id.clone());
-                model.add_relationship(relationship);
+                // Use add_rel to create the relationship element directly
+                model.add_rel(
+                    rel_id.clone(),
+                    ek,
+                    id.clone(),
+                    target_id.clone(),
+                    Some(id.clone()),
+                );
 
-                // Also create relationship elements as owned children so the
-                // XMI writer emits them (it traverses the element tree, not
-                // model.relationships).
-                let element_kind = match rel_kind {
-                    RelationshipKind::FeatureTyping => Some(ElementKind::FeatureTyping),
-                    RelationshipKind::Specialization => Some(ElementKind::Specialization),
-                    RelationshipKind::Redefinition => Some(ElementKind::Redefinition),
-                    RelationshipKind::Subsetting => Some(ElementKind::Subsetting),
-                    _ => None,
+                // Store target as attribute so the XMI writer emits it
+                // and the reader can reconstruct the relationship
+                let target_attr = match ek {
+                    ElementKind::FeatureTyping => "type",
+                    ElementKind::Specialization => "general",
+                    ElementKind::Redefinition => "redefinedFeature",
+                    ElementKind::Subsetting => "subsettedFeature",
+                    _ => "target",
                 };
-                if let Some(ek) = element_kind {
-                    let mut rel_element = Element::new(rel_id.clone(), ek).with_owner(id.clone());
-                    // Store target as attribute so the XMI writer emits it
-                    // and the reader can reconstruct the relationship
-                    let target_attr = match ek {
-                        ElementKind::FeatureTyping => "type",
-                        ElementKind::Specialization => "general",
-                        ElementKind::Redefinition => "redefinedFeature",
-                        ElementKind::Subsetting => "subsettedFeature",
-                        _ => "target",
-                    };
+                if let Some(rel_element) = model.get_mut(&rel_id) {
                     rel_element.properties.insert(
                         Arc::from(target_attr),
                         PropertyValue::String(Arc::from(target_id.as_str())),
                     );
-                    model.add_element(rel_element);
-                    if let Some(parent) = model.get_mut(&id) {
-                        parent.owned_elements.push(rel_id);
-                    }
+                }
+                if let Some(parent) = model.get_mut(&id) {
+                    parent.owned_elements.push(rel_id);
                 }
             }
         }
@@ -494,24 +487,29 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         }
     }
 
+    // Phase 6: wrap non-relationship children in OwningMembership/FeatureMembership
+    model.wrap_children_in_memberships();
+
     model
 }
 
-/// Convert HIR RelationshipKind to interchange RelationshipKind.
-fn hir_relationship_kind_to_model(kind: &crate::hir::RelationshipKind) -> Option<RelationshipKind> {
+/// Convert HIR RelationshipKind to interchange ElementKind.
+fn hir_relationship_kind_to_element_kind(
+    kind: &crate::hir::RelationshipKind,
+) -> Option<ElementKind> {
     use crate::hir::RelationshipKind as HirRelKind;
     match kind {
-        HirRelKind::Specializes => Some(RelationshipKind::Specialization),
-        HirRelKind::TypedBy => Some(RelationshipKind::FeatureTyping),
-        HirRelKind::Redefines => Some(RelationshipKind::Redefinition),
-        HirRelKind::Subsets => Some(RelationshipKind::Subsetting),
+        HirRelKind::Specializes => Some(ElementKind::Specialization),
+        HirRelKind::TypedBy => Some(ElementKind::FeatureTyping),
+        HirRelKind::Redefines => Some(ElementKind::Redefinition),
+        HirRelKind::Subsets => Some(ElementKind::Subsetting),
         HirRelKind::References => None, // Not a first-class relationship in interchange
-        HirRelKind::Satisfies => Some(RelationshipKind::Satisfaction),
-        HirRelKind::Performs => Some(RelationshipKind::Performs),
+        HirRelKind::Satisfies => Some(ElementKind::Satisfaction),
+        HirRelKind::Performs => Some(ElementKind::ActionUsage),
         HirRelKind::Exhibits => None,
         HirRelKind::Includes => None,
         HirRelKind::Asserts => None,
-        HirRelKind::Verifies => Some(RelationshipKind::Verification),
+        HirRelKind::Verifies => Some(ElementKind::Verification),
     }
 }
 
@@ -652,8 +650,9 @@ mod tests {
             model.roots.is_empty(),
             "Empty database should have no root elements"
         );
-        assert!(
-            model.relationships.is_empty(),
+        assert_eq!(
+            model.relationship_count(),
+            0,
             "Empty database should have no relationships"
         );
     }
@@ -702,10 +701,15 @@ mod tests {
         let model = model_from_symbols(&symbols);
 
         // Should have: Vehicle (package), Car (part def), Engine (part def)
-        assert_eq!(model.elements.len(), 3, "Should have 3 elements");
+        // Plus 2 membership wrappers (OwningMembership for Car and Engine)
         assert_eq!(model.roots.len(), 1, "Should have one root (Vehicle)");
 
-        // Check that Car is owned by Vehicle
+        // Check content elements via owned_members (looks through memberships)
+        let root_id = &model.roots[0];
+        let members = model.owned_members(root_id);
+        assert_eq!(members.len(), 2, "Vehicle should own 2 content members");
+
+        // Check that Car exists and is a PartDefinition
         let car = model
             .elements
             .values()
@@ -714,15 +718,23 @@ mod tests {
         assert_eq!(car.kind, super::super::model::ElementKind::PartDefinition);
         assert!(car.owner.is_some(), "Car should have an owner");
 
-        // Owner is now referenced by element_id (UUID), verify it exists
-        let owner = model
+        // Car's direct owner should be a membership, whose owner is Vehicle
+        let direct_owner = model
             .elements
             .get(car.owner.as_ref().unwrap())
-            .expect("Owner should exist in model");
+            .expect("Direct owner should exist");
+        assert!(
+            direct_owner.kind.is_membership(),
+            "Car's direct owner should be a membership"
+        );
+        let logical_owner = model
+            .elements
+            .get(direct_owner.owner.as_ref().unwrap())
+            .expect("Logical owner should exist");
         assert_eq!(
-            owner.name.as_deref(),
+            logical_owner.name.as_deref(),
             Some("Vehicle"),
-            "Owner should be Vehicle"
+            "Logical owner should be Vehicle"
         );
     }
 
@@ -742,23 +754,23 @@ mod tests {
         let model = model_from_symbols(&symbols);
 
         // Should have relationships
-        assert!(!model.relationships.is_empty(), "Should have relationships");
+        assert!(model.relationship_count() > 0, "Should have relationships");
 
         // Find the specialization from Car to Vehicle
         let specialization = model
-            .relationships
-            .iter()
-            .find(|r| r.kind == super::super::model::RelationshipKind::Specialization)
+            .iter_relationship_elements()
+            .find(|e| e.kind == super::super::model::ElementKind::Specialization)
             .expect("Should have a specialization");
 
-        // Source and target are now UUIDs, verify by looking up the elements
+        // Source and target are in RelationshipData
+        let rel_data = specialization.relationship.as_ref().unwrap();
         let source_elem = model
             .elements
-            .get(&specialization.source)
+            .get(&rel_data.source[0])
             .expect("Source element should exist");
         let target_elem = model
             .elements
-            .get(&specialization.target)
+            .get(&rel_data.target[0])
             .expect("Target element should exist");
 
         assert_eq!(
@@ -894,13 +906,13 @@ mod tests {
         model.add_element(car);
 
         // Add specialization relationship
-        let rel = Relationship::new(
+        model.add_rel(
             ElementId::new("rel_1"),
-            RelationshipKind::Specialization,
+            ElementKind::Specialization,
             ElementId::new("Car"),
             ElementId::new("Vehicle"),
+            None,
         );
-        model.add_relationship(rel);
 
         // When we convert to symbols
         let symbols = symbols_from_model(&model);

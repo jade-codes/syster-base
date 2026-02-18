@@ -164,27 +164,26 @@ impl<'a> SourceMapBuilder<'a> {
         parent_start: usize,
         parent_text: &str,
     ) {
-        for child_id in &parent.owned_elements {
-            if let Some(child_el) = self.model.get(child_id) {
-                // Skip relationship/transparent elements
-                if child_el.kind.is_relationship() {
-                    continue;
-                }
+        // Use owned_members() to look through membership wrappers
+        for child in self.model.owned_members(&parent.id) {
+            // Skip relationship/transparent elements
+            if child.kind.is_relationship() {
+                continue;
+            }
 
-                let sub_model = build_subtree_model(self.model, child_id);
-                let sub_result = decompile(&sub_model);
-                let sub_text = sub_result.text.trim();
+            let sub_model = build_subtree_model(self.model, &child.id);
+            let sub_result = decompile(&sub_model);
+            let sub_text = sub_result.text.trim();
 
-                if sub_text.is_empty() {
-                    continue;
-                }
+            if sub_text.is_empty() {
+                continue;
+            }
 
-                // Find within parent text
-                if let Some(pos) = parent_text.find(sub_text) {
-                    let start = parent_start + pos;
-                    let end = start + sub_text.len();
-                    self.source_map.spans.insert(child_id.clone(), (start, end));
-                }
+            // Find within parent text
+            if let Some(pos) = parent_text.find(sub_text) {
+                let start = parent_start + pos;
+                let end = start + sub_text.len();
+                self.source_map.spans.insert(child.id.clone(), (start, end));
             }
         }
     }
@@ -216,11 +215,20 @@ fn build_subtree_model(model: &Model, root_id: &ElementId) -> Model {
 
     collect_element(model, root_id, &mut sub, true);
 
-    // Include relevant relationships
-    for rel in &model.relationships {
-        if sub.elements.contains_key(&rel.source) && sub.elements.contains_key(&rel.target) {
-            sub.relationships.push(rel.clone());
-        }
+    // Include relevant relationships (from element-based store)
+    let rel_elements: Vec<_> = model
+        .elements
+        .values()
+        .filter(|e| {
+            e.relationship.as_ref().map_or(false, |rd| {
+                rd.source.iter().any(|s| sub.elements.contains_key(s))
+                    && rd.target.iter().any(|t| sub.elements.contains_key(t))
+            })
+        })
+        .cloned()
+        .collect();
+    for re in rel_elements {
+        sub.elements.entry(re.id.clone()).or_insert(re);
     }
 
     sub

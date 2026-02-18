@@ -194,25 +194,23 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
 
     // Compare relationships by source-kind-target tuples
     let orig_rels: HashSet<_> = original
-        .relationships
-        .iter()
-        .map(|r| {
-            (
-                r.source.to_string(),
+        .iter_relationship_elements()
+        .filter_map(|r| {
+            Some((
+                r.source()?.to_string(),
                 format!("{:?}", r.kind),
-                r.target.to_string(),
-            )
+                r.target()?.to_string(),
+            ))
         })
         .collect();
     let rt_rels: HashSet<_> = roundtripped
-        .relationships
-        .iter()
-        .map(|r| {
-            (
-                r.source.to_string(),
+        .iter_relationship_elements()
+        .filter_map(|r| {
+            Some((
+                r.source()?.to_string(),
                 format!("{:?}", r.kind),
-                r.target.to_string(),
-            )
+                r.target()?.to_string(),
+            ))
         })
         .collect();
 
@@ -299,7 +297,7 @@ fn test_xmi_lossless_roundtrip() {
                 "✓ {} - {} elements, {} relationships",
                 file_name,
                 original.elements.len(),
-                original.relationships.len()
+                original.relationship_count()
             );
             passed += 1;
         } else {
@@ -401,7 +399,7 @@ fn test_jsonld_lossless_roundtrip() {
                     "✓ {} - {} elements, {} relationships (fully lossless)",
                     file_name,
                     original.elements.len(),
-                    original.relationships.len()
+                    original.relationship_count()
                 );
                 passed += 1;
             } else {
@@ -520,7 +518,7 @@ fn test_yaml_lossless_roundtrip() {
                     "✓ {} - {} elements, {} relationships (fully lossless)",
                     file_name,
                     original.elements.len(),
-                    original.relationships.len()
+                    original.relationship_count()
                 );
                 passed += 1;
             } else {

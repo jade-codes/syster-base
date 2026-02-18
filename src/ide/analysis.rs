@@ -659,7 +659,23 @@ impl AnalysisHost {
         let mut tracker = ChangeTracker::new();
         edit_fn(self.model_cache.as_mut().unwrap(), &mut tracker);
 
-        // 4. Render the edits
+        // 4. Snapshot qualified_name → element_id from the edited model.
+        //    This captures both metadata-restored IDs (pre-existing elements)
+        //    and generated IDs (newly created elements).  We need this because
+        //    step 5 re-parses from scratch, producing fresh UUIDs.
+        let id_map: std::collections::HashMap<String, String> = self
+            .model_cache
+            .as_ref()
+            .unwrap()
+            .elements
+            .values()
+            .filter_map(|e| {
+                let qn = e.qualified_name.as_ref().or(e.name.as_ref())?;
+                Some((qn.to_string(), e.id.as_str().to_string()))
+            })
+            .collect();
+
+        // 5. Render the edits
         let rendered_text = render_dirty(
             &original_text,
             &source_map,
@@ -667,25 +683,19 @@ impl AnalysisHost {
             &tracker,
         );
 
-        // 5. Feed rendered text back into AnalysisHost (re-parses, rebuilds index)
+        // 6. Feed rendered text back into AnalysisHost (re-parses, rebuilds index)
         let parse_errors = self.set_file_content(file_path, &rendered_text);
 
-        // 6. Rebuild index and restore element IDs from the edited model
+        // 7. Rebuild symbol index, then restore element IDs from the snapshot
         let _ = self.analysis(); // trigger rebuild
-        if let Some(ref model) = self.model_cache {
-            let model_snapshot = model.clone();
-            self.update_symbols(|symbol| {
-                for element in model_snapshot.elements.values() {
-                    let qn = element.qualified_name.as_ref().or(element.name.as_ref());
-                    if let Some(name) = qn {
-                        if name.as_ref() == symbol.qualified_name.as_ref() {
-                            symbol.element_id = Arc::from(element.id.as_str());
-                            break;
-                        }
-                    }
-                }
-            });
-        }
+        self.update_symbols(|symbol| {
+            if let Some(id) = id_map.get(symbol.qualified_name.as_ref()) {
+                symbol.element_id = Arc::from(id.as_str());
+            }
+        });
+
+        // 8. Invalidate model cache so it rebuilds from corrected symbols
+        self.model_cache = None;
 
         crate::interchange::ApplyEditsResult {
             rendered_text,

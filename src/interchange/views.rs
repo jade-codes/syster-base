@@ -16,7 +16,7 @@
 //! }
 //! ```
 
-use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
+use super::model::{Element, ElementId, ElementKind, Model};
 
 // ============================================================================
 // CORE VIEW
@@ -73,21 +73,40 @@ impl<'m> ElementView<'m> {
 
     // ── Ownership navigation ────────────────────────────────────────
 
-    /// The owning element (None for root elements).
+    /// The logical owning element (None for root elements).
+    ///
+    /// Skips through `OwningMembership`/`FeatureMembership` wrappers to
+    /// return the "real" parent.  For example, in a wrapped model where
+    /// `Package → OwningMembership → PartDef`, calling `owner()` on
+    /// `PartDef` returns the `Package`, not the membership.
     pub fn owner(&self) -> Option<ElementView<'m>> {
+        let raw_owner_id = self.element.owner.as_ref()?;
+        let raw_owner = Self::from_id(raw_owner_id, self.model)?;
+        // If the raw owner is a membership, return its owner instead
+        if raw_owner.element.kind.is_membership() {
+            return raw_owner.owner();
+        }
+        Some(raw_owner)
+    }
+
+    /// The raw (structural) owning element, including membership wrappers.
+    pub fn raw_owner(&self) -> Option<ElementView<'m>> {
         self.element
             .owner
             .as_ref()
             .and_then(|id| Self::from_id(id, self.model))
     }
 
-    /// All directly owned members (non-relationship elements only).
+    /// All directly owned members (non-relationship content elements).
+    ///
+    /// Looks through `OwningMembership`/`FeatureMembership` wrappers to
+    /// return the actual content children.  Works with both wrapped
+    /// (XMI-parsed / Phase 6) and unwrapped (legacy) models.
     pub fn owned_members(&self) -> Vec<ElementView<'m>> {
-        self.element
-            .owned_elements
-            .iter()
-            .filter_map(|id| Self::from_id(id, self.model))
-            .filter(|v| !v.element.kind.is_relationship())
+        self.model
+            .owned_members(&self.element.id)
+            .into_iter()
+            .filter_map(|e| Self::from_id(&e.id, self.model))
             .collect()
     }
 
@@ -156,27 +175,40 @@ impl<'m> ElementView<'m> {
 
     // ── Relationships ───────────────────────────────────────────────
 
-    /// All relationships where this element is the source.
-    pub fn relationships_from(&self) -> Vec<&'m Relationship> {
-        self.model.relationships_from(&self.element.id).collect()
+    /// All relationship elements where this element is the source.
+    pub fn relationships_from(&self) -> Vec<&'m Element> {
+        self.model.rel_elements_from(&self.element.id).collect()
     }
 
-    /// All relationships where this element is the target.
-    pub fn relationships_to(&self) -> Vec<&'m Relationship> {
-        self.model.relationships_to(&self.element.id).collect()
+    /// All relationship elements where this element is the target.
+    pub fn relationships_to(&self) -> Vec<&'m Element> {
+        self.model.rel_elements_to(&self.element.id).collect()
     }
 
-    /// Relationships of a specific kind from this element.
-    pub fn relationships_of_kind(&self, kind: RelationshipKind) -> Vec<&'m Relationship> {
-        self.relationships_from()
-            .into_iter()
-            .filter(|r| r.kind == kind)
+    /// Relationship elements of a specific kind from this element.
+    pub fn relationships_of_kind(&self, kind: ElementKind) -> Vec<&'m Element> {
+        self.model
+            .rel_elements_of_kind(&self.element.id, kind)
             .collect()
     }
 
-    /// Resolve a relationship's target as a view.
-    fn resolve_target(&self, rel: &Relationship) -> Option<ElementView<'m>> {
-        Self::from_id(&rel.target, self.model)
+    // ── Element-based relationship navigation (Phase 3) ─────────────
+
+    /// Relationship *elements* where this element is the source.
+    pub fn rel_elements_from(&self) -> impl Iterator<Item = &'m Element> {
+        self.model.rel_elements_from(&self.element.id)
+    }
+
+    /// Relationship elements of a specific `ElementKind` from this element.
+    pub fn rel_elements_of_kind(&self, kind: ElementKind) -> impl Iterator<Item = &'m Element> {
+        self.model.rel_elements_of_kind(&self.element.id, kind)
+    }
+
+    /// Resolve which views this element targets via a relationship kind.
+    fn resolve_targets_by_kind(&self, kind: ElementKind) -> Vec<ElementView<'m>> {
+        self.rel_elements_of_kind(kind)
+            .filter_map(|re| re.target().and_then(|tid| Self::from_id(tid, self.model)))
+            .collect()
     }
 
     // ── Typing (Feature → Type) ─────────────────────────────────────
@@ -184,10 +216,7 @@ impl<'m> ElementView<'m> {
     /// The type(s) this element is typed by (FeatureTyping relationships).
     /// For a usage like `part w: Wheel`, returns the view of `Wheel`.
     pub fn typing(&self) -> Vec<ElementView<'m>> {
-        self.relationships_of_kind(RelationshipKind::FeatureTyping)
-            .into_iter()
-            .filter_map(|r| self.resolve_target(r))
-            .collect()
+        self.resolve_targets_by_kind(ElementKind::FeatureTyping)
     }
 
     /// Convenience: the first (and usually only) type.
@@ -199,26 +228,17 @@ impl<'m> ElementView<'m> {
 
     /// Types this element specializes (Specialization relationships).
     pub fn supertypes(&self) -> Vec<ElementView<'m>> {
-        self.relationships_of_kind(RelationshipKind::Specialization)
-            .into_iter()
-            .filter_map(|r| self.resolve_target(r))
-            .collect()
+        self.resolve_targets_by_kind(ElementKind::Specialization)
     }
 
     /// Types this element redefines (Redefinition relationships).
     pub fn redefined_features(&self) -> Vec<ElementView<'m>> {
-        self.relationships_of_kind(RelationshipKind::Redefinition)
-            .into_iter()
-            .filter_map(|r| self.resolve_target(r))
-            .collect()
+        self.resolve_targets_by_kind(ElementKind::Redefinition)
     }
 
     /// Types this element subsets (Subsetting relationships).
     pub fn subsetted_features(&self) -> Vec<ElementView<'m>> {
-        self.relationships_of_kind(RelationshipKind::Subsetting)
-            .into_iter()
-            .filter_map(|r| self.resolve_target(r))
-            .collect()
+        self.resolve_targets_by_kind(ElementKind::Subsetting)
     }
 
     // ── Downcast to typed views ─────────────────────────────────────
@@ -366,15 +386,15 @@ impl<'m> PackageView<'m> {
     }
 
     /// Import relationships from this package.
-    pub fn imports(&self) -> Vec<&'m Relationship> {
-        let mut imports = self
-            .inner
-            .relationships_of_kind(RelationshipKind::NamespaceImport);
-        imports.extend(
-            self.inner
-                .relationships_of_kind(RelationshipKind::MembershipImport),
-        );
-        imports
+    pub fn imports(&self) -> Vec<&'m Element> {
+        self.inner
+            .rel_elements_from()
+            .filter(|e| {
+                e.kind == ElementKind::NamespaceImport
+                    || e.kind == ElementKind::Import
+                    || e.kind == ElementKind::MembershipImport
+            })
+            .collect()
     }
 }
 
@@ -655,9 +675,10 @@ impl<'m> StateView<'m> {
     }
 
     /// Transitions from this state (Succession relationships).
-    pub fn transitions(&self) -> Vec<&'m Relationship> {
+    pub fn transitions(&self) -> Vec<&'m Element> {
         self.inner
-            .relationships_of_kind(RelationshipKind::Succession)
+            .rel_elements_of_kind(ElementKind::Succession)
+            .collect()
     }
 }
 
@@ -687,9 +708,10 @@ impl<'m> ActionView<'m> {
     }
 
     /// Succession relationships (then/first chains).
-    pub fn successions(&self) -> Vec<&'m Relationship> {
+    pub fn successions(&self) -> Vec<&'m Element> {
         self.inner
-            .relationships_of_kind(RelationshipKind::Succession)
+            .rel_elements_of_kind(ElementKind::Succession)
+            .collect()
     }
 }
 

@@ -18,7 +18,7 @@
 
 use std::sync::Arc;
 
-use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
+use super::model::{Element, ElementId, ElementKind, Model, RelationshipData};
 use super::{FormatCapability, InterchangeError, ModelFormat};
 
 /// XMI namespace URIs - using 2025 spec versions.
@@ -132,8 +132,8 @@ mod reader {
         parent_stack: Vec<String>,
         /// Depth tracking to match start/end tags properly.
         depth_stack: Vec<StackEntry>,
-        /// Relationships collected during parsing.
-        relationships: Vec<Relationship>,
+        /// Relationships collected during parsing (id, kind, source, target).
+        relationships: Vec<(String, ElementKind, String, String)>,
         /// Counter for generating relationship IDs.
         rel_counter: u32,
         /// Tracks children per parent in parse order (parent_id -> [child_ids]).
@@ -472,9 +472,7 @@ mod reader {
                             .or_else(|| self.parent_stack.last().cloned()),
                         target_ref,
                     ) {
-                        let rel_kind = element_kind_to_relationship_kind(kind);
-                        let relationship = Relationship::new(id.clone(), rel_kind, src, tgt);
-                        self.relationships.push(relationship);
+                        self.relationships.push((id.clone(), kind, src, tgt));
                     } else if let Some(src) = source_ref {
                         // Store source_ref for later use when we encounter the target href child
                         self.pending_rel_sources.insert(id.clone(), (src, kind));
@@ -534,10 +532,8 @@ mod reader {
                     // Check if we have a pending relationship source for this parent
                     if let Some(target) = target_id {
                         if let Some((src, kind)) = self.pending_rel_sources.remove(&parent_id) {
-                            let rel_kind = element_kind_to_relationship_kind(kind);
-                            let relationship =
-                                Relationship::new(parent_id.clone(), rel_kind, src, target);
-                            self.relationships.push(relationship);
+                            self.relationships
+                                .push((parent_id.clone(), kind, src, target));
                         }
                     }
                 }
@@ -648,9 +644,19 @@ mod reader {
                 model.add_element(element);
             }
 
-            // Add relationships
-            for rel in self.relationships.drain(..) {
-                model.add_relationship(rel);
+            // Enrich existing elements with RelationshipData
+            // (don't use add_rel which would overwrite the rich parsed element)
+            for (id, _kind, source, target) in self.relationships.drain(..) {
+                let eid = ElementId::new(id);
+                if let Some(element) = model.elements.get_mut(&eid) {
+                    element.relationship = Some(RelationshipData::new(
+                        ElementId::new(source),
+                        ElementId::new(target),
+                    ));
+                } else {
+                    // Relationship element not in elements_by_id (shouldn't happen normally)
+                    model.add_rel(eid, _kind, source, target, None);
+                }
             }
 
             // Update owned_elements using the recorded parse order (children_in_order)
@@ -727,31 +733,6 @@ mod reader {
             }
         }
         None
-    }
-
-    /// Convert ElementKind to RelationshipKind for relationship elements.
-    fn element_kind_to_relationship_kind(kind: ElementKind) -> RelationshipKind {
-        match kind {
-            ElementKind::Specialization => RelationshipKind::Specialization,
-            ElementKind::FeatureTyping => RelationshipKind::FeatureTyping,
-            ElementKind::Subsetting
-            | ElementKind::ReferenceSubsetting
-            | ElementKind::CrossSubsetting => RelationshipKind::Subsetting,
-            ElementKind::Redefinition => RelationshipKind::Redefinition,
-            ElementKind::Import | ElementKind::NamespaceImport => RelationshipKind::NamespaceImport,
-            ElementKind::MembershipImport => RelationshipKind::MembershipImport,
-            ElementKind::Membership => RelationshipKind::Membership,
-            ElementKind::OwningMembership
-            | ElementKind::ReturnParameterMembership
-            | ElementKind::ParameterMembership
-            | ElementKind::EndFeatureMembership
-            | ElementKind::ResultExpressionMembership => RelationshipKind::OwningMembership,
-            ElementKind::FeatureMembership => RelationshipKind::FeatureMembership,
-            ElementKind::Conjugation => RelationshipKind::Conjugation,
-            ElementKind::FeatureChaining => RelationshipKind::FeatureChaining,
-            ElementKind::Disjoining => RelationshipKind::Disjoining,
-            _ => RelationshipKind::Dependency, // Default fallback
-        }
     }
 }
 
@@ -1222,14 +1203,11 @@ mod writer {
             model: &Model,
             child: &Element,
         ) -> Result<(), InterchangeError> {
-            // For non-relationship children, we need the wrapper structure:
-            // <ownedRelationship xsi:type="OwningMembership">
-            //   <ownedRelatedElement xsi:type="sysml:Package">...</ownedRelatedElement>
-            // </ownedRelationship>
-            //
-            // Note: We don't have an explicit OwningMembership element in our model,
-            // so we just write the ownedRelatedElement directly.
-            // This is a simplification that works for re-parsing but differs from strict OMG format.
+            // Non-relationship children that are NOT behind an OwningMembership
+            // (e.g., legacy models) are written directly as ownedRelatedElement.
+            // With Phase 6 membership wrappers, this path is only hit for
+            // un-wrapped models; wrapped models take the relationship_direct path
+            // for the OwningMembership element itself.
             self.write_owned_related_element(writer, model, child)
         }
 
@@ -1400,14 +1378,14 @@ mod tests {
     }
 
     #[test]
-    fn test_relationship_kind_from_xmi() {
+    fn test_relationship_element_kind_from_xmi() {
         assert_eq!(
-            RelationshipKind::from_xmi_type("kerml:Specialization"),
-            Some(RelationshipKind::Specialization)
+            ElementKind::from_xmi_type("kerml:Specialization"),
+            ElementKind::Specialization
         );
         assert_eq!(
-            RelationshipKind::from_xmi_type("kerml:FeatureTyping"),
-            Some(RelationshipKind::FeatureTyping)
+            ElementKind::from_xmi_type("kerml:FeatureTyping"),
+            ElementKind::FeatureTyping
         );
     }
 

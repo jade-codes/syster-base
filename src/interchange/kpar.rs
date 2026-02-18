@@ -158,16 +158,11 @@ mod reader {
 
     /// Merge source model into target model.
     fn merge_models(target: &mut Model, source: Model) {
-        // Add all elements from source
+        // Add all elements from source (including relationship elements)
         for (id, element) in source.elements {
             if !target.elements.contains_key(&id) {
                 target.elements.insert(id, element);
             }
-        }
-
-        // Add all relationships from source
-        for rel in source.relationships {
-            target.relationships.push(rel);
         }
 
         // Merge roots (avoid duplicates)

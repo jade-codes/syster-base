@@ -30,8 +30,7 @@
 //!        ▼
 //! ┌──────────────────────────────────────────────────────────┐
 //! │                    Model (standalone)                     │
-//! │  - elements: HashMap<ElementId, Element>                 │
-//! │  - relationships: Vec<Relationship>                      │
+//! │  - elements: IndexMap<ElementId, Element>                │
 //! │  - roots: Vec<ElementId>                                 │
 //! └──────────────────────────────────────────────────────────┘
 //! ```
@@ -79,9 +78,7 @@ pub use kpar::{Kpar, KparManifest};
 pub use metadata::{
     Dependency, ElementMeta, ImportMetadata, PackageMetadata, ProjectMetadata, SourceInfo,
 };
-pub use model::{
-    Element, ElementId, ElementKind, Model, ModelMetadata, Relationship, RelationshipKind,
-};
+pub use model::{Element, ElementId, ElementKind, Model, ModelMetadata};
 pub use recompile::{restore_element_ids, restore_ids_from_symbols};
 pub use render::{SourceMap, render_dirty};
 pub use views::{
