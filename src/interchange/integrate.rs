@@ -17,7 +17,7 @@
 //! For bridging ChangeTracker edits into Salsa queries, use
 //! [`AnalysisHost::apply_model_edit()`](crate::ide::AnalysisHost::apply_model_edit).
 
-use super::model::{Element, ElementId, ElementKind, Model, PropertyValue};
+use super::model::{Element, ElementId, ElementKind, Model, PropertyValue, Visibility};
 use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
@@ -335,6 +335,80 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         let id = ElementId::new(symbol.element_id.as_ref());
         let kind: ElementKind = symbol.kind.into();
 
+        // Handle Import symbols specially: create NamespaceImport/MembershipImport
+        // relationship elements instead of bare Import elements.
+        if symbol.kind == SymbolKind::Import {
+            // Parse the import name to determine kind and target namespace.
+            // Import symbol name is like "ScalarValues::*" or "Pkg::Elem".
+            let import_name = symbol.name.as_ref();
+            let is_wildcard = import_name.ends_with("::*");
+            let namespace = if is_wildcard {
+                import_name.trim_end_matches("::*")
+            } else {
+                import_name
+            };
+
+            // Determine the owner package from the qualified name.
+            // Import qn format: "Vehicle::import:ScalarValues::*"
+            // The owner is the first segment before "::import:".
+            let owner_id = symbol
+                .qualified_name
+                .find("::import:")
+                .and_then(|idx| {
+                    let parent_qn = &symbol.qualified_name[..idx];
+                    name_to_id.get(parent_qn).map(|&eid| ElementId::new(eid))
+                });
+
+            let import_kind = if is_wildcard {
+                ElementKind::NamespaceImport
+            } else {
+                ElementKind::MembershipImport
+            };
+
+            // Create the import as a relationship element with the namespace as target.
+            // The target ID is the namespace name (external reference).
+            let target_id = ElementId::new(namespace);
+            let source_id = owner_id.clone().unwrap_or_else(|| id.clone());
+
+            let rel_id = model.add_rel(
+                id.clone(),
+                import_kind,
+                source_id,
+                target_id,
+                owner_id.clone(),
+            );
+
+            // Store importedNamespace attribute for XMI roundtrip and decompiler fallback
+            let attr_name = if is_wildcard {
+                "importedNamespace"
+            } else {
+                "importedMembership"
+            };
+            if let Some(rel_element) = model.get_mut(&rel_id) {
+                rel_element.properties.insert(
+                    Arc::from(attr_name),
+                    PropertyValue::String(Arc::from(namespace)),
+                );
+                // Copy import visibility
+                rel_element.visibility = if symbol.is_public {
+                    Visibility::Public
+                } else {
+                    Visibility::Private
+                };
+            }
+
+            // Add to parent's owned_elements
+            if let Some(ref oid) = owner_id {
+                if let Some(parent) = model.get_mut(oid) {
+                    if !parent.owned_elements.contains(&id) {
+                        parent.owned_elements.push(id.clone());
+                    }
+                }
+            }
+
+            continue;
+        }
+
         // Determine ownership from qualified name, then look up owner's element_id
         let owner = if symbol.qualified_name.contains("::") {
             let parent = symbol.qualified_name.rsplit_once("::").map(|(p, _)| p);
@@ -349,6 +423,68 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
 
         if let Some(ref owner_id) = owner {
             element = element.with_owner(owner_id.clone());
+        }
+
+        // Copy boolean flags from HIR symbol
+        element.is_abstract = symbol.is_abstract;
+        element.is_variation = symbol.is_variation;
+        element.is_readonly = symbol.is_readonly;
+        element.is_derived = symbol.is_derived;
+        element.is_parallel = symbol.is_parallel;
+        element.is_individual = symbol.is_individual;
+        element.is_end = symbol.is_end;
+        element.is_default = symbol.is_default;
+        element.is_ordered = symbol.is_ordered;
+        element.is_nonunique = symbol.is_nonunique;
+        element.is_portion = symbol.is_portion;
+
+        // Copy short name
+        element.short_name = symbol.short_name.clone();
+
+        // Copy documentation
+        element.documentation = symbol.doc.clone();
+
+        // Copy direction as a property (for decompiler to read)
+        if let Some(ref dir) = symbol.direction {
+            let dir_str = match dir {
+                Direction::In => "in",
+                Direction::Out => "out",
+                Direction::InOut => "inout",
+            };
+            element.properties.insert(
+                Arc::from("direction"),
+                PropertyValue::String(Arc::from(dir_str)),
+            );
+        }
+
+        // Copy multiplicity as properties
+        if let Some(ref mult) = symbol.multiplicity {
+            if let Some(lower) = mult.lower {
+                element.properties.insert(
+                    Arc::from("multiplicityLower"),
+                    PropertyValue::String(Arc::from(lower.to_string())),
+                );
+            }
+            if let Some(upper) = mult.upper {
+                element.properties.insert(
+                    Arc::from("multiplicityUpper"),
+                    PropertyValue::String(Arc::from(upper.to_string())),
+                );
+            }
+        }
+
+        // Don't set visibility from is_public on regular elements.
+        // SysML default is public — only imports use the is_public flag
+        // to distinguish `private import` from `import`.
+
+        // Store alias target from supertypes (for decompiler)
+        if symbol.kind == SymbolKind::Alias {
+            if let Some(target) = symbol.supertypes.first() {
+                element.properties.insert(
+                    Arc::from("aliasTarget"),
+                    PropertyValue::String(Arc::from(target.as_ref())),
+                );
+            }
         }
 
         model.add_element(element);
@@ -381,14 +517,25 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 rel_counter += 1;
                 let rel_id = ElementId::new(format!("rel_{}", rel_counter));
 
-                // Look up target's element_id from qualified name
-                // Try multiple resolution strategies:
-                // 1. Direct lookup (fully qualified)
+                // Look up target's element_id from qualified name.
+                // Resolution order:
+                // 0. Use resolved_target from the resolver (best source)
+                // 1. Direct lookup by name (fully qualified)
                 // 2. Walk up ancestor namespaces (e.g., for "Label" from
                 //    "Sensor::Thermometer::name", try "Sensor::Thermometer::Label"
                 //    then "Sensor::Label")
+                // 3. Scan all symbols for a matching simple name suffix
+                //    (handles cross-type references like `redefines size`
+                //    where `size` lives in a supertype)
+                let target_name = hir_rel.resolved_target.as_deref()
+                    .unwrap_or(hir_rel.target.as_ref());
+
                 let target_id = name_to_id
-                    .get(hir_rel.target.as_ref())
+                    .get(target_name)
+                    .or_else(|| {
+                        // Also try the unresolved name if resolved didn't match
+                        name_to_id.get(hir_rel.target.as_ref())
+                    })
                     .or_else(|| {
                         let mut ns = symbol.qualified_name.as_ref();
                         while let Some((parent, _)) = ns.rsplit_once("::") {
@@ -400,11 +547,52 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         }
                         None
                     })
-                    .map(|&id| ElementId::new(id))
-                    .unwrap_or_else(|| {
-                        // External reference not in this symbol set - use qualified name as fallback
-                        ElementId::new(hir_rel.target.as_ref())
-                    });
+                    .or_else(|| {
+                        // Scan for any element whose qualified name ends with
+                        // ::target.  Needed for cross-type references (e.g.
+                        // `redefines size` where size is in a supertype).
+                        let suffix = format!("::{}", hir_rel.target);
+                        let mut matches: Vec<&&str> = name_to_id
+                            .keys()
+                            .filter(|qn| qn.ends_with(suffix.as_str()))
+                            .collect();
+                        if matches.len() == 1 {
+                            // Unambiguous match
+                            name_to_id.get(*matches[0])
+                        } else if matches.len() > 1 {
+                            // Multiple matches — try to pick one that shares
+                            // the longest common prefix with our symbol's qn
+                            matches.sort_by_key(|qn| {
+                                let common = symbol.qualified_name.as_ref()
+                                    .chars()
+                                    .zip(qn.chars())
+                                    .take_while(|(a, b)| a == b)
+                                    .count();
+                                std::cmp::Reverse(common)
+                            });
+                            name_to_id.get(*matches[0])
+                        } else {
+                            None
+                        }
+                    })
+                    .map(|&id| ElementId::new(id));
+
+                // If resolution failed, create an element for the external
+                // reference so the decompiler can still render its name.
+                let target_id = target_id.unwrap_or_else(|| {
+                    let ext_id = ElementId::new(format!("_ext_{}", hir_rel.target));
+                    if !model.elements.contains_key(&ext_id) {
+                        let mut stub = Element::new(ext_id.clone(), ElementKind::Other)
+                            .with_name(hir_rel.target.as_ref());
+                        // Mark as external so it is never decompiled to output
+                        stub.properties.insert(
+                            Arc::from("_external"),
+                            PropertyValue::Boolean(true),
+                        );
+                        model.add_element(stub);
+                    }
+                    ext_id
+                });
 
                 // Use add_rel to create the relationship element directly
                 model.add_rel(
@@ -415,8 +603,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     Some(id.clone()),
                 );
 
-                // Store target as attribute so the XMI writer emits it
-                // and the reader can reconstruct the relationship
+                // Store the resolved target name on the relationship for XMI
                 let target_attr = match ek {
                     ElementKind::FeatureTyping => "type",
                     ElementKind::Specialization => "general",
@@ -570,6 +757,7 @@ impl From<SymbolKind> for ElementKind {
             // Other
             SymbolKind::Import => ElementKind::Import,
             SymbolKind::Comment => ElementKind::Comment,
+            SymbolKind::Alias => ElementKind::Alias,
             _ => ElementKind::Other,
         }
     }

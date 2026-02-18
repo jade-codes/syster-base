@@ -319,10 +319,9 @@ pub fn render_dirty(
         result.replace_range(start..end, &patch.replacement);
     }
 
-    // Clean up empty lines from removals
+    // Clean up excessive blank lines from removals (collapse 3+ blank lines to 2)
     result = result
         .lines()
-        .filter(|line| !line.trim().is_empty() || true) // keep blank lines
         .collect::<Vec<_>>()
         .join("\n");
 

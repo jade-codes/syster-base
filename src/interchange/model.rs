@@ -202,6 +202,9 @@ pub enum ElementKind {
     Documentation,
     TextualRepresentation,
 
+    // Aliases
+    Alias,
+
     // Annotations
     MetadataUsage,
     AnnotatingElement,
@@ -549,6 +552,7 @@ impl ElementKind {
             Self::Annotation => "kerml:Annotation",
             Self::Classifier => "kerml:Classifier",
             Self::Metaclass => "kerml:Metaclass",
+            Self::Alias => "kerml:Membership",
             Self::Other => "kerml:Element",
         }
     }
@@ -659,6 +663,7 @@ impl ElementKind {
             Self::Annotation => "sysml:Annotation",
             Self::Classifier => "sysml:Classifier",
             Self::Metaclass => "sysml:Metaclass",
+            Self::Alias => "sysml:Membership",
             Self::Other => "sysml:Element",
             Self::Namespace => "sysml:Namespace",
         }

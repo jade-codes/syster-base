@@ -186,6 +186,7 @@ impl<'a> DecompileContext<'a> {
             ElementKind::CalculationUsage => self.decompile_usage(element, "calc"),
             ElementKind::ReferenceUsage => self.decompile_usage(element, "ref"),
             ElementKind::OccurrenceUsage => self.decompile_usage(element, "occurrence"),
+            ElementKind::FlowConnectionUsage => self.decompile_usage(element, "flow"),
 
             // KerML classifiers
             ElementKind::Class => self.decompile_definition(element, "class"),
@@ -202,6 +203,9 @@ impl<'a> DecompileContext<'a> {
             // Documentation
             ElementKind::Comment => self.decompile_comment(element),
             ElementKind::Documentation => self.decompile_documentation(element),
+
+            // Aliases
+            ElementKind::Alias => self.decompile_alias(element),
 
             // For Other/unknown types, just decompile children (acts as transparent container)
             ElementKind::Other => self.decompile_transparent_container(element),
@@ -227,8 +231,12 @@ impl<'a> DecompileContext<'a> {
             *order += 1;
         }
 
-        // Store unmapped properties
+        // Store unmapped properties (skip internal properties prefixed with '_')
         for (key, value) in &element.properties {
+            // Skip internal/private properties used for roundtrip fidelity
+            if key.starts_with('_') {
+                continue;
+            }
             // Convert PropertyValue to serde_json::Value
             let json_value = property_to_json(value);
             meta = meta.with_unmapped(key.as_ref(), json_value);
@@ -253,9 +261,10 @@ impl<'a> DecompileContext<'a> {
     fn decompile_package(&mut self, element: &Element) {
         self.write_visibility(element);
 
-        if let Some(name) = &element.name {
+        if let Some(_name) = &element.name {
             let short = self.format_short_name(element);
-            self.write_line(&format!("package {}{} {{", short, name));
+            let name_str = self.format_element_name(element);
+            self.write_line(&format!("package {}{} {{", short, name_str));
         } else {
             self.write_line("package {");
         }
@@ -277,11 +286,12 @@ impl<'a> DecompileContext<'a> {
             _ => "",
         };
 
-        if let Some(name) = &element.name {
+        if let Some(_name) = &element.name {
             let short = self.format_short_name(element);
+            let name_str = self.format_element_name(element);
             self.write_line(&format!(
                 "{}library package {}{} {{",
-                standard_kw, short, name
+                standard_kw, short, name_str
             ));
         } else {
             self.write_line(&format!("{}library package {{", standard_kw));
@@ -297,26 +307,28 @@ impl<'a> DecompileContext<'a> {
         self.write_visibility(element);
 
         let abstract_kw = if element.is_abstract { "abstract " } else { "" };
+        let variation_kw = if element.is_variation { "variation " } else { "" };
+        let individual_kw = if element.is_individual { "individual " } else { "" };
         let short = self.format_short_name(element);
+        let name_str = self.format_element_name(element);
         let specializations = self.format_specializations(&element.id);
 
-        if let Some(name) = &element.name {
+        if let Some(_name) = &element.name {
             if element.owned_elements.is_empty() && element.documentation.is_none() {
-                // Empty definition - use semicolon
                 self.write_line(&format!(
-                    "{}{} {}{}{};",
-                    abstract_kw, keyword, short, name, specializations
+                    "{}{}{}{} {}{}{};",
+                    variation_kw, abstract_kw, individual_kw, keyword, short, name_str, specializations
                 ));
             } else {
                 self.write_line(&format!(
-                    "{}{} {}{}{} {{",
-                    abstract_kw, keyword, short, name, specializations
+                    "{}{}{}{} {}{}{} {{",
+                    variation_kw, abstract_kw, individual_kw, keyword, short, name_str, specializations
                 ));
                 self.decompile_body(element);
                 self.write_line("}");
             }
         } else {
-            self.write_line(&format!("{}{} {{{}", abstract_kw, keyword, specializations));
+            self.write_line(&format!("{}{}{}{} {{{}", variation_kw, abstract_kw, individual_kw, keyword, specializations));
             self.decompile_body(element);
             self.write_line("}");
         }
@@ -327,11 +339,26 @@ impl<'a> DecompileContext<'a> {
     fn decompile_usage(&mut self, element: &Element, keyword: &str) {
         self.write_visibility(element);
 
+        // Build usage modifiers: direction, end, readonly, derived, etc.
+        let direction_prefix = self.format_direction(element);
+        let end_kw = if element.is_end { "end " } else { "" };
+        let readonly_kw = if element.is_readonly { "readonly " } else { "" };
+        let derived_kw = if element.is_derived { "derived " } else { "" };
+        let abstract_kw = if element.is_abstract { "abstract " } else { "" };
+        let variation_kw = if element.is_variation { "variation " } else { "" };
+        let portion_kw = if element.is_portion { "portion " } else { "" };
+
         let typing = self.format_typing(&element.id);
         let subsetting = self.format_subsetting(&element.id);
         let redefinition = self.format_redefinition(&element.id);
         let value = self.format_feature_value(&element.id);
         let short = self.format_short_name(element);
+        let multiplicity = self.format_usage_multiplicity(element);
+
+        // Check if the name is an anonymous scope (contains # and @, e.g. ":>>size#1@L5")
+        let is_anonymous = element.name.as_ref().is_none_or(|n| {
+            n.contains('#') && n.contains('@')
+        });
 
         let relations = format!("{}{}{}", typing, subsetting, redefinition);
 
@@ -344,23 +371,35 @@ impl<'a> DecompileContext<'a> {
                 .unwrap_or(false)
         });
 
-        if let Some(name) = &element.name {
+        // Build prefix: direction end readonly derived abstract variation portion
+        let prefix = format!(
+            "{}{}{}{}{}{}{}",
+            direction_prefix, end_kw, readonly_kw, derived_kw, abstract_kw, variation_kw, portion_kw
+        );
+
+        if is_anonymous {
+            // Anonymous usage — render as `keyword redefines X;` or `keyword : Type;` etc.
+            if !relations.is_empty() || !value.is_empty() {
+                self.write_line(&format!("{}{}{}{}{};", prefix, keyword, relations, multiplicity, value));
+            }
+        } else if let Some(_name) = &element.name {
+            let name_str = self.format_element_name(element);
             if !has_body_children && element.documentation.is_none() {
                 self.write_line(&format!(
-                    "{} {}{}{}{};",
-                    keyword, short, name, relations, value
+                    "{}{} {}{}{}{}{};",
+                    prefix, keyword, short, name_str, relations, multiplicity, value
                 ));
             } else {
                 self.write_line(&format!(
-                    "{} {}{}{}{} {{",
-                    keyword, short, name, relations, value
+                    "{}{} {}{}{}{}{} {{",
+                    prefix, keyword, short, name_str, relations, multiplicity, value
                 ));
                 self.decompile_body(element);
                 self.write_line("}");
             }
         } else if !relations.is_empty() || !value.is_empty() {
-            // Anonymous usage with typing/subsetting/value
-            self.write_line(&format!("{}{}{};", keyword, relations, value));
+            // Truly unnamed usage with typing/subsetting/value
+            self.write_line(&format!("{}{}{}{}{};", prefix, keyword, relations, multiplicity, value));
         }
     }
 
@@ -517,6 +556,58 @@ impl<'a> DecompileContext<'a> {
         String::new()
     }
 
+    /// Format direction prefix for a usage element (in, out, inout).
+    fn format_direction(&self, element: &Element) -> String {
+        let dir_key: Arc<str> = Arc::from("direction");
+        match element.properties.get(&dir_key) {
+            Some(super::model::PropertyValue::String(s)) => {
+                match s.as_ref() {
+                    "in" => "in ".to_string(),
+                    "out" => "out ".to_string(),
+                    "inout" => "inout ".to_string(),
+                    _ => String::new(),
+                }
+            }
+            _ => String::new(),
+        }
+    }
+
+    /// Format multiplicity for a usage element from properties (multiplicityLower/Upper).
+    fn format_usage_multiplicity(&self, element: &Element) -> String {
+        let lower_key: Arc<str> = Arc::from("multiplicityLower");
+        let upper_key: Arc<str> = Arc::from("multiplicityUpper");
+
+        let lower = element.properties.get(&lower_key).and_then(|v| match v {
+            super::model::PropertyValue::String(s) => Some(s.to_string()),
+            super::model::PropertyValue::Integer(n) => Some(n.to_string()),
+            _ => None,
+        });
+        let upper = element.properties.get(&upper_key).and_then(|v| match v {
+            super::model::PropertyValue::String(s) => Some(s.to_string()),
+            super::model::PropertyValue::Integer(n) => Some(n.to_string()),
+            _ => None,
+        });
+
+        // Also check inline MultiplicityRange children (from XMI)
+        let inline_mult = self.format_inline_multiplicity(&element.id);
+        if !inline_mult.is_empty() {
+            return format!(" {}", inline_mult);
+        }
+
+        match (lower, upper) {
+            (Some(l), Some(u)) => {
+                if l == u {
+                    format!(" [{}]", l)
+                } else {
+                    format!(" [{}..{}]", l, u)
+                }
+            }
+            (None, Some(u)) => format!(" [{}]", u),
+            (Some(l), None) => format!(" [{}]", l),
+            (None, None) => String::new(),
+        }
+    }
+
     fn format_multiplicity_bounds(&self, mult_id: &ElementId) -> String {
         if let Some(mult_elem) = self.model.elements.get(mult_id) {
             let mut all_literals = Vec::new();
@@ -605,6 +696,21 @@ impl<'a> DecompileContext<'a> {
         }
     }
 
+    fn decompile_alias(&mut self, element: &Element) {
+        if let Some(name) = &element.name {
+            let target_key: Arc<str> = Arc::from("aliasTarget");
+            let target = element.properties.get(&target_key).and_then(|v| match v {
+                super::model::PropertyValue::String(s) => Some(s.to_string()),
+                _ => None,
+            });
+            if let Some(target_name) = target {
+                self.write_line(&format!("alias {} for {};", name, target_name));
+            } else {
+                self.write_line(&format!("alias {};", name));
+            }
+        }
+    }
+
     /// Decompile children of a transparent container (e.g., Namespace wrapper).
     /// These elements don't generate SysML output themselves but their children do.
     fn decompile_transparent_container(&mut self, element: &Element) {
@@ -658,6 +764,20 @@ impl<'a> DecompileContext<'a> {
             format!("<{}> ", short)
         } else {
             String::new()
+        }
+    }
+
+    /// Format an element name, quoting it if it contains spaces or special characters.
+    fn format_element_name(&self, element: &Element) -> String {
+        match &element.name {
+            Some(name) => {
+                if name.contains(' ') || name.contains('/') || name.contains('\\') {
+                    format!("'{}'", name)
+                } else {
+                    name.to_string()
+                }
+            }
+            None => String::new(),
         }
     }
 
@@ -724,42 +844,60 @@ impl<'a> DecompileContext<'a> {
         }
     }
 
-    /// Get imports for an element (namespace imports).
-    fn get_namespace_imports(&self, element_id: &ElementId) -> Vec<String> {
-        self.model
-            .rel_elements_owned_by(element_id, ElementKind::NamespaceImport)
-            .filter_map(|re| {
-                re.target()
-                    .and_then(|tid| self.model.elements.get(tid))
-                    .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
-                    .map(|n| format!("{}::*", n))
-            })
-            .collect()
-    }
-
-    /// Get imports for an element (membership imports).
-    fn get_membership_imports(&self, element_id: &ElementId) -> Vec<String> {
-        self.model
-            .rel_elements_owned_by(element_id, ElementKind::MembershipImport)
-            .filter_map(|re| {
-                re.target()
-                    .and_then(|tid| self.model.elements.get(tid))
-                    .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
-                    .map(|n| n.to_string())
-            })
-            .collect()
-    }
-
     /// Decompile imports for an element.
     fn decompile_imports(&mut self, element_id: &ElementId) {
         // Namespace imports (import X::*)
-        for import_path in self.get_namespace_imports(element_id) {
-            self.write_line(&format!("import {};", import_path));
+        for re in self.model.rel_elements_owned_by(element_id, ElementKind::NamespaceImport).collect::<Vec<_>>() {
+            let visibility_prefix = match re.visibility {
+                Visibility::Private => "private ",
+                Visibility::Protected => "protected ",
+                Visibility::Public => "",
+            };
+
+            let from_target = re
+                .target()
+                .and_then(|tid| self.model.elements.get(tid))
+                .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
+                .map(|n| n.to_string());
+
+            let resolved = from_target.or_else(|| {
+                let key: Arc<str> = Arc::from("importedNamespace");
+                re.properties.get(&key).and_then(|v| match v {
+                    super::model::PropertyValue::String(ns) => Some(ns.to_string()),
+                    _ => None,
+                })
+            });
+
+            if let Some(ns) = resolved {
+                self.write_line(&format!("{}import {}::*;", visibility_prefix, ns));
+            }
         }
 
         // Membership imports (import X::Y)
-        for import_path in self.get_membership_imports(element_id) {
-            self.write_line(&format!("import {};", import_path));
+        for re in self.model.rel_elements_owned_by(element_id, ElementKind::MembershipImport).collect::<Vec<_>>() {
+            let visibility_prefix = match re.visibility {
+                Visibility::Private => "private ",
+                Visibility::Protected => "protected ",
+                Visibility::Public => "",
+            };
+
+            let from_target = re
+                .target()
+                .and_then(|tid| self.model.elements.get(tid))
+                .and_then(|e| e.qualified_name.as_deref().or(e.name.as_deref()))
+                .map(|n| n.to_string());
+
+            let resolved = from_target.or_else(|| {
+                let key: Arc<str> = Arc::from("importedMembership");
+                re.properties.get(&key).and_then(|v| match v {
+                    super::model::PropertyValue::String(ns) => Some(ns.to_string()),
+                    _ => None,
+                })
+            });
+
+            if let Some(path) = resolved {
+                self.write_line(&format!("{}import {};", visibility_prefix, path));
+            }
         }
     }
 
@@ -890,12 +1028,20 @@ impl<'a> DecompileContext<'a> {
                 // Extract qualified name from href (format: "file.xmi#uuid" or just qualified name)
                 return Some(self.extract_name_from_href(href));
             }
-            // Use qualified name if available, else simple name
+            // Prefer simple name — within the same model most types can be
+            // referenced by their short name rather than their qualified name.
+            if let Some(name) = &element.name {
+                return Some(name.to_string());
+            }
             if let Some(qn) = &element.qualified_name {
                 return Some(qn.to_string());
             }
-            return element.name.as_ref().map(|n| n.to_string());
+            return None;
         }
+
+        // Element not found in model — skip it.
+        // We don't guess from the ElementId string; if it's not in the
+        // model we simply can't resolve it.
         None
     }
 
