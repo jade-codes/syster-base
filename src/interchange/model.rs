@@ -1156,10 +1156,6 @@ impl RelationshipData {
 // RELATIONSHIP (legacy — will be removed in Phase 5)
 // ============================================================================
 
-/// A relationship between two elements.
-///
-/// **Deprecated**: This separate struct will be removed once all code
-/// migrates to using `Element` with `RelationshipData`.  See
 // ============================================================================
 // MODEL
 // ============================================================================
@@ -1248,7 +1244,7 @@ impl Model {
         self.elements.values().filter(move |e| {
             e.relationship
                 .as_ref()
-                .map_or(false, |rd| rd.source.contains(source))
+                .is_some_and(|rd| rd.source.contains(source))
         })
     }
 
@@ -1260,7 +1256,7 @@ impl Model {
         self.elements.values().filter(move |e| {
             e.relationship
                 .as_ref()
-                .map_or(false, |rd| rd.target.contains(target))
+                .is_some_and(|rd| rd.target.contains(target))
         })
     }
 

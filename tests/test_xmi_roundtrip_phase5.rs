@@ -362,11 +362,7 @@ package Sensor {
         host.set_file_content("/sensor.sysml", original_sysml);
 
         let analysis = host.analysis();
-        let syms: Vec<_> = analysis
-            .symbol_index()
-            .all_symbols()
-            .map(|s| s.clone())
-            .collect();
+        let syms: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
 
         let model = model_from_symbols(&syms);
         let xmi_bytes = Xmi.write(&model).expect("cycle 1: write XMI");
@@ -380,11 +376,7 @@ package Sensor {
         apply_metadata_to_host(&mut host2, &decompiled_1.metadata);
 
         let analysis2 = host2.analysis();
-        let syms2: Vec<_> = analysis2
-            .symbol_index()
-            .all_symbols()
-            .map(|s| s.clone())
-            .collect();
+        let syms2: Vec<_> = analysis2.symbol_index().all_symbols().cloned().collect();
         let model2 = model_from_symbols(&syms2);
         let xmi_bytes2 = Xmi.write(&model2).expect("cycle 2: write XMI");
 

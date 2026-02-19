@@ -220,7 +220,7 @@ fn build_subtree_model(model: &Model, root_id: &ElementId) -> Model {
         .elements
         .values()
         .filter(|e| {
-            e.relationship.as_ref().map_or(false, |rd| {
+            e.relationship.as_ref().is_some_and(|rd| {
                 rd.source.iter().any(|s| sub.elements.contains_key(s))
                     && rd.target.iter().any(|t| sub.elements.contains_key(t))
             })
@@ -320,10 +320,7 @@ pub fn render_dirty(
     }
 
     // Clean up excessive blank lines from removals (collapse 3+ blank lines to 2)
-    result = result
-        .lines()
-        .collect::<Vec<_>>()
-        .join("\n");
+    result = result.lines().collect::<Vec<_>>().join("\n");
 
     result
 }
@@ -375,7 +372,7 @@ mod tests {
 
         // Children may or may not have spans depending on decompiler output matching
         // At minimum, verify the source map is non-empty
-        assert!(sm.len() >= 1, "should have at least the root mapped");
+        assert!(!sm.is_empty(), "should have at least the root mapped");
 
         // If A has a span, verify it's reasonable
         if let Some((start, end)) = sm.span(&a_id) {

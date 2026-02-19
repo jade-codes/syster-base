@@ -196,12 +196,47 @@ The architecture provides significant performance benefits:
 cargo build
 cargo test
 
-# With interchange support
+# With interchange support (decompiler, XMI, YAML, JSON-LD, KPAR)
 cargo build --features interchange
 cargo test --features interchange
+```
 
-# Run clippy
+## Testing
+
+```bash
+# All tests (lib + integration, with interchange)
+cargo test --features interchange
+
+# Library tests only (425 tests — parser, HIR, IDE, interchange internals)
+cargo test --features interchange --lib
+
+# Integration tests only (226 tests — editing, roundtrip, decompiler coverage)
+cargo test --test test_editing_integration --features interchange
+
+# Run a specific integration test by name
+cargo test --test test_editing_integration --features interchange decompile_drops_anonymous_usage
+
+# Run a group of tests by prefix
+cargo test --test test_editing_integration --features interchange decompile_
+
+# Core tests without interchange
+cargo test
+```
+
+## Linting & Formatting
+
+```bash
+# Format code
+cargo fmt
+
+# Check formatting (CI)
+cargo fmt -- --check
+
+# Clippy with interchange
 cargo clippy --all-targets --features interchange -- -D warnings
+
+# Full validation pipeline (format + lint + test)
+make run-guidelines
 ```
 
 ## License

@@ -351,13 +351,10 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
             // Determine the owner package from the qualified name.
             // Import qn format: "Vehicle::import:ScalarValues::*"
             // The owner is the first segment before "::import:".
-            let owner_id = symbol
-                .qualified_name
-                .find("::import:")
-                .and_then(|idx| {
-                    let parent_qn = &symbol.qualified_name[..idx];
-                    name_to_id.get(parent_qn).map(|&eid| ElementId::new(eid))
-                });
+            let owner_id = symbol.qualified_name.find("::import:").and_then(|idx| {
+                let parent_qn = &symbol.qualified_name[..idx];
+                name_to_id.get(parent_qn).map(|&eid| ElementId::new(eid))
+            });
 
             let import_kind = if is_wildcard {
                 ElementKind::NamespaceImport
@@ -527,7 +524,9 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 // 3. Scan all symbols for a matching simple name suffix
                 //    (handles cross-type references like `redefines size`
                 //    where `size` lives in a supertype)
-                let target_name = hir_rel.resolved_target.as_deref()
+                let target_name = hir_rel
+                    .resolved_target
+                    .as_deref()
                     .unwrap_or(hir_rel.target.as_ref());
 
                 let target_id = name_to_id
@@ -563,7 +562,9 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                             // Multiple matches — try to pick one that shares
                             // the longest common prefix with our symbol's qn
                             matches.sort_by_key(|qn| {
-                                let common = symbol.qualified_name.as_ref()
+                                let common = symbol
+                                    .qualified_name
+                                    .as_ref()
                                     .chars()
                                     .zip(qn.chars())
                                     .take_while(|(a, b)| a == b)
@@ -577,7 +578,7 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     })
                     .map(|&id| ElementId::new(id));
 
-                // If resolution failed, create an element for the external
+                // If resolution failed, create a stub element for the external
                 // reference so the decompiler can still render its name.
                 let target_id = target_id.unwrap_or_else(|| {
                     let ext_id = ElementId::new(format!("_ext_{}", hir_rel.target));
@@ -585,10 +586,8 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         let mut stub = Element::new(ext_id.clone(), ElementKind::Other)
                             .with_name(hir_rel.target.as_ref());
                         // Mark as external so it is never decompiled to output
-                        stub.properties.insert(
-                            Arc::from("_external"),
-                            PropertyValue::Boolean(true),
-                        );
+                        stub.properties
+                            .insert(Arc::from("_external"), PropertyValue::Boolean(true));
                         model.add_element(stub);
                     }
                     ext_id

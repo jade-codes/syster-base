@@ -115,7 +115,8 @@ mod reader {
                 Value::Mapping(map) => {
                     // Single item - element or relationship
                     if let Some((id, kind, source, target, owner)) = parse_relationship(&map) {
-                        model.add_rel(id, kind, source, target, owner);
+                        let rel_id = model.add_rel(id, kind, source, target, owner);
+                        read_relationship_properties(&map, &rel_id, &mut model);
                     } else if let Some(element) = parse_element(&map)? {
                         model.add_element(element);
                     }
@@ -128,7 +129,9 @@ mod reader {
                             if let Some((id, kind, source, target, owner)) =
                                 parse_relationship(&map)
                             {
-                                model.add_rel(id, kind, source, target, owner);
+                                let rel_id = model.add_rel(id, kind, source, target, owner);
+                                // Carry over any extra properties on the relationship
+                                read_relationship_properties(&map, &rel_id, &mut model);
                             } else if let Some(element) = parse_element(&map)? {
                                 model.add_element(element);
                             }
@@ -167,6 +170,45 @@ mod reader {
         let owner = get_ref_id(map, "owner").map(ElementId::new);
 
         Some((id, kind, source, target, owner))
+    }
+
+    /// Read extra properties (name, importedNamespace, etc.) from a YAML
+    /// relationship mapping and apply them to the already-created relationship
+    /// element in the model.
+    fn read_relationship_properties(
+        map: &serde_yaml::Mapping,
+        rel_id: &ElementId,
+        model: &mut Model,
+    ) {
+        let reserved_keys = ["@type", "@id", "source", "target", "owner"];
+        let mut name: Option<String> = None;
+        let mut props: Vec<(Arc<str>, PropertyValue)> = Vec::new();
+
+        for (key, value) in map {
+            if let Some(key_str) = key.as_str() {
+                if reserved_keys.contains(&key_str) {
+                    continue;
+                }
+                if key_str == "name" {
+                    if let Some(s) = value.as_str() {
+                        name = Some(s.to_string());
+                    }
+                } else if let Some(prop_value) = parse_property_value(value) {
+                    props.push((Arc::from(key_str), prop_value));
+                }
+            }
+        }
+
+        if name.is_some() || !props.is_empty() {
+            if let Some(el) = model.get_mut(rel_id) {
+                if let Some(n) = name {
+                    el.name = Some(Arc::from(n.as_str()));
+                }
+                for (k, v) in props {
+                    el.properties.insert(k, v);
+                }
+            }
+        }
     }
 
     /// Parse a YAML mapping into an Element.
@@ -427,6 +469,14 @@ mod writer {
             Value::String(element.id.as_str().to_string()),
         );
 
+        // name (if present)
+        if let Some(ref name) = element.name {
+            map.insert(
+                Value::String("name".to_string()),
+                Value::String(name.to_string()),
+            );
+        }
+
         if let Some(ref rd) = element.relationship {
             if let Some(src) = rd.source() {
                 let mut source_map = Mapping::new();
@@ -449,6 +499,14 @@ mod writer {
                     Value::String("target".to_string()),
                     Value::Mapping(target_map),
                 );
+            }
+        }
+
+        // Properties (excluding internal _-prefixed keys)
+        for (key, value) in &element.properties {
+            if !key.starts_with('_') {
+                let yaml_value = property_value_to_yaml(value);
+                map.insert(Value::String(key.to_string()), yaml_value);
             }
         }
 

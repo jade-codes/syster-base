@@ -192,9 +192,9 @@ impl ChangeTracker {
             //    ownedRelatedElement directly, e.g. FeatureValue → LiteralString)
             let needs_wrap = !element.kind.is_relationship()
                 && !element.kind.is_membership()
-                && model.get(parent_id).map_or(false, |p| {
-                    !p.kind.is_membership() && !p.kind.is_relationship()
-                });
+                && model
+                    .get(parent_id)
+                    .is_some_and(|p| !p.kind.is_membership() && !p.kind.is_relationship());
 
             if needs_wrap {
                 // Create a membership wrapper between parent and child
@@ -286,7 +286,7 @@ impl ChangeTracker {
             .filter(|e| {
                 e.relationship
                     .as_ref()
-                    .map_or(false, |rd| rd.source.contains(id) || rd.target.contains(id))
+                    .is_some_and(|rd| rd.source.contains(id) || rd.target.contains(id))
             })
             .map(|e| e.id.clone())
             .collect();
@@ -370,11 +370,12 @@ impl ChangeTracker {
 
             // For non-relationship elements, create a membership wrapper
             // so the invariant holds (all content children are wrapped).
-            let should_wrap = model.get(id).map_or(false, |el| {
-                !el.kind.is_relationship() && !el.kind.is_membership()
-            }) && model.get(new_owner).map_or(false, |p| {
-                !p.kind.is_membership() && !p.kind.is_relationship()
-            });
+            let should_wrap = model
+                .get(id)
+                .is_some_and(|el| !el.kind.is_relationship() && !el.kind.is_membership())
+                && model
+                    .get(new_owner)
+                    .is_some_and(|p| !p.kind.is_membership() && !p.kind.is_relationship());
 
             if should_wrap {
                 let kind = model.get(id).unwrap().kind;

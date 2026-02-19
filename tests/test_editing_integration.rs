@@ -11,11 +11,11 @@
 mod editing_integration {
     use syster::base::FileId;
     use syster::hir::{FileText, RootDatabase, file_symbols_from_text};
+    use syster::interchange::model::PropertyValue;
     use syster::interchange::{
         Element, ElementId, ElementKind, Model, ModelFormat, ModelHost, Xmi, decompile,
         model_from_symbols,
     };
-    use syster::interchange::model::PropertyValue;
 
     // ── Helpers ─────────────────────────────────────────────────────
 
@@ -451,7 +451,7 @@ mod editing_integration {
         assert!(!text.contains("Alpha"), "Should NOT have 'Alpha'");
 
         // Re-parse the decompiled text into a fresh model
-        let h2 = host(&text);
+        let h2 = host(text);
         assert!(
             h2.find_by_name("Gamma").len() == 1,
             "Re-parsed model should find 'Gamma'"
@@ -1190,9 +1190,9 @@ mod editing_integration {
             .model()
             .iter_elements()
             .filter(|e| {
-                e.relationship.as_ref().map_or(false, |rd| {
-                    rd.source.contains(&a_id) || rd.target.contains(&a_id)
-                })
+                e.relationship
+                    .as_ref()
+                    .is_some_and(|rd| rd.source.contains(&a_id) || rd.target.contains(&a_id))
             })
             .collect();
         assert!(
@@ -1429,11 +1429,7 @@ mod editing_integration {
     /// but record_metadata() dumps ALL properties into unmappedAttributes.
     #[test]
     fn metadata_excludes_internal_properties() {
-        let source = concat!(
-            "package Vehicle {\n",
-            "    part def Engine;\n",
-            "}\n",
-        );
+        let source = concat!("package Vehicle {\n", "    part def Engine;\n", "}\n",);
 
         let h = host(source);
 
@@ -1449,7 +1445,9 @@ mod editing_integration {
                     !key.starts_with('_'),
                     "Element '{}' has internal property '{}' leaking into metadata.\n\
                      unmappedAttributes: {:?}",
-                    qn, key, meta.unmapped_attributes
+                    qn,
+                    key,
+                    meta.unmapped_attributes
                 );
             }
         }
@@ -1676,11 +1674,7 @@ mod editing_integration {
     /// `variation` keyword on definitions must survive.
     #[test]
     fn roundtrip_preserves_variation_keyword() {
-        let source = concat!(
-            "package P {\n",
-            "    variation part def Options;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    variation part def Options;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -2058,11 +2052,7 @@ mod editing_integration {
     /// Short name aliases like `part def <w> Wheel` must survive.
     #[test]
     fn roundtrip_preserves_short_names() {
-        let source = concat!(
-            "package P {\n",
-            "    part def <w> Wheel;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    part def <w> Wheel;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -2105,17 +2095,17 @@ mod editing_integration {
             "Rename should preserve 'private import'.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Motor"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Motor"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Adding a sibling must not destroy `variation` keyword.
     #[test]
     fn edit_add_preserves_variation_keyword() {
-        let source = concat!(
-            "package P {\n",
-            "    variation part def Options;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    variation part def Options;\n", "}\n",);
         let mut h = host(source);
         let mut t = h.tracker();
         let p_id = h.find_by_name("P")[0].id().clone();
@@ -2128,7 +2118,11 @@ mod editing_integration {
             "Add should preserve 'variation' keyword.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Extra"), "New element should appear.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Extra"),
+            "New element should appear.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming a definition must not destroy `readonly` on a sibling's usage.
@@ -2177,7 +2171,11 @@ mod editing_integration {
             "Remove should preserve 'derived'.\nGot:\n{}",
             rendered
         );
-        assert!(!rendered.contains("Removable"), "Removed element should be gone.\nGot:\n{}", rendered);
+        assert!(
+            !rendered.contains("Removable"),
+            "Removed element should be gone.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming must not destroy `in` / `out` direction on ports.
@@ -2202,7 +2200,11 @@ mod editing_integration {
             "Rename should preserve 'in'/'out' direction.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("MotorIF"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("MotorIF"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Adding an element must not destroy `end` keyword.
@@ -2254,7 +2256,11 @@ mod editing_integration {
             "Rename should preserve multiplicity [4..5].\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Bolt"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Bolt"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming must not destroy exact multiplicity.
@@ -2330,7 +2336,11 @@ mod editing_integration {
             "Rename should preserve 'redefines'.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("LargeWheel"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("LargeWheel"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Adding an element must not destroy doc comments.
@@ -2354,7 +2364,11 @@ mod editing_integration {
             "Add should preserve doc comment.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Widget"), "New element should appear.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Widget"),
+            "New element should appear.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming must not destroy connection usages.
@@ -2382,7 +2396,11 @@ mod editing_integration {
             "Rename should preserve connection usage 'c'.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Assembly"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Assembly"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming must not destroy flow usages.
@@ -2523,7 +2541,11 @@ mod editing_integration {
             "Rename should preserve quoted names.\nGot:\n{}",
             rendered
         );
-        assert!(rendered.contains("Basic"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("Basic"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// Renaming must not destroy short names.
@@ -2634,8 +2656,14 @@ mod editing_integration {
 
         let xmi_bytes = Xmi.write(h.model()).expect("export");
         let reimported = Xmi.read(&xmi_bytes).expect("import");
-        let el = reimported.iter_elements().find(|e| e.name.as_deref() == Some("Options")).unwrap();
-        assert!(el.is_variation, "Variation flag should survive XMI roundtrip");
+        let el = reimported
+            .iter_elements()
+            .find(|e| e.name.as_deref() == Some("Options"))
+            .unwrap();
+        assert!(
+            el.is_variation,
+            "Variation flag should survive XMI roundtrip"
+        );
     }
 
     /// Set short name via tracker, verify in rendered output.
@@ -2664,7 +2692,10 @@ mod editing_integration {
 
         let xmi_bytes = Xmi.write(h.model()).expect("export");
         let reimported = Xmi.read(&xmi_bytes).expect("import");
-        let el = reimported.iter_elements().find(|e| e.name.as_deref() == Some("Wheel")).unwrap();
+        let el = reimported
+            .iter_elements()
+            .find(|e| e.name.as_deref() == Some("Wheel"))
+            .unwrap();
         assert_eq!(
             el.short_name.as_deref(),
             Some("w"),
@@ -2737,7 +2768,8 @@ mod editing_integration {
         let port_def_id = h.find_by_name("MyPort")[0].id().clone();
         let mut attr = Element::new("attr1", ElementKind::AttributeUsage);
         attr.name = Some("signal".into());
-        attr.properties.insert("direction".into(), PropertyValue::String("in".into()));
+        attr.properties
+            .insert("direction".into(), PropertyValue::String("in".into()));
         t.add_element(h.model_mut(), attr, Some(&port_def_id));
 
         let rendered = h.render();
@@ -2779,13 +2811,21 @@ mod editing_integration {
 
         let mut part = Element::new("w1", ElementKind::PartUsage);
         part.name = Some("wheels".into());
-        part.properties.insert("multiplicityLower".into(), PropertyValue::Integer(4));
-        part.properties.insert("multiplicityUpper".into(), PropertyValue::Integer(4));
+        part.properties
+            .insert("multiplicityLower".into(), PropertyValue::Integer(4));
+        part.properties
+            .insert("multiplicityUpper".into(), PropertyValue::Integer(4));
         let part_id = t.add_element(h.model_mut(), part, Some(&car_id));
 
         // Add FeatureTyping to Wheel
         let rel_id = ElementId::generate();
-        t.add_relationship(h.model_mut(), rel_id, ElementKind::FeatureTyping, part_id, wheel_id);
+        t.add_relationship(
+            h.model_mut(),
+            rel_id,
+            ElementKind::FeatureTyping,
+            part_id,
+            wheel_id,
+        );
 
         let rendered = h.render();
         assert!(
@@ -2811,12 +2851,20 @@ mod editing_integration {
 
         let mut part = Element::new("b1", ElementKind::PartUsage);
         part.name = Some("bolts".into());
-        part.properties.insert("multiplicityLower".into(), PropertyValue::Integer(4));
-        part.properties.insert("multiplicityUpper".into(), PropertyValue::Integer(8));
+        part.properties
+            .insert("multiplicityLower".into(), PropertyValue::Integer(4));
+        part.properties
+            .insert("multiplicityUpper".into(), PropertyValue::Integer(8));
         let part_id = t.add_element(h.model_mut(), part, Some(&asm_id));
 
         let rel_id = ElementId::generate();
-        t.add_relationship(h.model_mut(), rel_id, ElementKind::FeatureTyping, part_id, bolt_id);
+        t.add_relationship(
+            h.model_mut(),
+            rel_id,
+            ElementKind::FeatureTyping,
+            part_id,
+            bolt_id,
+        );
 
         let rendered = h.render();
         assert!(
@@ -2847,7 +2895,13 @@ mod editing_integration {
         let part_id = t.add_element(h.model_mut(), part, Some(&car_id));
 
         let rel_id = ElementId::generate();
-        t.add_relationship(h.model_mut(), rel_id, ElementKind::Subsetting, part_id, narrow_id);
+        t.add_relationship(
+            h.model_mut(),
+            rel_id,
+            ElementKind::Subsetting,
+            part_id,
+            narrow_id,
+        );
 
         let rendered = h.render();
         assert!(
@@ -2884,7 +2938,13 @@ mod editing_integration {
         let attr_id = t.add_element(h.model_mut(), attr, Some(&bw_id));
 
         let rel_id = ElementId::generate();
-        t.add_relationship(h.model_mut(), rel_id, ElementKind::Redefinition, attr_id, size_id);
+        t.add_relationship(
+            h.model_mut(),
+            rel_id,
+            ElementKind::Redefinition,
+            attr_id,
+            size_id,
+        );
 
         let rendered = h.render();
         assert!(
@@ -3006,7 +3066,11 @@ mod editing_integration {
         // Set abstract first
         t.set_abstract(h.model_mut(), &v_id, true);
         let r1 = h.render();
-        assert!(r1.contains("abstract"), "Should have abstract.\nGot:\n{}", r1);
+        assert!(
+            r1.contains("abstract"),
+            "Should have abstract.\nGot:\n{}",
+            r1
+        );
 
         // Now also set variation
         t.set_variation(h.model_mut(), &v_id, true);
@@ -3038,7 +3102,11 @@ mod editing_integration {
         t.rename(h.model_mut(), &a_id, "B");
 
         let rendered = h.render();
-        assert!(rendered.contains("B"), "Rename should apply.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("B"),
+            "Rename should apply.\nGot:\n{}",
+            rendered
+        );
         assert!(
             rendered.contains("Important part"),
             "Doc should survive rename.\nGot:\n{}",
@@ -3062,12 +3130,16 @@ mod editing_integration {
         let attr_id = h.find_by_name("id")[0].id().clone();
         if let Some(el) = h.model_mut().get_mut(&attr_id) {
             el.is_readonly = true;
-            el.properties.insert("isReadOnly".into(), PropertyValue::Boolean(true));
+            el.properties
+                .insert("isReadOnly".into(), PropertyValue::Boolean(true));
         }
 
         let xmi_bytes = Xmi.write(h.model()).expect("export");
         let reimported = Xmi.read(&xmi_bytes).expect("import");
-        let el = reimported.iter_elements().find(|e| e.name.as_deref() == Some("id")).unwrap();
+        let el = reimported
+            .iter_elements()
+            .find(|e| e.name.as_deref() == Some("id"))
+            .unwrap();
         assert!(el.is_readonly, "readonly flag should survive XMI roundtrip");
 
         let result = decompile(&reimported);
@@ -3097,9 +3169,15 @@ mod editing_integration {
         // Re-parse decompiled output
         let h2 = host(&result.text);
         let v2 = &h2.find_by_name("Vehicle")[0];
-        assert!(v2.element.is_abstract, "Re-parsed Vehicle should be abstract");
+        assert!(
+            v2.element.is_abstract,
+            "Re-parsed Vehicle should be abstract"
+        );
         let o2 = &h2.find_by_name("Options")[0];
-        assert!(o2.element.is_variation, "Re-parsed Options should be variation");
+        assert!(
+            o2.element.is_variation,
+            "Re-parsed Options should be variation"
+        );
     }
 
     /// Compound edit: add typed part with multiplicity + rename another +
@@ -3123,12 +3201,20 @@ mod editing_integration {
         // Add wheels[6] to Truck
         let mut part = Element::new("w1", ElementKind::PartUsage);
         part.name = Some("wheels".into());
-        part.properties.insert("multiplicityLower".into(), PropertyValue::Integer(6));
-        part.properties.insert("multiplicityUpper".into(), PropertyValue::Integer(6));
+        part.properties
+            .insert("multiplicityLower".into(), PropertyValue::Integer(6));
+        part.properties
+            .insert("multiplicityUpper".into(), PropertyValue::Integer(6));
         let part_id = t.add_element(h.model_mut(), part, Some(&truck_id));
 
         let rel_id = ElementId::generate();
-        t.add_relationship(h.model_mut(), rel_id, ElementKind::FeatureTyping, part_id, wheel_id);
+        t.add_relationship(
+            h.model_mut(),
+            rel_id,
+            ElementKind::FeatureTyping,
+            part_id,
+            wheel_id,
+        );
 
         // Rename Truck → Lorry
         t.rename(h.model_mut(), &truck_id, "Lorry");
@@ -3170,7 +3256,8 @@ mod editing_integration {
         let mut attr = Element::new("d1", ElementKind::AttributeUsage);
         attr.name = Some("processed".into());
         attr.is_derived = true;
-        attr.properties.insert("isDerived".into(), PropertyValue::Boolean(true));
+        attr.properties
+            .insert("isDerived".into(), PropertyValue::Boolean(true));
         t.add_element(h.model_mut(), attr, Some(&sensor_id));
 
         // Add documentation
@@ -3693,11 +3780,7 @@ mod editing_integration {
     /// `item def` roundtrips.
     #[test]
     fn roundtrip_item_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    item def Cargo;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    item def Cargo;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3710,11 +3793,7 @@ mod editing_integration {
     /// `attribute def` roundtrips.
     #[test]
     fn roundtrip_attribute_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    attribute def Velocity;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    attribute def Velocity;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3727,11 +3806,7 @@ mod editing_integration {
     /// `connection def` roundtrips.
     #[test]
     fn roundtrip_connection_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    connection def Cable;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    connection def Cable;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3744,11 +3819,7 @@ mod editing_integration {
     /// `interface def` roundtrips.
     #[test]
     fn roundtrip_interface_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    interface def USB;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    interface def USB;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3761,11 +3832,7 @@ mod editing_integration {
     /// `requirement def` roundtrips.
     #[test]
     fn roundtrip_requirement_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    requirement def SafetyReq;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    requirement def SafetyReq;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3778,11 +3845,7 @@ mod editing_integration {
     /// `constraint def` roundtrips.
     #[test]
     fn roundtrip_constraint_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    constraint def MaxWeight;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    constraint def MaxWeight;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3795,11 +3858,7 @@ mod editing_integration {
     /// `calc def` roundtrips.
     #[test]
     fn roundtrip_calc_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    calc def TotalMass;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    calc def TotalMass;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3812,11 +3871,7 @@ mod editing_integration {
     /// `allocation def` roundtrips.
     #[test]
     fn roundtrip_allocation_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    allocation def TaskMap;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    allocation def TaskMap;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3829,11 +3884,7 @@ mod editing_integration {
     /// `use case def` roundtrips.
     #[test]
     fn roundtrip_use_case_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    use case def DriveVehicle;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    use case def DriveVehicle;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3846,11 +3897,7 @@ mod editing_integration {
     /// `concern def` roundtrips.
     #[test]
     fn roundtrip_concern_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    concern def Emissions;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    concern def Emissions;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3863,11 +3910,7 @@ mod editing_integration {
     /// `view def` roundtrips.
     #[test]
     fn roundtrip_view_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    view def StructureView;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    view def StructureView;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3880,11 +3923,7 @@ mod editing_integration {
     /// `viewpoint def` roundtrips.
     #[test]
     fn roundtrip_viewpoint_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    viewpoint def SecurityVP;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    viewpoint def SecurityVP;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3897,11 +3936,7 @@ mod editing_integration {
     /// `rendering def` roundtrips.
     #[test]
     fn roundtrip_rendering_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    rendering def BoxDiagram;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    rendering def BoxDiagram;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3914,11 +3949,7 @@ mod editing_integration {
     /// `metadata def` roundtrips.
     #[test]
     fn roundtrip_metadata_definition() {
-        let source = concat!(
-            "package P {\n",
-            "    metadata def Audit;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    metadata def Audit;\n", "}\n",);
         let h = host(source);
         let result = decompile(h.model());
         assert!(
@@ -3962,11 +3993,7 @@ mod editing_integration {
     /// Rename a requirement def.
     #[test]
     fn edit_rename_requirement_def() {
-        let source = concat!(
-            "package P {\n",
-            "    requirement def SafetyReq;\n",
-            "}\n",
-        );
+        let source = concat!("package P {\n", "    requirement def SafetyReq;\n", "}\n",);
         let mut h = host(source);
         let mut t = h.tracker();
         let req_id = h.find_by_name("SafetyReq")[0].id().clone();
@@ -4026,9 +4053,21 @@ mod editing_integration {
         t.add_element(h.model_mut(), req, Some(&sys_id));
 
         let rendered = h.render();
-        assert!(rendered.contains("item payload"), "Should have item usage.\nGot:\n{}", rendered);
-        assert!(rendered.contains("action operate"), "Should have action usage.\nGot:\n{}", rendered);
-        assert!(rendered.contains("requirement massLimit"), "Should have requirement usage.\nGot:\n{}", rendered);
+        assert!(
+            rendered.contains("item payload"),
+            "Should have item usage.\nGot:\n{}",
+            rendered
+        );
+        assert!(
+            rendered.contains("action operate"),
+            "Should have action usage.\nGot:\n{}",
+            rendered
+        );
+        assert!(
+            rendered.contains("requirement massLimit"),
+            "Should have requirement usage.\nGot:\n{}",
+            rendered
+        );
     }
 
     /// XMI roundtrip with multiple definition types in one package.
@@ -4058,11 +4097,31 @@ mod editing_integration {
         let reimported = Xmi.read(&xmi_bytes).expect("import");
         let result = decompile(&reimported);
 
-        assert!(result.text.contains("part def Engine"), "part def.\nGot:\n{}", result.text);
-        assert!(result.text.contains("action def Start"), "action def.\nGot:\n{}", result.text);
-        assert!(result.text.contains("port def FuelPort"), "port def.\nGot:\n{}", result.text);
-        assert!(result.text.contains("state def EngineStates"), "state def.\nGot:\n{}", result.text);
-        assert!(result.text.contains("requirement def EmissionReq"), "requirement def.\nGot:\n{}", result.text);
+        assert!(
+            result.text.contains("part def Engine"),
+            "part def.\nGot:\n{}",
+            result.text
+        );
+        assert!(
+            result.text.contains("action def Start"),
+            "action def.\nGot:\n{}",
+            result.text
+        );
+        assert!(
+            result.text.contains("port def FuelPort"),
+            "port def.\nGot:\n{}",
+            result.text
+        );
+        assert!(
+            result.text.contains("state def EngineStates"),
+            "state def.\nGot:\n{}",
+            result.text
+        );
+        assert!(
+            result.text.contains("requirement def EmissionReq"),
+            "requirement def.\nGot:\n{}",
+            result.text
+        );
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -4237,10 +4296,8 @@ mod editing_integration {
         use std::sync::Arc;
         let mut model = Model::new();
         let mut lib = Element::new("lib1", ElementKind::LibraryPackage).with_name("StdLib");
-        lib.properties.insert(
-            Arc::from("isStandard"),
-            PropertyValue::Boolean(true),
-        );
+        lib.properties
+            .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
         model.add_element(lib);
         model.roots.push(ElementId::from("lib1"));
 
@@ -4272,13 +4329,12 @@ mod editing_integration {
         usage.owned_elements.push(ElementId::from("fv1"));
         model.add_element(usage);
 
-        let mut fv = Element::new("fv1", ElementKind::FeatureValue)
-            .with_owner(ElementId::from("u1"));
+        let mut fv =
+            Element::new("fv1", ElementKind::FeatureValue).with_owner(ElementId::from("u1"));
         fv.owned_elements.push(ElementId::from("lit1"));
         model.add_element(fv);
 
-        let mut lit = Element::new("lit1", literal_kind)
-            .with_owner(ElementId::from("fv1"));
+        let mut lit = Element::new("lit1", literal_kind).with_owner(ElementId::from("fv1"));
         lit.properties.insert(Arc::from("value"), value);
         model.add_element(lit);
 
@@ -4332,14 +4388,11 @@ mod editing_integration {
 
     #[test]
     fn decompile_feature_value_real() {
-        let model = model_with_feature_value(
-            "ratio",
-            ElementKind::LiteralReal,
-            PropertyValue::Real(3.14),
-        );
+        let model =
+            model_with_feature_value("ratio", ElementKind::LiteralReal, PropertyValue::Real(2.72));
         let result = decompile(&model);
         assert!(
-            result.text.contains("attribute ratio = 3.14"),
+            result.text.contains("attribute ratio = 2.72"),
             "Expected real feature value.\nGot:\n{}",
             result.text
         );
@@ -4362,15 +4415,17 @@ mod editing_integration {
         usage.owned_elements.push(ElementId::from("fv1"));
         model.add_element(usage);
 
-        let mut fv = Element::new("fv1", ElementKind::FeatureValue)
-            .with_owner(ElementId::from("u1"));
+        let mut fv =
+            Element::new("fv1", ElementKind::FeatureValue).with_owner(ElementId::from("u1"));
         fv.owned_elements.push(ElementId::from("null1"));
         model.add_element(fv);
 
-        let mut null_expr = Element::new("null1", ElementKind::NullExpression)
-            .with_owner(ElementId::from("fv1"));
+        let mut null_expr =
+            Element::new("null1", ElementKind::NullExpression).with_owner(ElementId::from("fv1"));
         // NullExpression needs some property so format_feature_value matches
-        null_expr.properties.insert(Arc::from("value"), PropertyValue::Boolean(false));
+        null_expr
+            .properties
+            .insert(Arc::from("value"), PropertyValue::Boolean(false));
         model.add_element(null_expr);
 
         let result = decompile(&model);
@@ -4487,7 +4542,9 @@ mod editing_integration {
 
         let result = decompile(&model);
         assert!(
-            result.text.contains("part myEngine : Engine subsets basePart redefines"),
+            result
+                .text
+                .contains("part myEngine : Engine subsets basePart redefines"),
             "Expected combined typing+subsetting+redefinition.\nGot:\n{}",
             result.text
         );
@@ -4515,10 +4572,8 @@ mod editing_integration {
         use std::sync::Arc;
         let mut model = Model::new();
         let mut feat = Element::new("f1", ElementKind::Feature).with_name("values");
-        feat.properties.insert(
-            Arc::from("isUnique"),
-            PropertyValue::Boolean(false),
-        );
+        feat.properties
+            .insert(Arc::from("isUnique"), PropertyValue::Boolean(false));
         model.add_element(feat);
         model.roots.push(ElementId::from("f1"));
 
@@ -4666,13 +4721,14 @@ mod editing_integration {
         model.add_element(mult);
         model.roots.push(ElementId::from("m1"));
 
-        let mut low = Element::new("low", ElementKind::LiteralInteger)
-            .with_owner(ElementId::from("m1"));
-        low.properties.insert(Arc::from("value"), PropertyValue::Integer(0));
+        let mut low =
+            Element::new("low", ElementKind::LiteralInteger).with_owner(ElementId::from("m1"));
+        low.properties
+            .insert(Arc::from("value"), PropertyValue::Integer(0));
         model.add_element(low);
 
-        let high = Element::new("high", ElementKind::LiteralInfinity)
-            .with_owner(ElementId::from("m1"));
+        let high =
+            Element::new("high", ElementKind::LiteralInfinity).with_owner(ElementId::from("m1"));
         model.add_element(high);
 
         let result = decompile(&model);
@@ -4811,8 +4867,8 @@ mod editing_integration {
         usage.owned_elements.push(ElementId::from("ft1"));
         model.add_element(usage);
 
-        let mut ft = Element::new("ft1", ElementKind::FeatureTyping)
-            .with_owner(ElementId::from("u1"));
+        let mut ft =
+            Element::new("ft1", ElementKind::FeatureTyping).with_owner(ElementId::from("u1"));
         ft.properties.insert(
             Arc::from("href_target_name"),
             PropertyValue::String(Arc::from("ScalarValues::Real")),
@@ -4881,8 +4937,7 @@ mod editing_integration {
     #[test]
     fn decompile_membership_import() {
         let mut model = Model::new();
-        let target = Element::new("t1", ElementKind::PartDefinition)
-            .with_name("TargetPart");
+        let target = Element::new("t1", ElementKind::PartDefinition).with_name("TargetPart");
         model.add_element(target);
 
         let mut pkg = Element::new("p1", ElementKind::Package).with_name("P");
@@ -4926,7 +4981,10 @@ mod editing_integration {
         let mut usage = Element::new("u1", ElementKind::PortUsage)
             .with_name("fuelIn")
             .with_owner(ElementId::from("p1"));
-        usage.properties.insert(Arc::from("direction"), PropertyValue::String(Arc::from("in")));
+        usage.properties.insert(
+            Arc::from("direction"),
+            PropertyValue::String(Arc::from("in")),
+        );
         usage.is_end = true;
         usage.is_readonly = true;
         usage.is_derived = true;
@@ -5059,8 +5117,7 @@ mod editing_integration {
     #[test]
     fn decompile_quoted_name_with_spaces() {
         let mut model = Model::new();
-        let def = Element::new("d1", ElementKind::PartDefinition)
-            .with_name("My Vehicle");
+        let def = Element::new("d1", ElementKind::PartDefinition).with_name("My Vehicle");
         model.add_element(def);
         model.roots.push(ElementId::from("d1"));
 
@@ -5075,8 +5132,7 @@ mod editing_integration {
     #[test]
     fn decompile_quoted_name_with_slash() {
         let mut model = Model::new();
-        let def = Element::new("d1", ElementKind::PartDefinition)
-            .with_name("Input/Output");
+        let def = Element::new("d1", ElementKind::PartDefinition).with_name("Input/Output");
         model.add_element(def);
         model.roots.push(ElementId::from("d1"));
 
@@ -5198,7 +5254,10 @@ mod editing_integration {
         let mut usage = Element::new("u1", ElementKind::PortUsage)
             .with_name("outPort")
             .with_owner(ElementId::from("p1"));
-        usage.properties.insert(Arc::from("direction"), PropertyValue::String(Arc::from("out")));
+        usage.properties.insert(
+            Arc::from("direction"),
+            PropertyValue::String(Arc::from("out")),
+        );
         model.add_element(usage);
 
         let result = decompile(&model);
@@ -5221,7 +5280,10 @@ mod editing_integration {
         let mut usage = Element::new("u1", ElementKind::PortUsage)
             .with_name("biPort")
             .with_owner(ElementId::from("p1"));
-        usage.properties.insert(Arc::from("direction"), PropertyValue::String(Arc::from("inout")));
+        usage.properties.insert(
+            Arc::from("direction"),
+            PropertyValue::String(Arc::from("inout")),
+        );
         model.add_element(usage);
 
         let result = decompile(&model);
@@ -5240,7 +5302,8 @@ mod editing_integration {
         let mut model = Model::new();
         let mut def = Element::new("d1", ElementKind::PartDefinition).with_name("Proto");
         def.is_individual = true;
-        def.properties.insert(Arc::from("isIndividual"), PropertyValue::Boolean(true));
+        def.properties
+            .insert(Arc::from("isIndividual"), PropertyValue::Boolean(true));
         model.add_element(def);
         model.roots.push(ElementId::from("d1"));
 
@@ -5268,7 +5331,9 @@ mod editing_integration {
             .with_name("slice")
             .with_owner(ElementId::from("p1"));
         usage.is_portion = true;
-        usage.properties.insert(Arc::from("isPortion"), PropertyValue::Boolean(true));
+        usage
+            .properties
+            .insert(Arc::from("isPortion"), PropertyValue::Boolean(true));
         model.add_element(usage);
 
         let xmi_bytes = Xmi.write(&model).expect("export");
@@ -5297,14 +5362,15 @@ mod editing_integration {
         usage.owned_elements.push(ElementId::from("fv1"));
         model.add_element(usage);
 
-        let mut fv = Element::new("fv1", ElementKind::FeatureValue)
-            .with_owner(ElementId::from("u1"));
+        let mut fv =
+            Element::new("fv1", ElementKind::FeatureValue).with_owner(ElementId::from("u1"));
         fv.owned_elements.push(ElementId::from("lit1"));
         model.add_element(fv);
 
-        let mut lit = Element::new("lit1", ElementKind::LiteralInteger)
-            .with_owner(ElementId::from("fv1"));
-        lit.properties.insert(Arc::from("value"), PropertyValue::Integer(99));
+        let mut lit =
+            Element::new("lit1", ElementKind::LiteralInteger).with_owner(ElementId::from("fv1"));
+        lit.properties
+            .insert(Arc::from("value"), PropertyValue::Integer(99));
         model.add_element(lit);
 
         let xmi_bytes = Xmi.write(&model).expect("export");
@@ -5323,7 +5389,8 @@ mod editing_integration {
         use std::sync::Arc;
         let mut model = Model::new();
         let mut lib = Element::new("lib1", ElementKind::LibraryPackage).with_name("StdLib");
-        lib.properties.insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
+        lib.properties
+            .insert(Arc::from("isStandard"), PropertyValue::Boolean(true));
         model.add_element(lib);
         model.roots.push(ElementId::from("lib1"));
 
@@ -5349,7 +5416,8 @@ mod editing_integration {
 
         let mut el = Element::new("d1", ElementKind::PartDefinition).with_name("Prototype");
         el.is_individual = true;
-        el.properties.insert(Arc::from("isIndividual"), PropertyValue::Boolean(true));
+        el.properties
+            .insert(Arc::from("isIndividual"), PropertyValue::Boolean(true));
         t.add_element(h.model_mut(), el, Some(&p_id));
 
         let rendered = h.render();
@@ -5369,7 +5437,8 @@ mod editing_integration {
 
         let mut el = Element::new("u1", ElementKind::PartUsage).with_name("slice");
         el.is_portion = true;
-        el.properties.insert(Arc::from("isPortion"), PropertyValue::Boolean(true));
+        el.properties
+            .insert(Arc::from("isPortion"), PropertyValue::Boolean(true));
         t.add_element(h.model_mut(), el, Some(&p_id));
 
         let rendered = h.render();
@@ -5396,7 +5465,8 @@ mod editing_integration {
         h.model_mut().add_element(fv);
 
         let mut lit = Element::new("lit1", ElementKind::LiteralInteger);
-        lit.properties.insert(Arc::from("value"), PropertyValue::Integer(42));
+        lit.properties
+            .insert(Arc::from("value"), PropertyValue::Integer(42));
         h.model_mut().add_element(lit);
 
         let rendered = h.render();
@@ -5580,8 +5650,10 @@ mod editing_integration {
         use std::sync::Arc;
         let mut model = Model::new();
         let mut def = Element::new("d1", ElementKind::PartDefinition).with_name("WithProps");
-        def.properties.insert(Arc::from("custom"), PropertyValue::Integer(7));
-        def.properties.insert(Arc::from("flag"), PropertyValue::Boolean(true));
+        def.properties
+            .insert(Arc::from("custom"), PropertyValue::Integer(7));
+        def.properties
+            .insert(Arc::from("flag"), PropertyValue::Boolean(true));
         model.add_element(def);
         model.roots.push(ElementId::from("d1"));
 

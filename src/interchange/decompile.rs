@@ -307,8 +307,16 @@ impl<'a> DecompileContext<'a> {
         self.write_visibility(element);
 
         let abstract_kw = if element.is_abstract { "abstract " } else { "" };
-        let variation_kw = if element.is_variation { "variation " } else { "" };
-        let individual_kw = if element.is_individual { "individual " } else { "" };
+        let variation_kw = if element.is_variation {
+            "variation "
+        } else {
+            ""
+        };
+        let individual_kw = if element.is_individual {
+            "individual "
+        } else {
+            ""
+        };
         let short = self.format_short_name(element);
         let name_str = self.format_element_name(element);
         let specializations = self.format_specializations(&element.id);
@@ -317,18 +325,33 @@ impl<'a> DecompileContext<'a> {
             if element.owned_elements.is_empty() && element.documentation.is_none() {
                 self.write_line(&format!(
                     "{}{}{}{} {}{}{};",
-                    variation_kw, abstract_kw, individual_kw, keyword, short, name_str, specializations
+                    variation_kw,
+                    abstract_kw,
+                    individual_kw,
+                    keyword,
+                    short,
+                    name_str,
+                    specializations
                 ));
             } else {
                 self.write_line(&format!(
                     "{}{}{}{} {}{}{} {{",
-                    variation_kw, abstract_kw, individual_kw, keyword, short, name_str, specializations
+                    variation_kw,
+                    abstract_kw,
+                    individual_kw,
+                    keyword,
+                    short,
+                    name_str,
+                    specializations
                 ));
                 self.decompile_body(element);
                 self.write_line("}");
             }
         } else {
-            self.write_line(&format!("{}{}{}{} {{{}", variation_kw, abstract_kw, individual_kw, keyword, specializations));
+            self.write_line(&format!(
+                "{}{}{}{} {{{}",
+                variation_kw, abstract_kw, individual_kw, keyword, specializations
+            ));
             self.decompile_body(element);
             self.write_line("}");
         }
@@ -345,7 +368,11 @@ impl<'a> DecompileContext<'a> {
         let readonly_kw = if element.is_readonly { "readonly " } else { "" };
         let derived_kw = if element.is_derived { "derived " } else { "" };
         let abstract_kw = if element.is_abstract { "abstract " } else { "" };
-        let variation_kw = if element.is_variation { "variation " } else { "" };
+        let variation_kw = if element.is_variation {
+            "variation "
+        } else {
+            ""
+        };
         let portion_kw = if element.is_portion { "portion " } else { "" };
 
         let typing = self.format_typing(&element.id);
@@ -356,9 +383,10 @@ impl<'a> DecompileContext<'a> {
         let multiplicity = self.format_usage_multiplicity(element);
 
         // Check if the name is an anonymous scope (contains # and @, e.g. ":>>size#1@L5")
-        let is_anonymous = element.name.as_ref().is_none_or(|n| {
-            n.contains('#') && n.contains('@')
-        });
+        let is_anonymous = element
+            .name
+            .as_ref()
+            .is_none_or(|n| n.contains('#') && n.contains('@'));
 
         let relations = format!("{}{}{}", typing, subsetting, redefinition);
 
@@ -374,13 +402,22 @@ impl<'a> DecompileContext<'a> {
         // Build prefix: direction end readonly derived abstract variation portion
         let prefix = format!(
             "{}{}{}{}{}{}{}",
-            direction_prefix, end_kw, readonly_kw, derived_kw, abstract_kw, variation_kw, portion_kw
+            direction_prefix,
+            end_kw,
+            readonly_kw,
+            derived_kw,
+            abstract_kw,
+            variation_kw,
+            portion_kw
         );
 
         if is_anonymous {
             // Anonymous usage — render as `keyword redefines X;` or `keyword : Type;` etc.
             if !relations.is_empty() || !value.is_empty() {
-                self.write_line(&format!("{}{}{}{}{};", prefix, keyword, relations, multiplicity, value));
+                self.write_line(&format!(
+                    "{}{}{}{}{};",
+                    prefix, keyword, relations, multiplicity, value
+                ));
             }
         } else if let Some(_name) = &element.name {
             let name_str = self.format_element_name(element);
@@ -399,7 +436,10 @@ impl<'a> DecompileContext<'a> {
             }
         } else if !relations.is_empty() || !value.is_empty() {
             // Truly unnamed usage with typing/subsetting/value
-            self.write_line(&format!("{}{}{}{}{};", prefix, keyword, relations, multiplicity, value));
+            self.write_line(&format!(
+                "{}{}{}{}{};",
+                prefix, keyword, relations, multiplicity, value
+            ));
         }
     }
 
@@ -560,14 +600,12 @@ impl<'a> DecompileContext<'a> {
     fn format_direction(&self, element: &Element) -> String {
         let dir_key: Arc<str> = Arc::from("direction");
         match element.properties.get(&dir_key) {
-            Some(super::model::PropertyValue::String(s)) => {
-                match s.as_ref() {
-                    "in" => "in ".to_string(),
-                    "out" => "out ".to_string(),
-                    "inout" => "inout ".to_string(),
-                    _ => String::new(),
-                }
-            }
+            Some(super::model::PropertyValue::String(s)) => match s.as_ref() {
+                "in" => "in ".to_string(),
+                "out" => "out ".to_string(),
+                "inout" => "inout ".to_string(),
+                _ => String::new(),
+            },
             _ => String::new(),
         }
     }
@@ -847,7 +885,11 @@ impl<'a> DecompileContext<'a> {
     /// Decompile imports for an element.
     fn decompile_imports(&mut self, element_id: &ElementId) {
         // Namespace imports (import X::*)
-        for re in self.model.rel_elements_owned_by(element_id, ElementKind::NamespaceImport).collect::<Vec<_>>() {
+        for re in self
+            .model
+            .rel_elements_owned_by(element_id, ElementKind::NamespaceImport)
+            .collect::<Vec<_>>()
+        {
             let visibility_prefix = match re.visibility {
                 Visibility::Private => "private ",
                 Visibility::Protected => "protected ",
@@ -874,7 +916,11 @@ impl<'a> DecompileContext<'a> {
         }
 
         // Membership imports (import X::Y)
-        for re in self.model.rel_elements_owned_by(element_id, ElementKind::MembershipImport).collect::<Vec<_>>() {
+        for re in self
+            .model
+            .rel_elements_owned_by(element_id, ElementKind::MembershipImport)
+            .collect::<Vec<_>>()
+        {
             let visibility_prefix = match re.visibility {
                 Visibility::Private => "private ",
                 Visibility::Protected => "protected ",
