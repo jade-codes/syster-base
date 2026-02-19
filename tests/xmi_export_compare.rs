@@ -6,6 +6,7 @@ use std::path::Path;
 use syster::interchange::{ModelFormat, Xmi, decompile};
 
 #[test]
+#[ignore] // Requires local /tmp/SysML-v2-Release - run manually
 fn export_for_comparison() {
     let file_path = "/tmp/SysML-v2-Release/sysml.library.xmi/Kernel Libraries/Kernel Semantic Library/Base.kermlx";
 
@@ -111,6 +112,7 @@ fn export_for_comparison() {
 }
 
 #[test]
+#[ignore] // Requires local /tmp/SysML-v2-Release - run manually
 fn debug_ports_roundtrip() {
     let file_path = "/tmp/SysML-v2-Release/sysml.library.xmi/Kernel Libraries/Kernel Data Type Library/ScalarValues.kermlx";
 
