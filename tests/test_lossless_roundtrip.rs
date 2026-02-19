@@ -230,6 +230,7 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -325,6 +326,7 @@ fn test_xmi_lossless_roundtrip() {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_jsonld_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -444,6 +446,7 @@ fn test_jsonld_lossless_roundtrip() {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_yaml_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -566,6 +569,7 @@ fn test_yaml_lossless_roundtrip() {
 /// as those formats don't serialize relationships yet.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_cross_format_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -728,6 +732,7 @@ fn test_cross_format_roundtrip() {
 /// This reveals any formatting/ordering differences even if semantically equivalent.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_byte_comparison() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -870,6 +875,7 @@ fn analyze_byte_diff(original: &[u8], roundtripped: &[u8]) -> ByteDiff {
 /// Detailed line-by-line comparison of a single file to understand structural differences.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_detailed_diff() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
