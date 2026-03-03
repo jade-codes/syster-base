@@ -125,15 +125,105 @@ fn is_feature_reference_token(kind: SyntaxKind) -> bool {
     )
 }
 
-/// Handle feature reference or invocation: name or name(args)
+/// Handle feature reference or invocation: name, name(args), or name { bindings }
 fn parse_feature_reference<P: ExpressionParser>(p: &mut P) {
     p.parse_qualified_name();
     p.skip_trivia();
 
-    // Check for invocation
+    // Check for parenthesized invocation: name(args)
     if p.at(SyntaxKind::L_PAREN) {
         parse_argument_list(p);
     }
+    // Check for body invocation: name { name = expr; ... }
+    // Used for constraint invocations with named parameter bindings.
+    // Only triggered when the body content starts with `name =` to avoid
+    // consuming body braces meant for enclosing declarations (e.g.,
+    // `feature redefines this default that { doc ... }`).
+    else if p.at(SyntaxKind::L_BRACE) && looks_like_invocation_body(p) {
+        parse_invocation_body(p);
+    }
+}
+
+/// Check if a `{` after a name looks like an invocation body (named bindings)
+/// rather than a declaration body. Returns true if the pattern is `{ name = ...`.
+fn looks_like_invocation_body<P: ExpressionParser>(p: &P) -> bool {
+    let mut lookahead = 1; // past {
+    // skip trivia
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
+        lookahead += 1;
+    }
+    // Must start with an identifier
+    if p.peek_kind(lookahead) != SyntaxKind::IDENT {
+        return false;
+    }
+    lookahead += 1;
+    // skip trivia
+    while matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT
+    ) {
+        lookahead += 1;
+    }
+    // Followed by `=` (assignment, not `==` equality)
+    p.peek_kind(lookahead) == SyntaxKind::EQ
+}
+
+/// Parse an invocation body: { name = expr; name = expr; ... }
+/// Used for constraint invocations like: AccuracyConstraint { actual = x; required = y; }
+/// Only called when `looks_like_invocation_body` confirms the `{ name = ...` pattern.
+fn parse_invocation_body<P: ExpressionParser>(p: &mut P) {
+    p.start_node(SyntaxKind::ARGUMENT_LIST);
+    p.bump(); // {
+    p.skip_trivia();
+
+    while !p.at(SyntaxKind::R_BRACE)
+        && !p.at(SyntaxKind::ERROR)
+        && p.current_kind() != SyntaxKind::__LAST
+    {
+        let start_pos = p.get_pos();
+
+        // Named binding: name = expression ;
+        if p.at_name_token() {
+            let next = p.peek_kind(1);
+            if next == SyntaxKind::EQ {
+                p.start_node(SyntaxKind::ARGUMENT_LIST);
+                p.bump(); // name
+                p.skip_trivia();
+                p.bump(); // =
+                p.skip_trivia();
+                parse_expression(p);
+                p.skip_trivia();
+                if p.at(SyntaxKind::SEMICOLON) {
+                    p.bump();
+                }
+                p.finish_node();
+                p.skip_trivia();
+                continue;
+            }
+        }
+
+        // Fallback: parse as single expression body
+        parse_expression(p);
+        p.skip_trivia();
+        if p.at(SyntaxKind::SEMICOLON) {
+            p.bump();
+            p.skip_trivia();
+        }
+
+        // Safety: avoid infinite loop if no progress was made
+        if p.get_pos() == start_pos {
+            p.bump_any();
+            p.skip_trivia();
+        }
+
+        break;
+    }
+
+    p.expect(SyntaxKind::R_BRACE);
+    p.finish_node();
 }
 
 /// Handle metadata access: @name

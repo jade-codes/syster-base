@@ -97,6 +97,13 @@ pub fn parse_constraint_body<P: SysMLParser>(p: &mut P) {
             }
         }
 
+        // Consume optional trailing semicolon after the expression
+        // (e.g., `require constraint { if x then C { a = 1; } else true; }`)
+        if p.at(SyntaxKind::SEMICOLON) {
+            p.bump();
+            p.skip_trivia();
+        }
+
         p.expect(SyntaxKind::R_BRACE);
     } else {
         error_missing_body_terminator(p, "constraint");
