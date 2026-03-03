@@ -194,25 +194,23 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
 
     // Compare relationships by source-kind-target tuples
     let orig_rels: HashSet<_> = original
-        .relationships
-        .iter()
-        .map(|r| {
-            (
-                r.source.to_string(),
+        .iter_relationship_elements()
+        .filter_map(|r| {
+            Some((
+                r.source()?.to_string(),
                 format!("{:?}", r.kind),
-                r.target.to_string(),
-            )
+                r.target()?.to_string(),
+            ))
         })
         .collect();
     let rt_rels: HashSet<_> = roundtripped
-        .relationships
-        .iter()
-        .map(|r| {
-            (
-                r.source.to_string(),
+        .iter_relationship_elements()
+        .filter_map(|r| {
+            Some((
+                r.source()?.to_string(),
                 format!("{:?}", r.kind),
-                r.target.to_string(),
-            )
+                r.target()?.to_string(),
+            ))
         })
         .collect();
 
@@ -232,6 +230,7 @@ fn compare_models(original: &Model, roundtripped: &Model) -> ComparisonResult {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -299,7 +298,7 @@ fn test_xmi_lossless_roundtrip() {
                 "✓ {} - {} elements, {} relationships",
                 file_name,
                 original.elements.len(),
-                original.relationships.len()
+                original.relationship_count()
             );
             passed += 1;
         } else {
@@ -327,6 +326,7 @@ fn test_xmi_lossless_roundtrip() {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_jsonld_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -401,7 +401,7 @@ fn test_jsonld_lossless_roundtrip() {
                     "✓ {} - {} elements, {} relationships (fully lossless)",
                     file_name,
                     original.elements.len(),
-                    original.relationships.len()
+                    original.relationship_count()
                 );
                 passed += 1;
             } else {
@@ -446,6 +446,7 @@ fn test_jsonld_lossless_roundtrip() {
 
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_yaml_lossless_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -520,7 +521,7 @@ fn test_yaml_lossless_roundtrip() {
                     "✓ {} - {} elements, {} relationships (fully lossless)",
                     file_name,
                     original.elements.len(),
-                    original.relationships.len()
+                    original.relationship_count()
                 );
                 passed += 1;
             } else {
@@ -568,6 +569,7 @@ fn test_yaml_lossless_roundtrip() {
 /// as those formats don't serialize relationships yet.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_cross_format_roundtrip() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -730,6 +732,7 @@ fn test_cross_format_roundtrip() {
 /// This reveals any formatting/ordering differences even if semantically equivalent.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_byte_comparison() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,
@@ -872,6 +875,7 @@ fn analyze_byte_diff(original: &[u8], roundtripped: &[u8]) -> ByteDiff {
 /// Detailed line-by-line comparison of a single file to understand structural differences.
 #[test]
 #[cfg(feature = "interchange")]
+#[ignore] // Requires cloning SysML-v2-Release from GitHub - run manually
 fn test_xmi_detailed_diff() {
     let release_dir = match get_sysml_release_dir() {
         Some(d) => d,

@@ -1,31 +1,28 @@
-//! Integration between interchange Model and RootDatabase.
+//! Integration between interchange Model and AnalysisHost/RootDatabase.
 //!
-//! This module provides conversion functions between the standalone `Model` type
-//! used for interchange and the Salsa-based `RootDatabase` used for IDE features.
+//! This module bridges the two parallel model systems:
 //!
-//! ## Usage
+//! - **AnalysisHost** (Salsa path): parses text → `SymbolIndex` → IDE queries
+//! - **ModelHost** (interchange path): standalone `Model` → semantic edits → `render_dirty`
 //!
-//! ```ignore
-//! use syster::hir::RootDatabase;
-//! use syster::interchange::{Model, Xmi, ModelFormat};
-//! use syster::interchange::integrate::model_from_database;
+//! ## Functions
 //!
-//! // Build a database from parsed files
-//! let db = RootDatabase::new();
-//! // ... add files to database ...
+//! | Function | Direction | Purpose |
+//! |----------|-----------|---------|
+//! | `model_from_symbols()` | HIR → Model | Export symbols to interchange Model |
+//! | `symbols_from_model()` | Model → HIR | Import Model elements as HirSymbols |
+//! | `model_from_database()` | RootDatabase → Model | Export Salsa DB to Model |
+//! | `apply_metadata_to_host()` | Metadata → AnalysisHost | Restore element IDs after decompile |
 //!
-//! // Export to interchange Model
-//! let model = model_from_database(&db);
-//!
-//! // Then serialize to XMI
-//! let xmi_bytes = Xmi.write(&model)?;
-//! ```
+//! For bridging ChangeTracker edits into Salsa queries, use
+//! [`AnalysisHost::apply_model_edit()`](crate::ide::AnalysisHost::apply_model_edit).
 
-use super::model::{Element, ElementId, ElementKind, Model, Relationship, RelationshipKind};
+use super::model::{Element, ElementId, ElementKind, Model, PropertyValue, Visibility};
 use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
 };
+use crate::parser::{Direction, Multiplicity};
 use std::sync::Arc;
 
 /// Convert a RootDatabase to a standalone Model for interchange.
@@ -54,7 +51,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             continue;
         }
 
-        let kind = element_kind_to_symbol_kind(element.kind);
+        let kind: SymbolKind = element.kind.into();
 
         // Build qualified name: prefer element's qualified_name (from ownership hierarchy),
         // fallback to name, then id
@@ -80,16 +77,14 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
 
         // Collect relationships where this element is the source
         let relationships: Vec<HirRelationship> = model
-            .relationships
-            .iter()
-            .filter(|r| r.source.as_str() == element.id.as_str())
-            .filter_map(|r| {
-                let hir_kind = relationship_kind_to_hir(&r.kind)?;
+            .rel_elements_from(&element.id)
+            .filter_map(|re| {
+                let hir_kind = element_kind_to_hir(re.kind)?;
 
                 // Look up target element to get its qualified name (HIR uses names, not UUIDs)
-                let target_name: Arc<str> = model
-                    .elements
-                    .get(&r.target)
+                let target_name: Arc<str> = re
+                    .target()
+                    .and_then(|tid| model.elements.get(tid))
                     .and_then(|target_elem| {
                         target_elem
                             .qualified_name
@@ -97,7 +92,11 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
                             .or_else(|| target_elem.name.clone())
                     })
                     .map(|n| n.to_string().into())
-                    .unwrap_or_else(|| r.target.as_str().into()); // Fallback to ID if not found
+                    .unwrap_or_else(|| {
+                        re.target()
+                            .map(|tid| tid.as_str().into())
+                            .unwrap_or_else(|| "".into())
+                    }); // Fallback to ID if not found
 
                 Some(HirRelationship {
                     kind: hir_kind,
@@ -151,8 +150,16 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_ordered: element.is_ordered,
             is_nonunique: element.is_nonunique,
             is_portion: element.is_portion,
-            direction: None,    // TODO: Extract from element if available
-            multiplicity: None, // TODO: Extract from element if available
+            direction: element.properties.get("direction").and_then(|v| match v {
+                PropertyValue::String(s) => match s.as_ref() {
+                    "in" => Some(Direction::In),
+                    "out" => Some(Direction::Out),
+                    "inout" => Some(Direction::InOut),
+                    _ => None,
+                },
+                _ => None,
+            }),
+            multiplicity: extract_multiplicity(element, model),
             value: None,
         };
 
@@ -162,74 +169,149 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
     symbols
 }
 
-/// Convert interchange RelationshipKind to HIR RelationshipKind.
-fn relationship_kind_to_hir(kind: &RelationshipKind) -> Option<HirRelKind> {
-    match kind {
-        RelationshipKind::Specialization => Some(HirRelKind::Specializes),
-        RelationshipKind::FeatureTyping => Some(HirRelKind::TypedBy),
-        RelationshipKind::Redefinition => Some(HirRelKind::Redefines),
-        RelationshipKind::Subsetting => Some(HirRelKind::Subsets),
-        RelationshipKind::Satisfaction => Some(HirRelKind::Satisfies),
-        RelationshipKind::Verification => Some(HirRelKind::Verifies),
-        _ => None, // Other relationship types don't map directly
+/// Extract multiplicity from an element's owned `MultiplicityRange` child.
+///
+/// SysML XMI stores multiplicity as a nested child element:
+/// ```xml
+/// <ownedMember xsi:type="MultiplicityRange" ...>
+///   <ownedMember xsi:type="LiteralInteger" value="0"/>   <!-- lower -->
+///   <ownedMember xsi:type="LiteralInteger" value="*"/>   <!-- upper -->
+/// </ownedMember>
+/// ```
+fn extract_multiplicity(element: &Element, model: &Model) -> Option<Multiplicity> {
+    // Find the first owned MultiplicityRange child
+    for child_id in &element.owned_elements {
+        if let Some(child) = model.elements.get(child_id) {
+            if child.kind == ElementKind::MultiplicityRange {
+                return multiplicity_from_range(child, model);
+            }
+            // Sometimes the MultiplicityRange is nested one level deeper
+            // (e.g., inside an OwningMembership)
+            for grandchild_id in &child.owned_elements {
+                if let Some(grandchild) = model.elements.get(grandchild_id) {
+                    if grandchild.kind == ElementKind::MultiplicityRange {
+                        return multiplicity_from_range(grandchild, model);
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Build a `Multiplicity` from a `MultiplicityRange` element's literal children.
+fn multiplicity_from_range(range: &Element, model: &Model) -> Option<Multiplicity> {
+    let mut lower: Option<u64> = None;
+    let mut upper: Option<u64> = None;
+
+    for (i, child_id) in range.owned_elements.iter().enumerate() {
+        if let Some(child) = model.elements.get(child_id) {
+            match child.kind {
+                ElementKind::LiteralInteger => {
+                    if let Some(PropertyValue::Integer(v)) = child.properties.get("value") {
+                        let val = (*v).max(0) as u64;
+                        if i == 0 {
+                            lower = Some(val);
+                        } else {
+                            upper = Some(val);
+                        }
+                    }
+                }
+                ElementKind::LiteralInfinity => {
+                    // Infinity is represented as upper = None (None means "*")
+                    if i == 0 {
+                        lower = None;
+                    }
+                    // upper stays None → means unbounded
+                }
+                _ => {}
+            }
+        }
+    }
+
+    // Only return if we found at least one bound
+    if lower.is_some() || upper.is_some() {
+        Some(Multiplicity { lower, upper })
+    } else {
+        None
     }
 }
 
-/// Convert interchange ElementKind to HIR SymbolKind.
-fn element_kind_to_symbol_kind(kind: ElementKind) -> SymbolKind {
+/// Convert an element-based relationship kind to HIR relationship kind.
+fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
     match kind {
-        ElementKind::Package | ElementKind::LibraryPackage => SymbolKind::Package,
-        ElementKind::PartDefinition => SymbolKind::PartDefinition,
-        ElementKind::ItemDefinition => SymbolKind::ItemDefinition,
-        ElementKind::ActionDefinition => SymbolKind::ActionDefinition,
-        ElementKind::PortDefinition => SymbolKind::PortDefinition,
-        ElementKind::AttributeDefinition => SymbolKind::AttributeDefinition,
-        ElementKind::ConnectionDefinition => SymbolKind::ConnectionDefinition,
-        ElementKind::InterfaceDefinition => SymbolKind::InterfaceDefinition,
-        ElementKind::AllocationDefinition => SymbolKind::AllocationDefinition,
-        ElementKind::RequirementDefinition => SymbolKind::RequirementDefinition,
-        ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
-        ElementKind::StateDefinition => SymbolKind::StateDefinition,
-        ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
-        ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
-        ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
-        ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
-        ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
-        ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
-        ElementKind::RenderingDefinition => SymbolKind::RenderingDefinition,
-        ElementKind::EnumerationDefinition => SymbolKind::EnumerationDefinition,
-        ElementKind::MetadataDefinition => SymbolKind::MetadataDefinition,
-        // KerML definitions
-        ElementKind::DataType => SymbolKind::DataType,
-        ElementKind::Class => SymbolKind::Class,
-        ElementKind::Structure => SymbolKind::Structure,
-        ElementKind::Behavior => SymbolKind::Behavior,
-        ElementKind::Function => SymbolKind::Function,
-        ElementKind::Association | ElementKind::AssociationStructure => SymbolKind::Association,
-        ElementKind::Interaction => SymbolKind::Interaction,
-        // Usages
-        ElementKind::PartUsage => SymbolKind::PartUsage,
-        ElementKind::ItemUsage => SymbolKind::ItemUsage,
-        ElementKind::ActionUsage => SymbolKind::ActionUsage,
-        ElementKind::PortUsage => SymbolKind::PortUsage,
-        ElementKind::AttributeUsage => SymbolKind::AttributeUsage,
-        ElementKind::ConnectionUsage => SymbolKind::ConnectionUsage,
-        ElementKind::InterfaceUsage => SymbolKind::InterfaceUsage,
-        ElementKind::AllocationUsage => SymbolKind::AllocationUsage,
-        ElementKind::RequirementUsage => SymbolKind::RequirementUsage,
-        ElementKind::ConstraintUsage => SymbolKind::ConstraintUsage,
-        ElementKind::StateUsage => SymbolKind::StateUsage,
-        ElementKind::TransitionUsage => SymbolKind::TransitionUsage,
-        ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
-        ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
-        ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
-        ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
-        // Other
-        ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
-            SymbolKind::Import
+        ElementKind::Specialization => Some(HirRelKind::Specializes),
+        ElementKind::FeatureTyping => Some(HirRelKind::TypedBy),
+        ElementKind::Redefinition => Some(HirRelKind::Redefines),
+        ElementKind::Subsetting => Some(HirRelKind::Subsets),
+        ElementKind::Satisfaction => Some(HirRelKind::Satisfies),
+        ElementKind::Verification => Some(HirRelKind::Verifies),
+        ElementKind::ActionUsage => Some(HirRelKind::Performs), // Performs maps to ActionUsage
+        _ => None,
+    }
+}
+
+/// Convert interchange `ElementKind` to HIR `SymbolKind`.
+///
+/// This is a lossy, many-to-one mapping: several `ElementKind` variants
+/// (e.g. `LibraryPackage`, `AssociationStructure`, import/comment variants)
+/// collapse into a single `SymbolKind`.
+impl From<ElementKind> for SymbolKind {
+    fn from(kind: ElementKind) -> Self {
+        match kind {
+            ElementKind::Package | ElementKind::LibraryPackage => SymbolKind::Package,
+            ElementKind::PartDefinition => SymbolKind::PartDefinition,
+            ElementKind::ItemDefinition => SymbolKind::ItemDefinition,
+            ElementKind::ActionDefinition => SymbolKind::ActionDefinition,
+            ElementKind::PortDefinition => SymbolKind::PortDefinition,
+            ElementKind::AttributeDefinition => SymbolKind::AttributeDefinition,
+            ElementKind::ConnectionDefinition => SymbolKind::ConnectionDefinition,
+            ElementKind::InterfaceDefinition => SymbolKind::InterfaceDefinition,
+            ElementKind::AllocationDefinition => SymbolKind::AllocationDefinition,
+            ElementKind::RequirementDefinition => SymbolKind::RequirementDefinition,
+            ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
+            ElementKind::StateDefinition => SymbolKind::StateDefinition,
+            ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
+            ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
+            ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
+            ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
+            ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
+            ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
+            ElementKind::RenderingDefinition => SymbolKind::RenderingDefinition,
+            ElementKind::EnumerationDefinition => SymbolKind::EnumerationDefinition,
+            ElementKind::MetadataDefinition => SymbolKind::MetadataDefinition,
+            // KerML definitions
+            ElementKind::DataType => SymbolKind::DataType,
+            ElementKind::Class => SymbolKind::Class,
+            ElementKind::Structure => SymbolKind::Structure,
+            ElementKind::Behavior => SymbolKind::Behavior,
+            ElementKind::Function => SymbolKind::Function,
+            ElementKind::Association | ElementKind::AssociationStructure => SymbolKind::Association,
+            ElementKind::Interaction => SymbolKind::Interaction,
+            // Usages
+            ElementKind::PartUsage => SymbolKind::PartUsage,
+            ElementKind::ItemUsage => SymbolKind::ItemUsage,
+            ElementKind::ActionUsage => SymbolKind::ActionUsage,
+            ElementKind::PortUsage => SymbolKind::PortUsage,
+            ElementKind::AttributeUsage => SymbolKind::AttributeUsage,
+            ElementKind::ConnectionUsage => SymbolKind::ConnectionUsage,
+            ElementKind::InterfaceUsage => SymbolKind::InterfaceUsage,
+            ElementKind::AllocationUsage => SymbolKind::AllocationUsage,
+            ElementKind::RequirementUsage => SymbolKind::RequirementUsage,
+            ElementKind::ConstraintUsage => SymbolKind::ConstraintUsage,
+            ElementKind::StateUsage => SymbolKind::StateUsage,
+            ElementKind::TransitionUsage => SymbolKind::TransitionUsage,
+            ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
+            ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
+            ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
+            ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
+            // Other
+            ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
+                SymbolKind::Import
+            }
+            ElementKind::Comment | ElementKind::Documentation => SymbolKind::Comment,
+            _ => SymbolKind::Other,
         }
-        ElementKind::Comment | ElementKind::Documentation => SymbolKind::Comment,
-        _ => SymbolKind::Other,
     }
 }
 
@@ -251,7 +333,78 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
     for symbol in symbols {
         // Use the symbol's element_id to preserve UUIDs across round-trips
         let id = ElementId::new(symbol.element_id.as_ref());
-        let kind = symbol_kind_to_element_kind(symbol.kind);
+        let kind: ElementKind = symbol.kind.into();
+
+        // Handle Import symbols specially: create NamespaceImport/MembershipImport
+        // relationship elements instead of bare Import elements.
+        if symbol.kind == SymbolKind::Import {
+            // Parse the import name to determine kind and target namespace.
+            // Import symbol name is like "ScalarValues::*" or "Pkg::Elem".
+            let import_name = symbol.name.as_ref();
+            let is_wildcard = import_name.ends_with("::*");
+            let namespace = if is_wildcard {
+                import_name.trim_end_matches("::*")
+            } else {
+                import_name
+            };
+
+            // Determine the owner package from the qualified name.
+            // Import qn format: "Vehicle::import:ScalarValues::*"
+            // The owner is the first segment before "::import:".
+            let owner_id = symbol.qualified_name.find("::import:").and_then(|idx| {
+                let parent_qn = &symbol.qualified_name[..idx];
+                name_to_id.get(parent_qn).map(|&eid| ElementId::new(eid))
+            });
+
+            let import_kind = if is_wildcard {
+                ElementKind::NamespaceImport
+            } else {
+                ElementKind::MembershipImport
+            };
+
+            // Create the import as a relationship element with the namespace as target.
+            // The target ID is the namespace name (external reference).
+            let target_id = ElementId::new(namespace);
+            let source_id = owner_id.clone().unwrap_or_else(|| id.clone());
+
+            let rel_id = model.add_rel(
+                id.clone(),
+                import_kind,
+                source_id,
+                target_id,
+                owner_id.clone(),
+            );
+
+            // Store importedNamespace attribute for XMI roundtrip and decompiler fallback
+            let attr_name = if is_wildcard {
+                "importedNamespace"
+            } else {
+                "importedMembership"
+            };
+            if let Some(rel_element) = model.get_mut(&rel_id) {
+                rel_element.properties.insert(
+                    Arc::from(attr_name),
+                    PropertyValue::String(Arc::from(namespace)),
+                );
+                // Copy import visibility
+                rel_element.visibility = if symbol.is_public {
+                    Visibility::Public
+                } else {
+                    Visibility::Private
+                };
+            }
+
+            // Add to parent's owned_elements
+            if let Some(ref oid) = owner_id {
+                if let Some(parent) = model.get_mut(oid) {
+                    if !parent.owned_elements.contains(&id) {
+                        parent.owned_elements.push(id.clone());
+                    }
+                }
+            }
+
+            continue;
+        }
 
         // Determine ownership from qualified name, then look up owner's element_id
         let owner = if symbol.qualified_name.contains("::") {
@@ -267,6 +420,68 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
 
         if let Some(ref owner_id) = owner {
             element = element.with_owner(owner_id.clone());
+        }
+
+        // Copy boolean flags from HIR symbol
+        element.is_abstract = symbol.is_abstract;
+        element.is_variation = symbol.is_variation;
+        element.is_readonly = symbol.is_readonly;
+        element.is_derived = symbol.is_derived;
+        element.is_parallel = symbol.is_parallel;
+        element.is_individual = symbol.is_individual;
+        element.is_end = symbol.is_end;
+        element.is_default = symbol.is_default;
+        element.is_ordered = symbol.is_ordered;
+        element.is_nonunique = symbol.is_nonunique;
+        element.is_portion = symbol.is_portion;
+
+        // Copy short name
+        element.short_name = symbol.short_name.clone();
+
+        // Copy documentation
+        element.documentation = symbol.doc.clone();
+
+        // Copy direction as a property (for decompiler to read)
+        if let Some(ref dir) = symbol.direction {
+            let dir_str = match dir {
+                Direction::In => "in",
+                Direction::Out => "out",
+                Direction::InOut => "inout",
+            };
+            element.properties.insert(
+                Arc::from("direction"),
+                PropertyValue::String(Arc::from(dir_str)),
+            );
+        }
+
+        // Copy multiplicity as properties
+        if let Some(ref mult) = symbol.multiplicity {
+            if let Some(lower) = mult.lower {
+                element.properties.insert(
+                    Arc::from("multiplicityLower"),
+                    PropertyValue::String(Arc::from(lower.to_string())),
+                );
+            }
+            if let Some(upper) = mult.upper {
+                element.properties.insert(
+                    Arc::from("multiplicityUpper"),
+                    PropertyValue::String(Arc::from(upper.to_string())),
+                );
+            }
+        }
+
+        // Don't set visibility from is_public on regular elements.
+        // SysML default is public — only imports use the is_public flag
+        // to distinguish `private import` from `import`.
+
+        // Store alias target from supertypes (for decompiler)
+        if symbol.kind == SymbolKind::Alias {
+            if let Some(target) = symbol.supertypes.first() {
+                element.properties.insert(
+                    Arc::from("aliasTarget"),
+                    PropertyValue::String(Arc::from(target.as_ref())),
+                );
+            }
         }
 
         model.add_element(element);
@@ -294,34 +509,166 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         }
         // Extract relationships from the symbol
         for hir_rel in &symbol.relationships {
-            let rel_kind = hir_relationship_kind_to_model(&hir_rel.kind);
-            if let Some(rel_kind) = rel_kind {
+            let element_kind = hir_relationship_kind_to_element_kind(&hir_rel.kind);
+            if let Some(ek) = element_kind {
                 rel_counter += 1;
                 let rel_id = ElementId::new(format!("rel_{}", rel_counter));
 
-                // Look up target's element_id from qualified name
-                // Try multiple resolution strategies:
-                // 1. Direct lookup (fully qualified)
-                // 2. Same namespace as source (e.g., "Vehicle" -> "Types::Vehicle")
+                // Look up target's element_id from qualified name.
+                // Resolution order:
+                // 0. Use resolved_target from the resolver (best source)
+                // 1. Direct lookup by name (fully qualified)
+                // 2. Walk up ancestor namespaces (e.g., for "Label" from
+                //    "Sensor::Thermometer::name", try "Sensor::Thermometer::Label"
+                //    then "Sensor::Label")
+                // 3. Scan all symbols for a matching simple name suffix
+                //    (handles cross-type references like `redefines size`
+                //    where `size` lives in a supertype)
+                let target_name = hir_rel
+                    .resolved_target
+                    .as_deref()
+                    .unwrap_or(hir_rel.target.as_ref());
+
                 let target_id = name_to_id
-                    .get(hir_rel.target.as_ref())
+                    .get(target_name)
                     .or_else(|| {
-                        // Try adding source's namespace prefix
-                        if let Some((ns, _)) = symbol.qualified_name.rsplit_once("::") {
-                            let namespaced = format!("{}::{}", ns, hir_rel.target);
-                            name_to_id.get(namespaced.as_str())
+                        // Also try the unresolved name if resolved didn't match
+                        name_to_id.get(hir_rel.target.as_ref())
+                    })
+                    .or_else(|| {
+                        let mut ns = symbol.qualified_name.as_ref();
+                        while let Some((parent, _)) = ns.rsplit_once("::") {
+                            let candidate = format!("{}::{}", parent, hir_rel.target);
+                            if let Some(found) = name_to_id.get(candidate.as_str()) {
+                                return Some(found);
+                            }
+                            ns = parent;
+                        }
+                        None
+                    })
+                    .or_else(|| {
+                        // Scan for any element whose qualified name ends with
+                        // ::target.  Needed for cross-type references (e.g.
+                        // `redefines size` where size is in a supertype).
+                        let suffix = format!("::{}", hir_rel.target);
+                        let mut matches: Vec<&&str> = name_to_id
+                            .keys()
+                            .filter(|qn| qn.ends_with(suffix.as_str()))
+                            .collect();
+                        if matches.len() == 1 {
+                            // Unambiguous match
+                            name_to_id.get(*matches[0])
+                        } else if matches.len() > 1 {
+                            // Multiple matches — try to pick one that shares
+                            // the longest common prefix with our symbol's qn
+                            matches.sort_by_key(|qn| {
+                                let common = symbol
+                                    .qualified_name
+                                    .as_ref()
+                                    .chars()
+                                    .zip(qn.chars())
+                                    .take_while(|(a, b)| a == b)
+                                    .count();
+                                std::cmp::Reverse(common)
+                            });
+                            name_to_id.get(*matches[0])
                         } else {
                             None
                         }
                     })
-                    .map(|&id| ElementId::new(id))
-                    .unwrap_or_else(|| {
-                        // External reference not in this symbol set - use qualified name as fallback
-                        ElementId::new(hir_rel.target.as_ref())
-                    });
+                    .map(|&id| ElementId::new(id));
 
-                let relationship = Relationship::new(rel_id, rel_kind, id.clone(), target_id);
-                model.add_relationship(relationship);
+                // If resolution failed, create a stub element for the external
+                // reference so the decompiler can still render its name.
+                let target_id = target_id.unwrap_or_else(|| {
+                    let ext_id = ElementId::new(format!("_ext_{}", hir_rel.target));
+                    if !model.elements.contains_key(&ext_id) {
+                        let mut stub = Element::new(ext_id.clone(), ElementKind::Other)
+                            .with_name(hir_rel.target.as_ref());
+                        // Mark as external so it is never decompiled to output
+                        stub.properties
+                            .insert(Arc::from("_external"), PropertyValue::Boolean(true));
+                        model.add_element(stub);
+                    }
+                    ext_id
+                });
+
+                // Use add_rel to create the relationship element directly
+                model.add_rel(
+                    rel_id.clone(),
+                    ek,
+                    id.clone(),
+                    target_id.clone(),
+                    Some(id.clone()),
+                );
+
+                // Store the resolved target name on the relationship for XMI
+                let target_attr = match ek {
+                    ElementKind::FeatureTyping => "type",
+                    ElementKind::Specialization => "general",
+                    ElementKind::Redefinition => "redefinedFeature",
+                    ElementKind::Subsetting => "subsettedFeature",
+                    _ => "target",
+                };
+                if let Some(rel_element) = model.get_mut(&rel_id) {
+                    rel_element.properties.insert(
+                        Arc::from(target_attr),
+                        PropertyValue::String(Arc::from(target_id.as_str())),
+                    );
+                }
+                if let Some(parent) = model.get_mut(&id) {
+                    parent.owned_elements.push(rel_id);
+                }
+            }
+        }
+
+        // Create FeatureValue + Literal child elements for symbols with values
+        if let Some(ref value) = symbol.value {
+            use crate::parser::ValueExpression;
+
+            let fv_id = ElementId::new(format!("{}-fv", symbol.element_id));
+            let lit_id = ElementId::new(format!("{}-fv-lit", symbol.element_id));
+
+            let (lit_kind, lit_prop_value) = match value {
+                ValueExpression::LiteralInteger(v) => {
+                    (ElementKind::LiteralInteger, PropertyValue::Integer(*v))
+                }
+                ValueExpression::LiteralReal(v) => {
+                    (ElementKind::LiteralReal, PropertyValue::Real(*v))
+                }
+                ValueExpression::LiteralString(s) => (
+                    ElementKind::LiteralString,
+                    PropertyValue::String(Arc::from(s.as_str())),
+                ),
+                ValueExpression::LiteralBoolean(b) => {
+                    (ElementKind::LiteralBoolean, PropertyValue::Boolean(*b))
+                }
+                ValueExpression::Null => (
+                    ElementKind::NullExpression,
+                    PropertyValue::String(Arc::from("null")),
+                ),
+                ValueExpression::Expression(text) => (
+                    ElementKind::FeatureReferenceExpression,
+                    PropertyValue::String(Arc::from(text.as_str())),
+                ),
+            };
+
+            // Create the literal element
+            let mut lit_element = Element::new(lit_id.clone(), lit_kind).with_owner(fv_id.clone());
+            lit_element
+                .properties
+                .insert(Arc::from("value"), lit_prop_value);
+            model.add_element(lit_element);
+
+            // Create the FeatureValue relationship element
+            let mut fv_element =
+                Element::new(fv_id.clone(), ElementKind::FeatureValue).with_owner(id.clone());
+            fv_element.owned_elements.push(lit_id);
+            model.add_element(fv_element);
+
+            // Add FeatureValue as owned child of the usage element
+            if let Some(parent) = model.get_mut(&id) {
+                parent.owned_elements.push(fv_id);
             }
         }
 
@@ -377,81 +724,92 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         }
     }
 
+    // Phase 6: wrap non-relationship children in OwningMembership/FeatureMembership
+    model.wrap_children_in_memberships();
+
     model
 }
 
-/// Convert HIR RelationshipKind to interchange RelationshipKind.
-fn hir_relationship_kind_to_model(kind: &crate::hir::RelationshipKind) -> Option<RelationshipKind> {
+/// Convert HIR RelationshipKind to interchange ElementKind.
+fn hir_relationship_kind_to_element_kind(
+    kind: &crate::hir::RelationshipKind,
+) -> Option<ElementKind> {
     use crate::hir::RelationshipKind as HirRelKind;
     match kind {
-        HirRelKind::Specializes => Some(RelationshipKind::Specialization),
-        HirRelKind::TypedBy => Some(RelationshipKind::FeatureTyping),
-        HirRelKind::Redefines => Some(RelationshipKind::Redefinition),
-        HirRelKind::Subsets => Some(RelationshipKind::Subsetting),
+        HirRelKind::Specializes => Some(ElementKind::Specialization),
+        HirRelKind::TypedBy => Some(ElementKind::FeatureTyping),
+        HirRelKind::Redefines => Some(ElementKind::Redefinition),
+        HirRelKind::Subsets => Some(ElementKind::Subsetting),
         HirRelKind::References => None, // Not a first-class relationship in interchange
-        HirRelKind::Satisfies => Some(RelationshipKind::Satisfaction),
-        HirRelKind::Performs => None, // TODO: Add to interchange model if needed
+        HirRelKind::Satisfies => Some(ElementKind::Satisfaction),
+        HirRelKind::Performs => Some(ElementKind::ActionUsage),
         HirRelKind::Exhibits => None,
         HirRelKind::Includes => None,
         HirRelKind::Asserts => None,
-        HirRelKind::Verifies => Some(RelationshipKind::Verification),
+        HirRelKind::Verifies => Some(ElementKind::Verification),
     }
 }
 
-/// Convert HIR SymbolKind to interchange ElementKind.
-fn symbol_kind_to_element_kind(kind: crate::hir::SymbolKind) -> ElementKind {
-    use crate::hir::SymbolKind;
-    match kind {
-        SymbolKind::Package => ElementKind::Package,
-        SymbolKind::PartDefinition => ElementKind::PartDefinition,
-        SymbolKind::ItemDefinition => ElementKind::ItemDefinition,
-        SymbolKind::ActionDefinition => ElementKind::ActionDefinition,
-        SymbolKind::PortDefinition => ElementKind::PortDefinition,
-        SymbolKind::AttributeDefinition => ElementKind::AttributeDefinition,
-        SymbolKind::ConnectionDefinition => ElementKind::ConnectionDefinition,
-        SymbolKind::InterfaceDefinition => ElementKind::InterfaceDefinition,
-        SymbolKind::AllocationDefinition => ElementKind::AllocationDefinition,
-        SymbolKind::RequirementDefinition => ElementKind::RequirementDefinition,
-        SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
-        SymbolKind::StateDefinition => ElementKind::StateDefinition,
-        SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
-        SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
-        SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
-        SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
-        SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
-        SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
-        SymbolKind::RenderingDefinition => ElementKind::RenderingDefinition,
-        SymbolKind::EnumerationDefinition => ElementKind::EnumerationDefinition,
-        // KerML definitions
-        SymbolKind::DataType => ElementKind::DataType,
-        SymbolKind::Class => ElementKind::Class,
-        SymbolKind::Structure => ElementKind::Structure,
-        SymbolKind::Behavior => ElementKind::Behavior,
-        SymbolKind::Function => ElementKind::Function,
-        SymbolKind::Association => ElementKind::Association,
-        SymbolKind::MetadataDefinition => ElementKind::MetadataDefinition,
-        SymbolKind::Interaction => ElementKind::Interaction,
-        // Usages
-        SymbolKind::PartUsage => ElementKind::PartUsage,
-        SymbolKind::ItemUsage => ElementKind::ItemUsage,
-        SymbolKind::ActionUsage => ElementKind::ActionUsage,
-        SymbolKind::PortUsage => ElementKind::PortUsage,
-        SymbolKind::AttributeUsage => ElementKind::AttributeUsage,
-        SymbolKind::ConnectionUsage => ElementKind::ConnectionUsage,
-        SymbolKind::InterfaceUsage => ElementKind::InterfaceUsage,
-        SymbolKind::AllocationUsage => ElementKind::AllocationUsage,
-        SymbolKind::RequirementUsage => ElementKind::RequirementUsage,
-        SymbolKind::ConstraintUsage => ElementKind::ConstraintUsage,
-        SymbolKind::StateUsage => ElementKind::StateUsage,
-        SymbolKind::TransitionUsage => ElementKind::TransitionUsage,
-        SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
-        SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
-        SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
-        SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
-        // Other
-        SymbolKind::Import => ElementKind::Import,
-        SymbolKind::Comment => ElementKind::Comment,
-        _ => ElementKind::Other,
+/// Convert HIR `SymbolKind` to interchange `ElementKind`.
+///
+/// Inverse of `From<ElementKind> for SymbolKind` (modulo lossy many-to-one
+/// arms: e.g. `SymbolKind::Package` maps to `ElementKind::Package`, not
+/// `LibraryPackage`).
+impl From<SymbolKind> for ElementKind {
+    fn from(kind: SymbolKind) -> Self {
+        match kind {
+            SymbolKind::Package => ElementKind::Package,
+            SymbolKind::PartDefinition => ElementKind::PartDefinition,
+            SymbolKind::ItemDefinition => ElementKind::ItemDefinition,
+            SymbolKind::ActionDefinition => ElementKind::ActionDefinition,
+            SymbolKind::PortDefinition => ElementKind::PortDefinition,
+            SymbolKind::AttributeDefinition => ElementKind::AttributeDefinition,
+            SymbolKind::ConnectionDefinition => ElementKind::ConnectionDefinition,
+            SymbolKind::InterfaceDefinition => ElementKind::InterfaceDefinition,
+            SymbolKind::AllocationDefinition => ElementKind::AllocationDefinition,
+            SymbolKind::RequirementDefinition => ElementKind::RequirementDefinition,
+            SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
+            SymbolKind::StateDefinition => ElementKind::StateDefinition,
+            SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
+            SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
+            SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
+            SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
+            SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
+            SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
+            SymbolKind::RenderingDefinition => ElementKind::RenderingDefinition,
+            SymbolKind::EnumerationDefinition => ElementKind::EnumerationDefinition,
+            // KerML definitions
+            SymbolKind::DataType => ElementKind::DataType,
+            SymbolKind::Class => ElementKind::Class,
+            SymbolKind::Structure => ElementKind::Structure,
+            SymbolKind::Behavior => ElementKind::Behavior,
+            SymbolKind::Function => ElementKind::Function,
+            SymbolKind::Association => ElementKind::Association,
+            SymbolKind::MetadataDefinition => ElementKind::MetadataDefinition,
+            SymbolKind::Interaction => ElementKind::Interaction,
+            // Usages
+            SymbolKind::PartUsage => ElementKind::PartUsage,
+            SymbolKind::ItemUsage => ElementKind::ItemUsage,
+            SymbolKind::ActionUsage => ElementKind::ActionUsage,
+            SymbolKind::PortUsage => ElementKind::PortUsage,
+            SymbolKind::AttributeUsage => ElementKind::AttributeUsage,
+            SymbolKind::ConnectionUsage => ElementKind::ConnectionUsage,
+            SymbolKind::InterfaceUsage => ElementKind::InterfaceUsage,
+            SymbolKind::AllocationUsage => ElementKind::AllocationUsage,
+            SymbolKind::RequirementUsage => ElementKind::RequirementUsage,
+            SymbolKind::ConstraintUsage => ElementKind::ConstraintUsage,
+            SymbolKind::StateUsage => ElementKind::StateUsage,
+            SymbolKind::TransitionUsage => ElementKind::TransitionUsage,
+            SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
+            SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
+            SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
+            SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
+            // Other
+            SymbolKind::Import => ElementKind::Import,
+            SymbolKind::Comment => ElementKind::Comment,
+            SymbolKind::Alias => ElementKind::Alias,
+            _ => ElementKind::Other,
+        }
     }
 }
 
@@ -497,6 +855,15 @@ pub fn apply_metadata_to_host(
     });
 }
 
+/// Result of applying ChangeTracker edits to an AnalysisHost.
+#[derive(Debug)]
+pub struct ApplyEditsResult {
+    /// The new SysML text after edits (rendered via `render_dirty`).
+    pub rendered_text: String,
+    /// Parse errors from re-parsing the rendered text.
+    pub parse_errors: Vec<crate::syntax::parser::ParseError>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -521,8 +888,9 @@ mod tests {
             model.roots.is_empty(),
             "Empty database should have no root elements"
         );
-        assert!(
-            model.relationships.is_empty(),
+        assert_eq!(
+            model.relationship_count(),
+            0,
             "Empty database should have no relationships"
         );
     }
@@ -571,10 +939,15 @@ mod tests {
         let model = model_from_symbols(&symbols);
 
         // Should have: Vehicle (package), Car (part def), Engine (part def)
-        assert_eq!(model.elements.len(), 3, "Should have 3 elements");
+        // Plus 2 membership wrappers (OwningMembership for Car and Engine)
         assert_eq!(model.roots.len(), 1, "Should have one root (Vehicle)");
 
-        // Check that Car is owned by Vehicle
+        // Check content elements via owned_members (looks through memberships)
+        let root_id = &model.roots[0];
+        let members = model.owned_members(root_id);
+        assert_eq!(members.len(), 2, "Vehicle should own 2 content members");
+
+        // Check that Car exists and is a PartDefinition
         let car = model
             .elements
             .values()
@@ -583,15 +956,23 @@ mod tests {
         assert_eq!(car.kind, super::super::model::ElementKind::PartDefinition);
         assert!(car.owner.is_some(), "Car should have an owner");
 
-        // Owner is now referenced by element_id (UUID), verify it exists
-        let owner = model
+        // Car's direct owner should be a membership, whose owner is Vehicle
+        let direct_owner = model
             .elements
             .get(car.owner.as_ref().unwrap())
-            .expect("Owner should exist in model");
+            .expect("Direct owner should exist");
+        assert!(
+            direct_owner.kind.is_membership(),
+            "Car's direct owner should be a membership"
+        );
+        let logical_owner = model
+            .elements
+            .get(direct_owner.owner.as_ref().unwrap())
+            .expect("Logical owner should exist");
         assert_eq!(
-            owner.name.as_deref(),
+            logical_owner.name.as_deref(),
             Some("Vehicle"),
-            "Owner should be Vehicle"
+            "Logical owner should be Vehicle"
         );
     }
 
@@ -611,23 +992,23 @@ mod tests {
         let model = model_from_symbols(&symbols);
 
         // Should have relationships
-        assert!(!model.relationships.is_empty(), "Should have relationships");
+        assert!(model.relationship_count() > 0, "Should have relationships");
 
         // Find the specialization from Car to Vehicle
         let specialization = model
-            .relationships
-            .iter()
-            .find(|r| r.kind == super::super::model::RelationshipKind::Specialization)
+            .iter_relationship_elements()
+            .find(|e| e.kind == super::super::model::ElementKind::Specialization)
             .expect("Should have a specialization");
 
-        // Source and target are now UUIDs, verify by looking up the elements
+        // Source and target are in RelationshipData
+        let rel_data = specialization.relationship.as_ref().unwrap();
         let source_elem = model
             .elements
-            .get(&specialization.source)
+            .get(&rel_data.source[0])
             .expect("Source element should exist");
         let target_elem = model
             .elements
-            .get(&specialization.target)
+            .get(&rel_data.target[0])
             .expect("Target element should exist");
 
         assert_eq!(
@@ -763,13 +1144,13 @@ mod tests {
         model.add_element(car);
 
         // Add specialization relationship
-        let rel = Relationship::new(
+        model.add_rel(
             ElementId::new("rel_1"),
-            RelationshipKind::Specialization,
+            ElementKind::Specialization,
             ElementId::new("Car"),
             ElementId::new("Vehicle"),
+            None,
         );
-        model.add_relationship(rel);
 
         // When we convert to symbols
         let symbols = symbols_from_model(&model);

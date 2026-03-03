@@ -200,6 +200,7 @@ fn test_no_regressions() {
         "Import Tests/PrivateImportTest.sysml",
         "Import Tests/QualifiedNameImportTest.sysml",
         "Comment Examples/Comments.sysml",
+        "Simple Tests/StructuredControlTest.sysml",
     ];
 
     let mut regressions = Vec::new();
@@ -386,6 +387,10 @@ example_test!(
     "Simple Tests/RequirementTest.sysml"
 );
 example_test!(example_state_test, "Simple Tests/StateTest.sysml");
+example_test!(
+    example_structured_control_test,
+    "Simple Tests/StructuredControlTest.sysml"
+);
 example_test!(
     example_textual_representation_test,
     "Simple Tests/TextualRepresentationTest.sysml"

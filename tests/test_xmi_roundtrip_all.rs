@@ -135,8 +135,8 @@ fn test_xmi_roundtrip_all_library_files() {
         }
 
         // Compare relationship counts
-        let original_rels = model.relationships.len();
-        let reimported_rels = reimported_model.relationships.len();
+        let original_rels = model.relationship_count();
+        let reimported_rels = reimported_model.relationship_count();
 
         if original_rels != reimported_rels {
             errors.push((

@@ -37,10 +37,13 @@ pub fn restore_element_ids(mut model: Model, metadata: &ImportMetadata) -> Model
         .filter_map(|(qn, meta)| meta.original_id.as_deref().map(|id| (qn.as_str(), id)))
         .collect();
 
-    // Build a mapping from current ID -> original ID based on qualified names
+    // Build a mapping from current ID -> original ID based on qualified names.
+    // Skip relationship/membership elements — they have no meaningful QN in
+    // metadata and their skip-through QN can collide with content elements.
     let id_mapping: HashMap<ElementId, ElementId> = model
         .elements
         .iter()
+        .filter(|(_id, element)| !element.kind.is_relationship())
         .filter_map(|(current_id, _element)| {
             // Compute qualified name for this element
             let qn = compute_qualified_name(&model, current_id);
@@ -73,10 +76,12 @@ pub fn restore_ids_from_symbols(mut model: Model, symbol_index: &SymbolIndex) ->
         .map(|sym| (sym.qualified_name.as_ref(), sym.element_id.as_ref()))
         .collect();
 
-    // Build a mapping from current ID -> symbol's element ID
+    // Build a mapping from current ID -> symbol's element ID.
+    // Skip relationship/membership elements — same rationale as restore_element_ids.
     let id_mapping: HashMap<ElementId, ElementId> = model
         .elements
         .iter()
+        .filter(|(_id, element)| !element.kind.is_relationship())
         .filter_map(|(current_id, _element)| {
             // Compute qualified name for this element
             let qn = compute_qualified_name(&model, current_id);
@@ -95,10 +100,21 @@ pub fn restore_ids_from_symbols(mut model: Model, symbol_index: &SymbolIndex) ->
 }
 
 /// Compute qualified name for an element by traversing ownership.
+/// Skips through relationship/membership wrappers so that
+/// `Package → OwningMembership → PartDef` produces `Package::PartDef`.
 fn compute_qualified_name(model: &Model, id: &ElementId) -> String {
     let Some(element) = model.elements.get(id) else {
         return id.as_str().to_string();
     };
+
+    // Relationship/membership wrappers don't contribute to qualified names —
+    // recurse to the first non-relationship ancestor.
+    if element.kind.is_relationship() {
+        if let Some(owner_id) = &element.owner {
+            return compute_qualified_name(model, owner_id);
+        }
+        return id.as_str().to_string();
+    }
 
     let name = element.name.as_deref().unwrap_or_else(|| id.as_str());
 
@@ -161,20 +177,18 @@ fn apply_id_mapping(model: &mut Model, mapping: &HashMap<ElementId, ElementId>) 
         })
         .collect();
 
-    // Remap relationships
-    for rel in &mut model.relationships {
-        if let Some(new_id) = mapping.get(&rel.id) {
-            rel.id = new_id.clone();
-        }
-        if let Some(new_source) = mapping.get(&rel.source) {
-            rel.source = new_source.clone();
-        }
-        if let Some(new_target) = mapping.get(&rel.target) {
-            rel.target = new_target.clone();
-        }
-        if let Some(ref old_owner) = rel.owner {
-            if let Some(new_owner) = mapping.get(old_owner) {
-                rel.owner = Some(new_owner.clone());
+    // Remap relationship elements in the elements map
+    for element in model.elements.values_mut() {
+        if let Some(ref mut rd) = element.relationship {
+            for src in &mut rd.source {
+                if let Some(new_id) = mapping.get(src) {
+                    *src = new_id.clone();
+                }
+            }
+            for tgt in &mut rd.target {
+                if let Some(new_id) = mapping.get(tgt) {
+                    *tgt = new_id.clone();
+                }
             }
         }
     }

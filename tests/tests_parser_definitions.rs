@@ -122,8 +122,6 @@ fn test_kerml_definition_kind(
 #[rstest]
 #[case("abstract part def Vehicle;", true, "Vehicle")]
 #[case("part def Vehicle;", false, "Vehicle")]
-#[case("abstract class Base;", true, "Base")]
-#[case("class Base;", false, "Base")]
 fn test_sysml_abstract_modifier(
     #[case] input: &str,
     #[case] expected_abstract: bool,
@@ -141,6 +139,8 @@ fn test_sysml_abstract_modifier(
 #[case("abstract classifier Vehicle;", true)]
 #[case("classifier Vehicle;", false)]
 #[case("abstract class Occurrence;", true)]
+#[case("abstract class Base;", true)]
+#[case("class Base;", false)]
 #[case("class Occurrence;", false)]
 #[case("abstract datatype ScalarValue;", true)]
 #[case("datatype Real;", false)]

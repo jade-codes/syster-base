@@ -5,15 +5,14 @@
 
 mod lexer;
 mod options;
-mod syntax_kind;
 
 #[cfg(test)]
 mod tests;
 
+use crate::parser::{SyntaxElement, SyntaxKind, SyntaxNode};
 use lexer::{Token, tokenize};
 pub use options::FormatOptions;
 use rowan::GreenNodeBuilder;
-use syntax_kind::{SyntaxKind, SyntaxNode};
 use tokio_util::sync::CancellationToken;
 
 /// Format SysML/KerML source code with cancellation support.
@@ -32,7 +31,7 @@ pub fn format_async(
 fn parse_to_cst(tokens: &[Token], cancel: &CancellationToken) -> Option<SyntaxNode> {
     let mut builder = GreenNodeBuilder::new();
 
-    builder.start_node(SyntaxKind::SourceFile.into());
+    builder.start_node(SyntaxKind::SOURCE_FILE.into());
 
     let mut pos = 0;
     while pos < tokens.len() {
@@ -59,38 +58,38 @@ fn parse_element(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilde
     let token = &tokens[pos];
 
     match token.kind {
-        SyntaxKind::PackageKw => parse_package(tokens, pos, builder),
-        SyntaxKind::PartKw
-        | SyntaxKind::AttributeKw
-        | SyntaxKind::PortKw
-        | SyntaxKind::ItemKw
-        | SyntaxKind::ActionKw
-        | SyntaxKind::StateKw
-        | SyntaxKind::RequirementKw
-        | SyntaxKind::ConstraintKw
-        | SyntaxKind::ConnectionKw
-        | SyntaxKind::AllocationKw
-        | SyntaxKind::InterfaceKw
-        | SyntaxKind::FlowKw
-        | SyntaxKind::UseCaseKw
-        | SyntaxKind::ViewKw
-        | SyntaxKind::ViewpointKw
-        | SyntaxKind::RenderingKw
-        | SyntaxKind::MetadataKw
-        | SyntaxKind::OccurrenceKw
-        | SyntaxKind::AnalysisKw
-        | SyntaxKind::VerificationKw
-        | SyntaxKind::ConcernKw
-        | SyntaxKind::EnumKw
-        | SyntaxKind::CalcKw
-        | SyntaxKind::CaseKw
-        | SyntaxKind::IndividualKw => parse_definition_or_usage(tokens, pos, builder),
-        SyntaxKind::AbstractKw | SyntaxKind::RefKw | SyntaxKind::ConstKw => {
+        SyntaxKind::PACKAGE_KW => parse_package(tokens, pos, builder),
+        SyntaxKind::PART_KW
+        | SyntaxKind::ATTRIBUTE_KW
+        | SyntaxKind::PORT_KW
+        | SyntaxKind::ITEM_KW
+        | SyntaxKind::ACTION_KW
+        | SyntaxKind::STATE_KW
+        | SyntaxKind::REQUIREMENT_KW
+        | SyntaxKind::CONSTRAINT_KW
+        | SyntaxKind::CONNECTION_KW
+        | SyntaxKind::ALLOCATION_KW
+        | SyntaxKind::INTERFACE_KW
+        | SyntaxKind::FLOW_KW
+        | SyntaxKind::USE_KW
+        | SyntaxKind::VIEW_KW
+        | SyntaxKind::VIEWPOINT_KW
+        | SyntaxKind::RENDERING_KW
+        | SyntaxKind::METADATA_KW
+        | SyntaxKind::OCCURRENCE_KW
+        | SyntaxKind::ANALYSIS_KW
+        | SyntaxKind::VERIFICATION_KW
+        | SyntaxKind::CONCERN_KW
+        | SyntaxKind::ENUM_KW
+        | SyntaxKind::CALC_KW
+        | SyntaxKind::CASE_KW
+        | SyntaxKind::INDIVIDUAL_KW => parse_definition_or_usage(tokens, pos, builder),
+        SyntaxKind::ABSTRACT_KW | SyntaxKind::REF_KW | SyntaxKind::CONST_KW => {
             parse_definition_or_usage(tokens, pos, builder)
         }
-        SyntaxKind::ImportKw => parse_import(tokens, pos, builder),
-        SyntaxKind::AliasKw => parse_alias(tokens, pos, builder),
-        SyntaxKind::DocKw | SyntaxKind::CommentKw => parse_annotation(tokens, pos, builder),
+        SyntaxKind::IMPORT_KW => parse_import(tokens, pos, builder),
+        SyntaxKind::ALIAS_KW => parse_alias(tokens, pos, builder),
+        SyntaxKind::DOC_KW | SyntaxKind::COMMENT_KW => parse_annotation(tokens, pos, builder),
         _ => {
             // Unknown token, just add it and move on
             builder.token(token.kind.into(), token.text);
@@ -104,7 +103,7 @@ fn consume_trivia(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuild
     while pos < tokens.len() {
         let token = &tokens[pos];
         match token.kind {
-            SyntaxKind::Whitespace | SyntaxKind::LineComment | SyntaxKind::BlockComment => {
+            SyntaxKind::WHITESPACE | SyntaxKind::LINE_COMMENT | SyntaxKind::BLOCK_COMMENT => {
                 builder.token(token.kind.into(), token.text);
                 pos += 1;
             }
@@ -116,7 +115,7 @@ fn consume_trivia(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuild
 
 /// Parse a package declaration
 fn parse_package(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) -> usize {
-    builder.start_node(SyntaxKind::Package.into());
+    builder.start_node(SyntaxKind::PACKAGE.into());
 
     // 'package' keyword
     builder.token(tokens[pos].kind.into(), tokens[pos].text);
@@ -125,8 +124,8 @@ fn parse_package(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilde
     pos = consume_trivia(tokens, pos, builder);
 
     // Optional name
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::Identifier {
-        builder.start_node(SyntaxKind::Name.into());
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::IDENT {
+        builder.start_node(SyntaxKind::NAME.into());
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         builder.finish_node();
         pos += 1;
@@ -136,9 +135,9 @@ fn parse_package(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilde
 
     // Body or semicolon
     if pos < tokens.len() {
-        if tokens[pos].kind == SyntaxKind::LBrace {
+        if tokens[pos].kind == SyntaxKind::L_BRACE {
             pos = parse_body(tokens, pos, builder);
-        } else if tokens[pos].kind == SyntaxKind::Semicolon {
+        } else if tokens[pos].kind == SyntaxKind::SEMICOLON {
             builder.token(tokens[pos].kind.into(), tokens[pos].text);
             pos += 1;
         }
@@ -150,14 +149,14 @@ fn parse_package(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilde
 
 /// Parse a block body { ... }
 fn parse_body(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) -> usize {
-    builder.start_node(SyntaxKind::Body.into());
+    builder.start_node(SyntaxKind::NAMESPACE_BODY.into());
 
     // Opening brace
     builder.token(tokens[pos].kind.into(), tokens[pos].text);
     pos += 1;
 
     // Parse elements until closing brace
-    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::RBrace {
+    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::R_BRACE {
         let prev_pos = pos;
         pos = parse_element(tokens, pos, builder);
         if pos == prev_pos {
@@ -168,9 +167,9 @@ fn parse_body(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) 
     }
 
     // Closing brace
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::RBrace {
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::R_BRACE {
         pos = consume_trivia(tokens, pos, builder);
-        if pos < tokens.len() && tokens[pos].kind == SyntaxKind::RBrace {
+        if pos < tokens.len() && tokens[pos].kind == SyntaxKind::R_BRACE {
             builder.token(tokens[pos].kind.into(), tokens[pos].text);
             pos += 1;
         }
@@ -190,15 +189,15 @@ fn parse_definition_or_usage(
     let is_definition = has_def_keyword(tokens, pos);
 
     if is_definition {
-        builder.start_node(SyntaxKind::Definition.into());
+        builder.start_node(SyntaxKind::DEFINITION.into());
     } else {
-        builder.start_node(SyntaxKind::Usage.into());
+        builder.start_node(SyntaxKind::USAGE.into());
     }
 
     // Consume modifiers (abstract, ref, const)
     while pos < tokens.len() {
         match tokens[pos].kind {
-            SyntaxKind::AbstractKw | SyntaxKind::RefKw | SyntaxKind::ConstKw => {
+            SyntaxKind::ABSTRACT_KW | SyntaxKind::REF_KW | SyntaxKind::CONST_KW => {
                 builder.token(tokens[pos].kind.into(), tokens[pos].text);
                 pos += 1;
                 pos = consume_trivia(tokens, pos, builder);
@@ -215,15 +214,15 @@ fn parse_definition_or_usage(
     }
 
     // 'def' keyword if definition
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::DefKw {
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::DEF_KW {
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
         pos = consume_trivia(tokens, pos, builder);
     }
 
     // Name
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::Identifier {
-        builder.start_node(SyntaxKind::Name.into());
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::IDENT {
+        builder.start_node(SyntaxKind::NAME.into());
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         builder.finish_node();
         pos += 1;
@@ -234,7 +233,7 @@ fn parse_definition_or_usage(
     // Relationships and type annotations (consume until { or ;)
     while pos < tokens.len() {
         match tokens[pos].kind {
-            SyntaxKind::LBrace | SyntaxKind::Semicolon => break,
+            SyntaxKind::L_BRACE | SyntaxKind::SEMICOLON => break,
             _ => {
                 builder.token(tokens[pos].kind.into(), tokens[pos].text);
                 pos += 1;
@@ -244,9 +243,9 @@ fn parse_definition_or_usage(
 
     // Body or semicolon
     if pos < tokens.len() {
-        if tokens[pos].kind == SyntaxKind::LBrace {
+        if tokens[pos].kind == SyntaxKind::L_BRACE {
             pos = parse_body(tokens, pos, builder);
-        } else if tokens[pos].kind == SyntaxKind::Semicolon {
+        } else if tokens[pos].kind == SyntaxKind::SEMICOLON {
             builder.token(tokens[pos].kind.into(), tokens[pos].text);
             pos += 1;
         }
@@ -260,8 +259,8 @@ fn parse_definition_or_usage(
 fn has_def_keyword(tokens: &[Token], mut pos: usize) -> bool {
     while pos < tokens.len() {
         match tokens[pos].kind {
-            SyntaxKind::DefKw => return true,
-            SyntaxKind::LBrace | SyntaxKind::Semicolon => return false,
+            SyntaxKind::DEF_KW => return true,
+            SyntaxKind::L_BRACE | SyntaxKind::SEMICOLON => return false,
             _ => pos += 1,
         }
     }
@@ -272,50 +271,50 @@ fn has_def_keyword(tokens: &[Token], mut pos: usize) -> bool {
 fn is_element_keyword(kind: &SyntaxKind) -> bool {
     matches!(
         kind,
-        SyntaxKind::PartKw
-            | SyntaxKind::AttributeKw
-            | SyntaxKind::PortKw
-            | SyntaxKind::ItemKw
-            | SyntaxKind::ActionKw
-            | SyntaxKind::StateKw
-            | SyntaxKind::RequirementKw
-            | SyntaxKind::ConstraintKw
-            | SyntaxKind::ConnectionKw
-            | SyntaxKind::AllocationKw
-            | SyntaxKind::InterfaceKw
-            | SyntaxKind::FlowKw
-            | SyntaxKind::UseCaseKw
-            | SyntaxKind::ViewKw
-            | SyntaxKind::ViewpointKw
-            | SyntaxKind::RenderingKw
-            | SyntaxKind::MetadataKw
-            | SyntaxKind::OccurrenceKw
-            | SyntaxKind::AnalysisKw
-            | SyntaxKind::VerificationKw
-            | SyntaxKind::ConcernKw
-            | SyntaxKind::EnumKw
-            | SyntaxKind::CalcKw
-            | SyntaxKind::CaseKw
-            | SyntaxKind::IndividualKw
+        SyntaxKind::PART_KW
+            | SyntaxKind::ATTRIBUTE_KW
+            | SyntaxKind::PORT_KW
+            | SyntaxKind::ITEM_KW
+            | SyntaxKind::ACTION_KW
+            | SyntaxKind::STATE_KW
+            | SyntaxKind::REQUIREMENT_KW
+            | SyntaxKind::CONSTRAINT_KW
+            | SyntaxKind::CONNECTION_KW
+            | SyntaxKind::ALLOCATION_KW
+            | SyntaxKind::INTERFACE_KW
+            | SyntaxKind::FLOW_KW
+            | SyntaxKind::USE_KW
+            | SyntaxKind::VIEW_KW
+            | SyntaxKind::VIEWPOINT_KW
+            | SyntaxKind::RENDERING_KW
+            | SyntaxKind::METADATA_KW
+            | SyntaxKind::OCCURRENCE_KW
+            | SyntaxKind::ANALYSIS_KW
+            | SyntaxKind::VERIFICATION_KW
+            | SyntaxKind::CONCERN_KW
+            | SyntaxKind::ENUM_KW
+            | SyntaxKind::CALC_KW
+            | SyntaxKind::CASE_KW
+            | SyntaxKind::INDIVIDUAL_KW
     )
 }
 
 /// Parse an import statement
 fn parse_import(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) -> usize {
-    builder.start_node(SyntaxKind::Import.into());
+    builder.start_node(SyntaxKind::IMPORT.into());
 
     // 'import' keyword
     builder.token(tokens[pos].kind.into(), tokens[pos].text);
     pos += 1;
 
     // Consume until semicolon
-    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::Semicolon {
+    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::SEMICOLON {
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
     }
 
     // Semicolon
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::Semicolon {
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::SEMICOLON {
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
     }
@@ -326,20 +325,20 @@ fn parse_import(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder
 
 /// Parse an alias declaration
 fn parse_alias(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) -> usize {
-    builder.start_node(SyntaxKind::Alias.into());
+    builder.start_node(SyntaxKind::ALIAS_MEMBER.into());
 
     // 'alias' keyword
     builder.token(tokens[pos].kind.into(), tokens[pos].text);
     pos += 1;
 
     // Consume until semicolon
-    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::Semicolon {
+    while pos < tokens.len() && tokens[pos].kind != SyntaxKind::SEMICOLON {
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
     }
 
     // Semicolon
-    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::Semicolon {
+    if pos < tokens.len() && tokens[pos].kind == SyntaxKind::SEMICOLON {
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
     }
@@ -350,7 +349,7 @@ fn parse_alias(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder)
 
 /// Parse a doc or comment annotation
 fn parse_annotation(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBuilder) -> usize {
-    builder.start_node(SyntaxKind::Annotation.into());
+    builder.start_node(SyntaxKind::COMMENT_ELEMENT.into());
 
     // 'doc' or 'comment' keyword
     builder.token(tokens[pos].kind.into(), tokens[pos].text);
@@ -362,7 +361,7 @@ fn parse_annotation(tokens: &[Token], mut pos: usize, builder: &mut GreenNodeBui
         builder.token(tokens[pos].kind.into(), tokens[pos].text);
         pos += 1;
 
-        if kind == SyntaxKind::BlockComment || kind == SyntaxKind::Semicolon {
+        if kind == SyntaxKind::BLOCK_COMMENT || kind == SyntaxKind::SEMICOLON {
             break;
         }
     }
@@ -402,7 +401,7 @@ fn render_node(
     cancel: &CancellationToken,
 ) -> Option<()> {
     // Collect children for lookahead
-    let children: Vec<_> = node.children_with_tokens().collect();
+    let children: Vec<SyntaxElement> = node.children_with_tokens().collect();
 
     for (i, child) in children.iter().enumerate() {
         if cancel.is_cancelled() {
@@ -416,16 +415,16 @@ fn render_node(
 
                 // Look ahead to next non-whitespace token
                 let next_significant = children[i + 1..].iter().find_map(|c| match c {
-                    rowan::NodeOrToken::Token(t) if t.kind() != SyntaxKind::Whitespace => {
+                    rowan::NodeOrToken::Token(t) if t.kind() != SyntaxKind::WHITESPACE => {
                         Some(t.kind())
                     }
                     _ => None,
                 });
 
                 match kind {
-                    SyntaxKind::Whitespace => {
+                    SyntaxKind::WHITESPACE => {
                         // Don't preserve newlines before opening brace - keep it on same line
-                        if next_significant == Some(SyntaxKind::LBrace) {
+                        if next_significant == Some(SyntaxKind::L_BRACE) {
                             // Just add a single space, brace will be on same line
                             if !*at_line_start && !output.ends_with(' ') && !output.is_empty() {
                                 output.push(' ');
@@ -442,21 +441,21 @@ fn render_node(
                             output.push(' ');
                         }
                     }
-                    SyntaxKind::LineComment => {
+                    SyntaxKind::LINE_COMMENT => {
                         if *at_line_start {
                             output.push_str(&options.indent(*indent_level));
                             *at_line_start = false;
                         }
                         output.push_str(text);
                     }
-                    SyntaxKind::BlockComment => {
+                    SyntaxKind::BLOCK_COMMENT => {
                         if *at_line_start {
                             output.push_str(&options.indent(*indent_level));
                             *at_line_start = false;
                         }
                         output.push_str(text);
                     }
-                    SyntaxKind::LBrace => {
+                    SyntaxKind::L_BRACE => {
                         // Ensure space before brace if not at line start
                         if !*at_line_start && !output.ends_with(' ') && !output.ends_with('\n') {
                             output.push(' ');
@@ -475,7 +474,7 @@ fn render_node(
                         output.push('{');
                         *indent_level += 1;
                     }
-                    SyntaxKind::RBrace => {
+                    SyntaxKind::R_BRACE => {
                         *indent_level = indent_level.saturating_sub(1);
                         if *at_line_start {
                             output.push_str(&options.indent(*indent_level));
@@ -483,11 +482,11 @@ fn render_node(
                         output.push('}');
                         *at_line_start = false;
                     }
-                    SyntaxKind::Semicolon => {
+                    SyntaxKind::SEMICOLON => {
                         output.push(';');
                         *at_line_start = false;
                     }
-                    SyntaxKind::Colon | SyntaxKind::ColonColon | SyntaxKind::Dot => {
+                    SyntaxKind::COLON | SyntaxKind::COLON_COLON | SyntaxKind::DOT => {
                         // No space before colons and dots
                         output.push_str(text);
                         *at_line_start = false;

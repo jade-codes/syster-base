@@ -406,7 +406,7 @@ impl<'a> SemanticChecker<'a> {
 
     /// Check type references in a symbol's body, filtering by RefKind.
     fn check_type_refs(&mut self, symbol: &HirSymbol) {
-        use crate::hir::symbols::TypeRefKind;
+        use crate::hir::symbols::{RefKind, TypeRefKind};
 
         // Skip anonymous symbols (e.g., shorthand redefines like `:>> threadDia`)
         // Their type_refs are feature references that need inheritance context
@@ -441,6 +441,26 @@ impl<'a> SemanticChecker<'a> {
                         }
                     }
 
+                    // Skip expression chains on shorthand-redefines-named symbols.
+                    // e.g., `ref :>> acceptedMessage = aState.aTransition.accepter.acceptedMessage`
+                    // The value expression references inherited members through transition/state
+                    // internals that our static resolver can't follow. Previously these symbols
+                    // were anonymous (skipped by the `<:` qname check above); now they're named.
+                    // Regular expression chains like `attribute t = hub.apliedTorque` are still
+                    // validated because `t` is not a shorthand-redefines-named symbol.
+                    if chain
+                        .parts
+                        .first()
+                        .is_some_and(|p| p.kind == RefKind::Expression)
+                    {
+                        let is_shorthand_redefines = symbol.type_refs.iter().any(|tr| {
+                            matches!(tr, TypeRefKind::Simple(r) if r.kind == RefKind::Redefines && r.target.as_ref() == symbol.name.as_ref())
+                        });
+                        if is_shorthand_redefines {
+                            continue;
+                        }
+                    }
+
                     // Validate unresolved chain parts (when first part resolves)
                     // Skip if first part didn't resolve (can't validate without context)
                     if chain
@@ -466,10 +486,7 @@ impl<'a> SemanticChecker<'a> {
                                         part.start_col,
                                         format!("Undefined member '{}' in feature chain", name),
                                     )
-                                    .with_span(
-                                        part.end_line,
-                                        part.end_col,
-                                    ),
+                                    .with_span(part.end_line, part.end_col),
                                 );
                             }
                         }

@@ -468,7 +468,7 @@ fn test_hover_trigger_ref() {
     let mut host = create_host_with_stdlib();
     let source = r#"
 package Test {
-    struct Trigger;
+    part def Trigger;
     
     action def MyAction {
         accept trigger1 : Trigger;

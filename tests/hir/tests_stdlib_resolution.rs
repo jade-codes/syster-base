@@ -99,11 +99,11 @@ mod duplicate_definition_false_positives {
     fn test_same_parameter_name_different_functions() {
         let source = r#"
             package Test {
-                function isEmpty {
+                calc def isEmpty {
                     in seq : Anything[*];
                     return : Boolean;
                 }
-                function notEmpty {
+                calc def notEmpty {
                     in seq : Anything[*];
                     return : Boolean;
                 }
@@ -164,7 +164,7 @@ mod import_resolution {
         // Simulating importing from another package
         let source = r#"
             package Occurrences {
-                struct Occurrence;
+                part def Occurrence;
             }
             package Test {
                 import Occurrences::*;
@@ -180,7 +180,7 @@ mod import_resolution {
     fn test_specific_import_resolution() {
         let source = r#"
             package Transfers {
-                struct Transfer;
+                part def Transfer;
             }
             package Test {
                 import Transfers::Transfer;
@@ -197,7 +197,7 @@ mod import_resolution {
         let source = r#"
             package Base {
                 package Nested {
-                    struct DeepType;
+                    part def DeepType;
                 }
             }
             package Test {
@@ -286,11 +286,11 @@ mod cross_file_resolution {
         // This would require stdlib to be loaded
         let source = r#"
             package Occurrences {
-                struct Occurrence;
+                part def Occurrence;
             }
             package Test {
                 import Occurrences::*;
-                struct MyOccurrence :> Occurrence;
+                part def MyOccurrence :> Occurrence;
             }
         "#;
         assert_no_errors(source);
@@ -301,14 +301,14 @@ mod cross_file_resolution {
     fn test_library_type_binary_link() {
         let source = r#"
             package Links {
-                struct BinaryLink {
+                part def BinaryLink {
                     end source;
                     end target;
                 }
             }
             package Test {
                 import Links::*;
-                struct MyLink :> BinaryLink;
+                part def MyLink :> BinaryLink;
             }
         "#;
         assert_no_errors(source);
@@ -464,11 +464,11 @@ mod unicode_names {
     fn test_operator_short_names() {
         let source = r#"
             package ScalarFunctions {
-                function <'+'> add { in x; in y; return : Real; }
+                calc def <'+'> add { in x; in y; return : Real; }
             }
             package RealFunctions {
                 import ScalarFunctions::*;
-                function <'+'> add :>> ScalarFunctions::'+'  { in x : Real; in y : Real; }
+                calc def <'+'> add :>> ScalarFunctions::'+'  { in x : Real; in y : Real; }
             }
         "#;
         assert_no_errors(source);
