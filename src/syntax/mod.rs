@@ -1,6 +1,7 @@
 // Syntax definitions for supported languages
 pub mod file;
 pub mod formatter;
+pub mod normalized;
 pub mod parser;
 
 pub use file::SyntaxFile;
