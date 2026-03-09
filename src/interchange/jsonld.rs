@@ -498,6 +498,11 @@ mod writer {
             obj.insert("shortName".to_string(), json!(short_name.as_ref()));
         }
 
+        // qualifiedName
+        if let Some(ref qn) = element.qualified_name {
+            obj.insert("qualifiedName".to_string(), json!(qn.as_ref()));
+        }
+
         // isAbstract (only if true)
         if element.is_abstract {
             obj.insert("isAbstract".to_string(), json!(true));
@@ -776,6 +781,7 @@ mod tests {
             let mut cls = Element::new("cls1", ElementKind::Class);
             cls.name = Some(Arc::from("AbstractClass"));
             cls.short_name = Some(Arc::from("AC"));
+            cls.qualified_name = Some(Arc::from("Pkg::AbstractClass"));
             cls.set_abstract(true);
             cls.documentation = Some(Arc::from("This is documented"));
             cls.properties
@@ -792,6 +798,7 @@ mod tests {
             assert!(json_str.contains("\"isStandard\": true"));
             assert!(json_str.contains("\"count\": 99"));
             assert!(json_str.contains("\"shortName\": \"AC\""));
+            assert!(json_str.contains("\"qualifiedName\": \"Pkg::AbstractClass\""));
         }
 
         #[test]
