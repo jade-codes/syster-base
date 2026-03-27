@@ -138,6 +138,7 @@ pub(crate) enum InternalUsageKind {
     Item,
     Action,
     Port,
+    Reference,
     Attribute,
     Connection,
     Interface,
@@ -146,7 +147,6 @@ pub(crate) enum InternalUsageKind {
     Constraint,
     State,
     Calculation,
-    Reference,
     Occurrence,
     Flow,
     Transition,
@@ -546,6 +546,11 @@ pub struct HirSymbol {
     /// Metadata types applied to this symbol (e.g., ["Safety", "Approved"])
     /// Used for filter import evaluation (SysML v2 §7.5.4)
     pub metadata_annotations: Vec<Arc<str>>,
+    /// Parsed composite semantic result for standard interchange/export.
+    ///
+    /// `None` means this symbol does not participate in feature-level
+    /// composite semantics.
+    pub is_composite: Option<bool>,
     /// Whether this symbol is abstract (for definitions and usages)
     pub is_abstract: bool,
     /// Whether this symbol is a variation (for definitions and usages)
@@ -593,6 +598,7 @@ pub enum SymbolKind {
     ConstraintDefinition,
     StateDefinition,
     CalculationDefinition,
+    OccurrenceDefinition,
     UseCaseDefinition,
     AnalysisCaseDefinition,
     ConcernDefinition,
@@ -667,7 +673,7 @@ impl SymbolKind {
             Some(DefinitionKind::Enum) => Self::EnumerationDefinition,
             Some(DefinitionKind::Flow) => Self::Other,
             Some(DefinitionKind::Metadata) => Self::Other,
-            Some(DefinitionKind::Occurrence) => Self::Other,
+            Some(DefinitionKind::Occurrence) => Self::OccurrenceDefinition,
             // KerML mappings
             Some(DefinitionKind::Class) => Self::PartDefinition,
             Some(DefinitionKind::Struct) => Self::PartDefinition,
@@ -691,6 +697,7 @@ impl SymbolKind {
             InternalUsageKind::Item => Self::ItemUsage,
             InternalUsageKind::Action => Self::ActionUsage,
             InternalUsageKind::Port => Self::PortUsage,
+            InternalUsageKind::Reference => Self::ReferenceUsage,
             InternalUsageKind::Attribute => Self::AttributeUsage,
             InternalUsageKind::Connection => Self::ConnectionUsage,
             InternalUsageKind::Interface => Self::InterfaceUsage,
@@ -699,7 +706,6 @@ impl SymbolKind {
             InternalUsageKind::Constraint => Self::ConstraintUsage,
             InternalUsageKind::State => Self::StateUsage,
             InternalUsageKind::Calculation => Self::CalculationUsage,
-            InternalUsageKind::Reference => Self::ReferenceUsage,
             InternalUsageKind::Occurrence => Self::OccurrenceUsage,
             InternalUsageKind::Flow => Self::FlowConnectionUsage,
             InternalUsageKind::Transition => Self::TransitionUsage,
@@ -733,6 +739,7 @@ impl SymbolKind {
             Self::ConstraintDefinition => "Constraint def",
             Self::StateDefinition => "State def",
             Self::CalculationDefinition => "Calc def",
+            Self::OccurrenceDefinition => "Occurrence def",
             Self::UseCaseDefinition => "Use case def",
             Self::AnalysisCaseDefinition => "Analysis case def",
             Self::ConcernDefinition => "Concern def",

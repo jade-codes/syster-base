@@ -123,7 +123,6 @@ impl Definition {
     has_token_method!(is_abstract, ABSTRACT_KW, "abstract part def P {}");
     has_token_method!(is_variation, VARIATION_KW, "variation part def V {}");
     has_token_method!(is_individual, INDIVIDUAL_KW, "individual part def Earth;");
-
     token_to_enum_method!(definition_kind, DefinitionKind, [
         PART_KW => Part,
         ATTRIBUTE_KW => Attribute,
@@ -486,7 +485,6 @@ impl Usage {
         FLOW_KW => Flow,
         MESSAGE_KW => Flow,
         OCCURRENCE_KW => Occurrence,
-        REF_KW => Ref,
         // KerML usage keywords
         FEATURE_KW => Feature,
         STEP_KW => Step,
@@ -512,7 +510,6 @@ pub enum UsageKind {
     Allocation,
     Flow,
     Occurrence,
-    Ref,
     // KerML
     Feature,
     Step,

@@ -233,6 +233,11 @@ mod reader {
             element.name = Some(Arc::from(name.as_str()));
         }
 
+        // Get qualifiedName
+        if let Some(Value::String(qualified_name)) = obj.get("qualifiedName") {
+            element.qualified_name = Some(Arc::from(qualified_name.as_str()));
+        }
+
         // Get shortName (also check declaredShortName)
         if let Some(Value::String(short_name)) = obj
             .get("shortName")
@@ -331,6 +336,7 @@ mod reader {
                     | "@context"
                     | "name"
                     | "declaredName"
+                    | "qualifiedName"
                     | "shortName"
                     | "declaredShortName"
                     | "isAbstract"
@@ -491,6 +497,10 @@ mod writer {
         // name
         if let Some(ref name) = element.name {
             obj.insert("name".to_string(), json!(name.as_ref()));
+        }
+
+        if let Some(ref qualified_name) = element.qualified_name {
+            obj.insert("qualifiedName".to_string(), json!(qualified_name.as_ref()));
         }
 
         // shortName
@@ -746,6 +756,7 @@ mod tests {
                 "@type": "Class",
                 "@id": "cls1",
                 "name": "AbstractClass",
+                "qualifiedName": "Pkg::AbstractClass",
                 "shortName": "AC",
                 "isAbstract": true,
                 "documentation": "This is a doc comment",
@@ -758,6 +769,7 @@ mod tests {
             let cls = model.get(&ElementId::new("cls1")).expect("Class not found");
 
             assert_eq!(cls.name.as_deref(), Some("AbstractClass"));
+            assert_eq!(cls.qualified_name.as_deref(), Some("Pkg::AbstractClass"));
             assert_eq!(cls.short_name.as_deref(), Some("AC"));
             assert!(cls.is_abstract);
             assert_eq!(cls.documentation.as_deref(), Some("This is a doc comment"));

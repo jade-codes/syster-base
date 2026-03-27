@@ -150,6 +150,20 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             is_ordered: element.is_ordered,
             is_nonunique: element.is_nonunique,
             is_portion: element.is_portion,
+            is_composite: if element.kind.is_feature_kind() {
+                Some(
+                    element
+                        .properties
+                        .get("isComposite")
+                        .and_then(|v| match v {
+                            PropertyValue::Boolean(value) => Some(*value),
+                            _ => None,
+                        })
+                        .unwrap_or(false),
+                )
+            } else {
+                None
+            },
             direction: element.properties.get("direction").and_then(|v| match v {
                 PropertyValue::String(s) => match s.as_ref() {
                     "in" => Some(Direction::In),
@@ -272,6 +286,7 @@ impl From<ElementKind> for SymbolKind {
             ElementKind::ConstraintDefinition => SymbolKind::ConstraintDefinition,
             ElementKind::StateDefinition => SymbolKind::StateDefinition,
             ElementKind::CalculationDefinition => SymbolKind::CalculationDefinition,
+            ElementKind::OccurrenceDefinition => SymbolKind::OccurrenceDefinition,
             ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
             ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
             ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
@@ -434,6 +449,12 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
         element.is_ordered = symbol.is_ordered;
         element.is_nonunique = symbol.is_nonunique;
         element.is_portion = symbol.is_portion;
+        if kind.is_feature_kind() {
+            element.properties.insert(
+                Arc::from("isComposite"),
+                PropertyValue::Boolean(symbol.is_composite.unwrap_or(false)),
+            );
+        }
 
         // Copy short name
         element.short_name = symbol.short_name.clone();
@@ -720,6 +741,7 @@ impl From<SymbolKind> for ElementKind {
             SymbolKind::ConstraintDefinition => ElementKind::ConstraintDefinition,
             SymbolKind::StateDefinition => ElementKind::StateDefinition,
             SymbolKind::CalculationDefinition => ElementKind::CalculationDefinition,
+            SymbolKind::OccurrenceDefinition => ElementKind::OccurrenceDefinition,
             SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
             SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
             SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
@@ -1189,6 +1211,122 @@ mod tests {
                 orig.qualified_name
             );
         }
+    }
+
+    #[test]
+    fn test_model_roundtrip_preserves_usage_flags_and_is_composite_output() {
+        use super::super::{JsonLd, ModelFormat, Xmi};
+
+        let db = RootDatabase::new();
+        let sysml = r#"
+            package Modifiers {
+                composite part assembly;
+                part def Vehicle {
+                    composite part wheel;
+                    attribute values[*] nonunique;
+                }
+                portion part slice;
+                action def Control {
+                    in port inputPort;
+                }
+            }
+        "#;
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        let original_symbols = file_symbols_from_text(&db, file_text);
+        let model = model_from_symbols(&original_symbols);
+
+        let wheel = model
+            .elements
+            .values()
+            .find(|e| e.name.as_deref() == Some("wheel"))
+            .expect("wheel element should exist");
+        assert_eq!(
+            wheel.properties.get("isComposite"),
+            Some(&PropertyValue::Boolean(true))
+        );
+
+        let assembly = model
+            .elements
+            .values()
+            .find(|e| e.name.as_deref() == Some("assembly"))
+            .expect("assembly element should exist");
+        assert_eq!(
+            assembly.properties.get("isComposite"),
+            Some(&PropertyValue::Boolean(false))
+        );
+
+        let xmi_bytes = Xmi.write(&model).expect("Should write XMI");
+        let xmi = String::from_utf8(xmi_bytes).expect("XMI should be UTF-8");
+        assert!(xmi.contains("isComposite=\"true\""));
+        assert!(xmi.contains("isComposite=\"false\""));
+
+        let jsonld_bytes = JsonLd.write(&model).expect("Should write JSON-LD");
+        let jsonld = String::from_utf8(jsonld_bytes).expect("JSON-LD should be UTF-8");
+        assert!(jsonld.contains("\"isComposite\": true"));
+        assert!(jsonld.contains("\"isComposite\": false"));
+
+        let roundtrip_symbols = symbols_from_model(&model);
+
+        let wheel_symbol = roundtrip_symbols
+            .iter()
+            .find(|s| s.qualified_name.as_ref() == "Modifiers::Vehicle::wheel")
+            .expect("wheel symbol should exist after roundtrip");
+        assert_eq!(wheel_symbol.is_composite, Some(true));
+        let slice_symbol = roundtrip_symbols
+            .iter()
+            .find(|s| s.qualified_name.as_ref() == "Modifiers::slice")
+            .expect("slice symbol should exist after roundtrip");
+        assert!(slice_symbol.is_portion);
+        assert_eq!(slice_symbol.is_composite, Some(false));
+
+        let values_symbol = roundtrip_symbols
+            .iter()
+            .find(|s| s.qualified_name.as_ref() == "Modifiers::Vehicle::values")
+            .expect("values symbol should exist after roundtrip");
+        assert!(values_symbol.is_nonunique);
+
+        let input_port_symbol = roundtrip_symbols
+            .iter()
+            .find(|s| s.qualified_name.as_ref() == "Modifiers::Control::inputPort")
+            .expect("inputPort symbol should exist after roundtrip");
+        assert_eq!(input_port_symbol.direction, Some(Direction::In));
+    }
+
+    #[test]
+    fn test_model_from_symbols_only_writes_is_composite_for_feature_kinds() {
+        let db = RootDatabase::new();
+        let sysml = r#"
+            package sample {
+                part def A {
+                    part def B;
+                    part p;
+                }
+            }
+        "#;
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        let original_symbols = file_symbols_from_text(&db, file_text);
+        let model = model_from_symbols(&original_symbols);
+
+        let definition = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::A::B"))
+            .expect("nested definition should exist");
+        assert!(!definition.kind.is_feature_kind());
+        assert!(definition.properties.get("isComposite").is_none());
+
+        let usage = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::A::p"))
+            .expect("part usage should exist");
+        assert!(usage.kind.is_feature_kind());
+        assert_eq!(
+            usage.properties.get("isComposite"),
+            Some(&PropertyValue::Boolean(true))
+        );
     }
 
     #[test]

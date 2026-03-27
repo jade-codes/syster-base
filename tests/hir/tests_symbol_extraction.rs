@@ -223,6 +223,16 @@ fn test_calc_def_extraction() {
 }
 
 #[test]
+fn test_occurrence_def_extraction() {
+    let (mut host, _) = analysis_from_sysml("occurrence def Lifetime;");
+    let analysis = host.analysis();
+
+    assert_symbol_exists(analysis.symbol_index(), "Lifetime");
+    let sym = get_symbol(analysis.symbol_index(), "Lifetime");
+    assert_symbol_kind(sym, SymbolKind::OccurrenceDefinition);
+}
+
+#[test]
 fn test_case_def_extraction() {
     let (mut host, _) = analysis_from_sysml("case def DriveScenario;");
     let analysis = host.analysis();
@@ -441,7 +451,7 @@ fn test_item_usage_extraction() {
 fn test_ref_usage_extraction() {
     let source = r#"
         part def System {
-            ref target;
+            ref part target;
         }
     "#;
     let (mut host, _) = analysis_from_sysml(source);
@@ -450,7 +460,244 @@ fn test_ref_usage_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "System::target");
 
     let ref_usage = get_symbol(analysis.symbol_index(), "System::target");
+    assert_symbol_kind(ref_usage, SymbolKind::PartUsage);
+    assert_eq!(ref_usage.is_composite, Some(false));
+}
+
+#[test]
+fn test_bare_ref_usage_defaults_to_reference_usage() {
+    let source = r#"
+        package sample {
+            part def A {
+                ref b;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let ref_usage = get_symbol(analysis.symbol_index(), "sample::A::b");
     assert_symbol_kind(ref_usage, SymbolKind::ReferenceUsage);
+    assert_eq!(ref_usage.is_composite, Some(false));
+}
+
+#[test]
+fn test_definition_symbols_do_not_get_composite_semantics() {
+    let source = r#"
+        package sample {
+            part def A {
+                part def B;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let nested_def = get_symbol(analysis.symbol_index(), "sample::A::B");
+    assert_symbol_kind(nested_def, SymbolKind::PartDefinition);
+    assert_eq!(nested_def.is_composite, None);
+}
+
+#[test]
+fn test_usage_modifier_and_composite_semantics_extraction() {
+    let source = r#"
+        package Root {
+            composite part assembly;
+            part def Vehicle {
+                composite part wheel;
+                part axle;
+                ref part borrowed;
+                port p {
+                    part nested;
+                }
+                attribute values[*] nonunique;
+            }
+            action def Control {
+                in port inputPort;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let assembly = get_symbol(analysis.symbol_index(), "Root::assembly");
+    assert_symbol_kind(assembly, SymbolKind::PartUsage);
+    assert_eq!(assembly.is_composite, Some(false));
+
+    let wheel = get_symbol(analysis.symbol_index(), "Root::Vehicle::wheel");
+    assert_symbol_kind(wheel, SymbolKind::PartUsage);
+    assert_eq!(wheel.is_composite, Some(true));
+
+    let axle = get_symbol(analysis.symbol_index(), "Root::Vehicle::axle");
+    assert_symbol_kind(axle, SymbolKind::PartUsage);
+    assert_eq!(axle.is_composite, Some(true));
+
+    let borrowed = get_symbol(analysis.symbol_index(), "Root::Vehicle::borrowed");
+    assert_symbol_kind(borrowed, SymbolKind::PartUsage);
+    assert_eq!(borrowed.is_composite, Some(false));
+
+    let nested = get_symbol(analysis.symbol_index(), "Root::Vehicle::p::nested");
+    assert_symbol_kind(nested, SymbolKind::PartUsage);
+    assert_eq!(nested.is_composite, Some(false));
+
+    let values = get_symbol(analysis.symbol_index(), "Root::Vehicle::values");
+    assert_symbol_kind(values, SymbolKind::AttributeUsage);
+    assert!(values.is_nonunique);
+    assert_eq!(values.is_composite, Some(false));
+
+    let input_port = get_symbol(analysis.symbol_index(), "Root::Control::inputPort");
+    assert_symbol_kind(input_port, SymbolKind::PortUsage);
+    assert_eq!(input_port.direction, Some(syster::parser::Direction::In));
+    assert_eq!(input_port.is_composite, Some(false));
+}
+
+#[test]
+fn test_end_usage_does_not_become_composite() {
+    let source = r#"
+        interface def WaterDelivery {
+            end port supplied;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let supplied = get_symbol(analysis.symbol_index(), "WaterDelivery::supplied");
+    assert_symbol_kind(supplied, SymbolKind::PortUsage);
+    assert!(supplied.is_end);
+    assert_eq!(supplied.is_composite, Some(false));
+}
+
+#[test]
+fn test_port_owned_by_part_is_not_composite() {
+    let source = r#"
+        part def Vehicle {
+            port p;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let port = get_symbol(analysis.symbol_index(), "Vehicle::p");
+    assert_symbol_kind(port, SymbolKind::PortUsage);
+    assert_eq!(port.is_composite, Some(false));
+}
+
+#[test]
+fn test_port_owned_by_port_is_composite() {
+    let source = r#"
+        port def Channel {
+            port nested;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let port = get_symbol(analysis.symbol_index(), "Channel::nested");
+    assert_symbol_kind(port, SymbolKind::PortUsage);
+    assert_eq!(port.is_composite, Some(true));
+}
+
+#[test]
+fn test_state_owned_by_part_is_composite() {
+    let source = r#"
+        part def Vehicle {
+            state idle;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let state = get_symbol(analysis.symbol_index(), "Vehicle::idle");
+    assert_symbol_kind(state, SymbolKind::StateUsage);
+    assert_eq!(state.is_composite, Some(true));
+}
+
+#[test]
+fn test_occurrence_and_part_owned_by_occurrence_are_composite() {
+    let source = r#"
+        occurrence def Lifetime {
+            occurrence phase;
+            part artifact;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let phase = get_symbol(analysis.symbol_index(), "Lifetime::phase");
+    assert_symbol_kind(phase, SymbolKind::OccurrenceUsage);
+    assert_eq!(phase.is_composite, Some(true));
+
+    let artifact = get_symbol(analysis.symbol_index(), "Lifetime::artifact");
+    assert_symbol_kind(artifact, SymbolKind::PartUsage);
+    assert_eq!(artifact.is_composite, Some(true));
+}
+
+#[test]
+fn test_calculation_owned_by_calculation_is_composite() {
+    let source = r#"
+        calc def Total {
+            calc subtotal;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let calc = get_symbol(analysis.symbol_index(), "Total::subtotal");
+    assert_symbol_kind(calc, SymbolKind::CalculationUsage);
+    assert_eq!(calc.is_composite, Some(true));
+}
+
+#[test]
+fn test_transition_owned_by_state_is_composite() {
+    let source = r#"
+        state def VehicleState {
+            state off;
+            state on;
+            transition off_to_on first off then on;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let transition = get_symbol(analysis.symbol_index(), "VehicleState::off_to_on");
+    assert_symbol_kind(transition, SymbolKind::TransitionUsage);
+    assert_eq!(transition.is_composite, Some(true));
+}
+
+#[test]
+fn test_perform_action_usage_is_not_composite() {
+    let source = r#"
+        part def Sys {
+            perform Start;
+        }
+        action def Start;
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let performed = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|symbol| symbol.qualified_name.as_ref().starts_with("Sys::<perform:Start"))
+        .expect("expected perform action usage");
+    assert_symbol_kind(performed, SymbolKind::ActionUsage);
+    assert_eq!(performed.is_composite, Some(false));
+}
+
+#[test]
+fn test_connection_usage_is_not_composite() {
+    let source = r#"
+        connection def C;
+        part def Sys {
+            connection link : C;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let link = get_symbol(analysis.symbol_index(), "Sys::link");
+    assert_symbol_kind(link, SymbolKind::ConnectionUsage);
+    assert_eq!(link.is_composite, Some(false));
 }
 
 // =============================================================================

@@ -87,13 +87,12 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
             Some(UsageKind::Allocation) => InternalUsageKind::Allocation,
             Some(UsageKind::Flow) => InternalUsageKind::Flow,
             Some(UsageKind::Occurrence) => InternalUsageKind::Occurrence,
-            Some(UsageKind::Ref) => InternalUsageKind::Reference,
             Some(UsageKind::Feature) => InternalUsageKind::Attribute,
             Some(UsageKind::Step) => InternalUsageKind::Action,
             Some(UsageKind::Expr) => InternalUsageKind::Calculation,
             Some(UsageKind::Connector) => InternalUsageKind::Connection,
             Some(UsageKind::Case) => InternalUsageKind::Other,
-            None => InternalUsageKind::Part, // Default to Part for usages without keyword
+            None => InternalUsageKind::Reference, // No usage kind keyword => ReferenceUsage
         }
     }
 }

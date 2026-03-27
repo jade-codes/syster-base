@@ -48,6 +48,7 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::ConstraintDefinition
             | SymbolKind::StateDefinition
             | SymbolKind::CalculationDefinition
+            | SymbolKind::OccurrenceDefinition
             | SymbolKind::UseCaseDefinition
             | SymbolKind::AnalysisCaseDefinition
             | SymbolKind::ConcernDefinition

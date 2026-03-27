@@ -11,8 +11,8 @@ use rowan::TextRange;
 use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member_into_symbols;
 use super::helpers::{
-    determine_usage_kind, extract_expression_chains, extract_hir_relationships,
-    extract_metadata_from_ast_context, extract_type_refs,
+    determine_usage_kind, extract_expression_chains,
+    extract_hir_relationships, extract_metadata_from_ast_context, extract_type_refs,
     implicit_supertype_for_internal_usage_kind, make_chain_or_simple, rel_kind_to_anon_prefix,
 };
 use super::types::{
@@ -500,6 +500,7 @@ fn collect_endpoint_children_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: Vec::new(),
+                    is_composite: Some(false),
                     is_abstract: false,
                     is_variation: false,
                     is_readonly: false,
@@ -587,6 +588,7 @@ fn collect_transition_payload_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: Vec::new(),
+                    is_composite: Some(false),
                     is_abstract: false,
                     is_variation: false,
                     is_readonly: false,
@@ -614,6 +616,66 @@ pub(super) fn extract_usage_from_ast(
     usage: &Usage,
 ) {
     let usage_kind = determine_usage_kind(usage);
+    let is_composite = Some({
+        let owner_kind = symbols
+            .iter()
+            .rev()
+            .find(|symbol| symbol.qualified_name.as_ref() == ctx.prefix)
+            .map(|symbol| symbol.kind);
+
+        if usage.perform_action_usage().is_some()
+            || matches!(
+                usage_kind,
+                InternalUsageKind::Connection
+                    | InternalUsageKind::Attribute
+                    | InternalUsageKind::Reference
+            )
+            || usage.is_ref()
+            || usage.is_end()
+            || usage.direction().is_some()
+        {
+            false
+        } else if let Some(owner_kind) = owner_kind {
+            if matches!(usage_kind, InternalUsageKind::Port) {
+                matches!(owner_kind, SymbolKind::PortDefinition | SymbolKind::PortUsage)
+            } else {
+                matches!(
+                    usage_kind,
+                    InternalUsageKind::Part
+                        | InternalUsageKind::Item
+                        | InternalUsageKind::Action
+                        | InternalUsageKind::State
+                        | InternalUsageKind::Calculation
+                        | InternalUsageKind::Transition
+                        | InternalUsageKind::Occurrence
+                        | InternalUsageKind::Requirement
+                        | InternalUsageKind::Constraint
+                ) && (matches!(
+                    owner_kind,
+                    SymbolKind::PartDefinition
+                        | SymbolKind::ItemDefinition
+                        | SymbolKind::ActionDefinition
+                        | SymbolKind::StateDefinition
+                        | SymbolKind::CalculationDefinition
+                        | SymbolKind::OccurrenceDefinition
+                        | SymbolKind::RequirementDefinition
+                        | SymbolKind::ConstraintDefinition
+                ) || matches!(
+                    owner_kind,
+                    SymbolKind::PartUsage
+                        | SymbolKind::ItemUsage
+                        | SymbolKind::ActionUsage
+                        | SymbolKind::StateUsage
+                        | SymbolKind::CalculationUsage
+                        | SymbolKind::OccurrenceUsage
+                        | SymbolKind::RequirementUsage
+                        | SymbolKind::ConstraintUsage
+                ))
+            }
+        } else {
+            false
+        }
+    });
     let rels = extract_usage_rels_from_ast(usage);
     let type_refs = extract_type_refs(&rels, &ctx.line_index);
     let relationships = extract_hir_relationships(&rels, &ctx.line_index);
@@ -786,6 +848,7 @@ pub(super) fn extract_usage_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: metadata_annotations.clone(),
+                    is_composite,
                     is_abstract: usage.is_abstract(),
                     is_variation: usage.is_variation(),
                     is_readonly: usage.is_readonly(),
@@ -957,6 +1020,7 @@ pub(super) fn extract_usage_from_ast(
         is_public: false,
         view_data,
         metadata_annotations,
+        is_composite,
         is_abstract: usage.is_abstract(),
         is_variation: usage.is_variation(),
         is_readonly: usage.is_readonly(),
@@ -1101,6 +1165,7 @@ pub(super) fn extract_metadata_member_from_ast(
         is_public: false,
         view_data: None,
         metadata_annotations,
+        is_composite: Some(false),
         is_abstract: false,
         is_variation: false,
         is_readonly: false,

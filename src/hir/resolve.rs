@@ -2819,6 +2819,7 @@ impl SymbolKind {
                 | SymbolKind::ConstraintDefinition
                 | SymbolKind::StateDefinition
                 | SymbolKind::CalculationDefinition
+                | SymbolKind::OccurrenceDefinition
                 | SymbolKind::UseCaseDefinition
                 | SymbolKind::AnalysisCaseDefinition
                 | SymbolKind::ConcernDefinition
@@ -2868,6 +2869,7 @@ impl SymbolKind {
             SymbolKind::ConstraintUsage => Some(SymbolKind::ConstraintDefinition),
             SymbolKind::StateUsage => Some(SymbolKind::StateDefinition),
             SymbolKind::CalculationUsage => Some(SymbolKind::CalculationDefinition),
+            SymbolKind::OccurrenceUsage => Some(SymbolKind::OccurrenceDefinition),
             _ => None,
         }
     }
@@ -3319,6 +3321,7 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_composite: None,
             is_abstract: false,
             is_variation: false,
             is_readonly: false,

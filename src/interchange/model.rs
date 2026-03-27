@@ -112,6 +112,7 @@ pub enum ElementKind {
     ConstraintDefinition,
     StateDefinition,
     CalculationDefinition,
+    OccurrenceDefinition,
     UseCaseDefinition,
     AnalysisCaseDefinition,
     ConcernDefinition,
@@ -246,6 +247,7 @@ impl ElementKind {
                 | Self::ConstraintDefinition
                 | Self::StateDefinition
                 | Self::CalculationDefinition
+                | Self::OccurrenceDefinition
                 | Self::UseCaseDefinition
                 | Self::AnalysisCaseDefinition
                 | Self::ConcernDefinition
@@ -422,6 +424,7 @@ impl ElementKind {
                 | Self::StateDefinition
                 | Self::TransitionUsage
                 | Self::CalculationDefinition
+                | Self::OccurrenceDefinition
                 | Self::AnalysisCaseDefinition
                 | Self::EnumerationDefinition
                 | Self::MetadataDefinition
@@ -472,6 +475,7 @@ impl ElementKind {
             Self::ConstraintDefinition => "sysml:ConstraintDefinition",
             Self::StateDefinition => "sysml:StateDefinition",
             Self::CalculationDefinition => "sysml:CalculationDefinition",
+            Self::OccurrenceDefinition => "sysml:OccurrenceDefinition",
             Self::UseCaseDefinition => "sysml:UseCaseDefinition",
             Self::AnalysisCaseDefinition => "sysml:AnalysisCaseDefinition",
             Self::ConcernDefinition => "sysml:ConcernDefinition",
@@ -583,6 +587,7 @@ impl ElementKind {
             Self::ConstraintDefinition => "sysml:ConstraintDefinition",
             Self::StateDefinition => "sysml:StateDefinition",
             Self::CalculationDefinition => "sysml:CalculationDefinition",
+            Self::OccurrenceDefinition => "sysml:OccurrenceDefinition",
             Self::UseCaseDefinition => "sysml:UseCaseDefinition",
             Self::AnalysisCaseDefinition => "sysml:AnalysisCaseDefinition",
             Self::ConcernDefinition => "sysml:ConcernDefinition",
@@ -699,6 +704,7 @@ impl ElementKind {
             "ConstraintDefinition" => Self::ConstraintDefinition,
             "StateDefinition" => Self::StateDefinition,
             "CalculationDefinition" => Self::CalculationDefinition,
+            "OccurrenceDefinition" => Self::OccurrenceDefinition,
             "UseCaseDefinition" => Self::UseCaseDefinition,
             "AnalysisCaseDefinition" => Self::AnalysisCaseDefinition,
             "ConcernDefinition" => Self::ConcernDefinition,

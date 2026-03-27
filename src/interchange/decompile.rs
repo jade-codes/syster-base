@@ -161,6 +161,9 @@ impl<'a> DecompileContext<'a> {
             }
             ElementKind::StateDefinition => self.decompile_definition(element, "state def"),
             ElementKind::CalculationDefinition => self.decompile_definition(element, "calc def"),
+            ElementKind::OccurrenceDefinition => {
+                self.decompile_definition(element, "occurrence def")
+            }
             ElementKind::UseCaseDefinition => self.decompile_definition(element, "use case def"),
             ElementKind::AnalysisCaseDefinition => {
                 self.decompile_definition(element, "analysis def")
