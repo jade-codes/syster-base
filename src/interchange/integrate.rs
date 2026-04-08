@@ -17,7 +17,10 @@
 //! For bridging ChangeTracker edits into Salsa queries, use
 //! [`AnalysisHost::apply_model_edit()`](crate::ide::AnalysisHost::apply_model_edit).
 
-use super::model::{Element, ElementId, ElementKind, Model, PropertyValue, Visibility};
+use super::{
+    error::InterchangeError,
+    model::{Element, ElementId, ElementKind, Model, PropertyValue, Visibility},
+};
 use crate::base::FileId;
 use crate::hir::{
     HirRelationship, HirSymbol, RelationshipKind as HirRelKind, RootDatabase, SymbolKind,
@@ -42,7 +45,7 @@ pub fn model_from_database(_db: &RootDatabase) -> Model {
 ///
 /// Used for loading external models (stdlib, imported workspaces) into
 /// the analysis pipeline.
-pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
+pub fn symbols_from_model(model: &Model) -> Result<Vec<HirSymbol>, InterchangeError> {
     let mut symbols = Vec::new();
 
     for element in model.elements.values() {
@@ -76,39 +79,39 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
             });
 
         // Collect relationships where this element is the source
-        let relationships: Vec<HirRelationship> = model
-            .rel_elements_from(&element.id)
-            .filter_map(|re| {
-                let hir_kind = relationship_element_to_hir(re)?;
+        let mut relationships = Vec::new();
+        for re in model.rel_elements_from(&element.id) {
+            let Some(hir_kind) = relationship_element_to_hir(re)? else {
+                continue;
+            };
 
-                // Look up target element to get its qualified name (HIR uses names, not UUIDs)
-                let target_name: Arc<str> = re
-                    .target()
-                    .and_then(|tid| model.elements.get(tid))
-                    .and_then(|target_elem| {
-                        target_elem
-                            .qualified_name
-                            .clone()
-                            .or_else(|| target_elem.name.clone())
-                    })
-                    .map(|n| n.to_string().into())
-                    .unwrap_or_else(|| {
-                        re.target()
-                            .map(|tid| tid.as_str().into())
-                            .unwrap_or_else(|| "".into())
-                    }); // Fallback to ID if not found
-
-                Some(HirRelationship {
-                    kind: hir_kind,
-                    target: target_name.clone(),
-                    resolved_target: Some(target_name), // XMI has resolved refs
-                    start_line: 0,
-                    start_col: 0,
-                    end_line: 0,
-                    end_col: 0,
+            // Look up target element to get its qualified name (HIR uses names, not UUIDs)
+            let target_name: Arc<str> = re
+                .target()
+                .and_then(|tid| model.elements.get(tid))
+                .and_then(|target_elem| {
+                    target_elem
+                        .qualified_name
+                        .clone()
+                        .or_else(|| target_elem.name.clone())
                 })
-            })
-            .collect();
+                .map(|n| n.to_string().into())
+                .unwrap_or_else(|| {
+                    re.target()
+                        .map(|tid| tid.as_str().into())
+                        .unwrap_or_else(|| "".into())
+                }); // Fallback to ID if not found
+
+            relationships.push(HirRelationship {
+                kind: hir_kind,
+                target: target_name.clone(),
+                resolved_target: Some(target_name), // XMI has resolved refs
+                start_line: 0,
+                start_col: 0,
+                end_line: 0,
+                end_col: 0,
+            });
+        }
 
         // Extract supertypes from specialization relationships
         let supertypes: Vec<Arc<str>> = relationships
@@ -180,7 +183,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
         symbols.push(symbol);
     }
 
-    symbols
+    Ok(symbols)
 }
 
 /// Extract multiplicity from an element's owned `MultiplicityRange` child.
@@ -268,18 +271,25 @@ fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
     }
 }
 
-fn relationship_element_to_hir(element: &Element) -> Option<HirRelKind> {
+fn relationship_element_to_hir(element: &Element) -> Result<Option<HirRelKind>, InterchangeError> {
     match element.kind {
         ElementKind::RequirementConstraintMembership => match element.properties.get("kind") {
             Some(PropertyValue::String(kind)) if kind.as_ref() == "assumption" => {
-                Some(HirRelKind::Assumes)
+                Ok(Some(HirRelKind::Assumes))
             }
             Some(PropertyValue::String(kind)) if kind.as_ref() == "requirement" => {
-                Some(HirRelKind::Requires)
+                Ok(Some(HirRelKind::Requires))
             }
-            _ => panic!("RequirementConstraintMembership missing valid kind"),
+            Some(PropertyValue::String(kind)) => Err(InterchangeError::invalid_attribute(
+                format!(
+                    "RequirementConstraintMembership missing valid kind: expected assumption or requirement, got {kind}"
+                ),
+            )),
+            _ => Err(InterchangeError::invalid_attribute(
+                "RequirementConstraintMembership missing valid kind",
+            )),
         },
-        _ => element_kind_to_hir(element.kind),
+        _ => Ok(element_kind_to_hir(element.kind)),
     }
 }
 
@@ -668,6 +678,19 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 );
 
                 if let Some(rel_element) = model.get_mut(&rel_id) {
+                    let standard_target_attr = match ek {
+                        ElementKind::FeatureTyping => Some("type"),
+                        ElementKind::Specialization => Some("general"),
+                        ElementKind::Redefinition => Some("redefinedFeature"),
+                        ElementKind::Subsetting => Some("subsettedFeature"),
+                        _ => None,
+                    };
+                    if let Some(attr) = standard_target_attr {
+                        rel_element.properties.insert(
+                            Arc::from(attr),
+                            PropertyValue::Reference(target_id.clone()),
+                        );
+                    }
                     if matches!(hir_rel.kind, HirRelKind::Assumes | HirRelKind::Requires) {
                         let kind = match hir_rel.kind {
                             HirRelKind::Assumes => "assumption",
@@ -1485,6 +1508,72 @@ mod tests {
     }
 
     #[test]
+    fn test_model_from_symbols_standard_relationships_preserve_standard_target_properties() {
+        use super::super::{ModelFormat, Xmi};
+
+        let sysml = r#"
+            package sample {
+                part def Vehicle;
+                part myCar : Vehicle;
+                part def FastCar :> Vehicle;
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let vehicle = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::Vehicle"))
+            .expect("Vehicle should exist");
+
+        let my_car = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::myCar"))
+            .expect("myCar should exist");
+        let typed_by = model
+            .rel_elements_from(&my_car.id)
+            .find(|rel| rel.kind == ElementKind::FeatureTyping)
+            .expect("myCar should have a FeatureTyping relationship");
+        assert_eq!(
+            typed_by.properties.get("type"),
+            Some(&PropertyValue::Reference(vehicle.id.clone())),
+            "FeatureTyping should preserve its standard target property"
+        );
+
+        let fast_car = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::FastCar"))
+            .expect("FastCar should exist");
+        let specializes = model
+            .rel_elements_from(&fast_car.id)
+            .find(|rel| rel.kind == ElementKind::Specialization)
+            .expect("FastCar should have a Specialization relationship");
+        assert_eq!(
+            specializes.properties.get("general"),
+            Some(&PropertyValue::Reference(vehicle.id.clone())),
+            "Specialization should preserve its standard target property"
+        );
+
+        let xmi_bytes = Xmi.write(&model).expect("XMI export should succeed");
+        let xmi = String::from_utf8(xmi_bytes).expect("XMI should be UTF-8");
+        assert!(
+            xmi.contains(r#"xsi:type="kerml:FeatureTyping""#) && xmi.contains(r#"type=""#),
+            "FeatureTyping XMI should still carry its standard type attribute"
+        );
+        assert!(
+            xmi.contains(r#"xsi:type="kerml:Specialization""#) && xmi.contains(r#"general=""#),
+            "Specialization XMI should still carry its standard general attribute"
+        );
+    }
+
+    #[test]
     fn test_symbols_from_model_roundtrips_explicit_special_usage_relationship_kinds() {
         let sysml = r#"
             package sample {
@@ -1531,7 +1620,8 @@ mod tests {
         let analysis = host.analysis();
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
-        let roundtrip_symbols = symbols_from_model(&model);
+        let roundtrip_symbols =
+            symbols_from_model(&model).expect("round-trip import should succeed");
 
         let rel_kinds_for = |fragment: &str| -> Vec<HirRelKind> {
             roundtrip_symbols
@@ -1659,8 +1749,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "RequirementConstraintMembership missing valid kind")]
-    fn test_symbols_from_model_panics_on_requirement_constraint_membership_without_kind() {
+    fn test_symbols_from_model_reports_error_on_requirement_constraint_membership_without_kind() {
         let mut model = Model::new();
 
         model.add_element(Element::new("src", ElementKind::ConstraintUsage).with_name("source"));
@@ -1674,7 +1763,13 @@ mod tests {
             Some(ElementId::new("src")),
         );
 
-        let _ = symbols_from_model(&model);
+        let err = symbols_from_model(&model)
+            .expect_err("RequirementConstraintMembership without kind should fail clearly");
+        assert!(
+            err.to_string()
+                .contains("RequirementConstraintMembership missing valid kind"),
+            "error should explain the missing RequirementConstraintMembership.kind: {err}"
+        );
     }
 
     #[test]
@@ -1718,7 +1813,7 @@ mod tests {
         let model = Model::new();
 
         // When we convert to symbols
-        let symbols = symbols_from_model(&model);
+        let symbols = symbols_from_model(&model).expect("empty model import should succeed");
 
         // Then we should get no symbols
         assert!(symbols.is_empty(), "Empty model should produce no symbols");
@@ -1733,7 +1828,7 @@ mod tests {
         model.add_element(pkg);
 
         // When we convert to symbols
-        let symbols = symbols_from_model(&model);
+        let symbols = symbols_from_model(&model).expect("package import should succeed");
 
         // Then we should get one symbol
         assert_eq!(symbols.len(), 1, "Should have one symbol");
@@ -1765,7 +1860,7 @@ mod tests {
         model.add_element(engine);
 
         // When we convert to symbols
-        let symbols = symbols_from_model(&model);
+        let symbols = symbols_from_model(&model).expect("definition import should succeed");
 
         // Then we should get 3 symbols with correct kinds
         assert_eq!(symbols.len(), 3, "Should have 3 symbols");
@@ -1807,7 +1902,7 @@ mod tests {
         );
 
         // When we convert to symbols
-        let symbols = symbols_from_model(&model);
+        let symbols = symbols_from_model(&model).expect("relationship import should succeed");
 
         // Then Car should have a specialization relationship
         let car_sym = symbols
@@ -1841,7 +1936,7 @@ mod tests {
         model.add_element(pkg);
 
         // When we convert to symbols
-        let symbols = symbols_from_model(&model);
+        let symbols = symbols_from_model(&model).expect("documentation import should succeed");
 
         // Then the symbol should have documentation
         assert_eq!(symbols.len(), 1);
@@ -1871,7 +1966,7 @@ mod tests {
         let model = model_from_symbols(&original_symbols);
 
         // Model → HirSymbols (the new function)
-        let roundtrip_symbols = symbols_from_model(&model);
+        let roundtrip_symbols = symbols_from_model(&model).expect("round-trip import should succeed");
 
         // Should have same number of non-relationship symbols
         let original_count = original_symbols.len();
@@ -1949,7 +2044,8 @@ mod tests {
         assert!(jsonld.contains("\"isComposite\": true"));
         assert!(jsonld.contains("\"isComposite\": false"));
 
-        let roundtrip_symbols = symbols_from_model(&model);
+        let roundtrip_symbols =
+            symbols_from_model(&model).expect("round-trip import should succeed");
 
         let wheel_symbol = roundtrip_symbols
             .iter()

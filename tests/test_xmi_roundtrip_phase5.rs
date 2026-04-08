@@ -37,13 +37,13 @@ package Vehicle {
 
         // Second cycle: XMI → symbols → XMI
         let model_v2 = Xmi.read(&xmi_v1).expect("Should read XMI");
-        let symbols_v2 = symbols_from_model(&model_v2);
+        let symbols_v2 = symbols_from_model(&model_v2).expect("Should import symbols from XMI");
         let model_v2_rebuilt = model_from_symbols(&symbols_v2);
         let xmi_v2 = Xmi.write(&model_v2_rebuilt).expect("Should write XMI");
 
         // Third cycle: XMI → symbols → XMI
         let model_v3 = Xmi.read(&xmi_v2).expect("Should read XMI");
-        let symbols_v3 = symbols_from_model(&model_v3);
+        let symbols_v3 = symbols_from_model(&model_v3).expect("Should import symbols from XMI");
         let model_v3_rebuilt = model_from_symbols(&symbols_v3);
         let xmi_v3 = Xmi.write(&model_v3_rebuilt).expect("Should write XMI");
 
