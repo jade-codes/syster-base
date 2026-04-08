@@ -276,19 +276,24 @@ impl ElementKind {
             Self::PartUsage
                 | Self::ItemUsage
                 | Self::ActionUsage
+                | Self::PerformActionUsage
                 | Self::PortUsage
                 | Self::AttributeUsage
                 | Self::ConnectionUsage
                 | Self::InterfaceUsage
                 | Self::AllocationUsage
                 | Self::RequirementUsage
+                | Self::Satisfaction
                 | Self::ConstraintUsage
+                | Self::AssertConstraintUsage
                 | Self::StateUsage
+                | Self::ExhibitStateUsage
                 | Self::TransitionUsage
                 | Self::CalculationUsage
                 | Self::ReferenceUsage
                 | Self::OccurrenceUsage
                 | Self::UseCaseUsage
+                | Self::IncludeUseCaseUsage
                 | Self::AnalysisCaseUsage
                 | Self::VerificationCaseUsage
                 | Self::FlowConnectionUsage
@@ -329,12 +334,7 @@ impl ElementKind {
                 | Self::Disjoining
                 | Self::Unioning
                 | Self::Dependency
-                | Self::PerformActionUsage
-                | Self::ExhibitStateUsage
-                | Self::IncludeUseCaseUsage
-                | Self::AssertConstraintUsage
                 | Self::RequirementConstraintMembership
-                | Self::Satisfaction
                 | Self::Verification
                 | Self::Annotation
         )

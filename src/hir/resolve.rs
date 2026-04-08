@@ -48,7 +48,7 @@ pub struct ScopeVisibility {
 
     /// Symbols defined directly in this scope.
     /// SimpleName → QualifiedName
-    direct_defs: HashMap<Arc<str>, Arc<str>>,
+    direct_defs: HashMap<Arc<str>, Vec<Arc<str>>>,
 
     /// Symbols visible via imports (includes transitive public re-exports).
     /// SimpleName → QualifiedName (the resolved target)
@@ -57,6 +57,13 @@ pub struct ScopeVisibility {
     /// Namespaces that are publicly re-exported from this scope.
     /// Used for transitive import resolution.
     public_reexports: Vec<Arc<str>>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VisibleLookup<'a> {
+    Unique(&'a Arc<str>),
+    Ambiguous,
+    NotFound,
 }
 
 impl ScopeVisibility {
@@ -80,14 +87,32 @@ impl ScopeVisibility {
     /// Checks direct definitions first, then imports.
     /// Returns the qualified name if found.
     pub fn lookup(&self, name: &str) -> Option<&Arc<str>> {
-        self.direct_defs
-            .get(name)
-            .or_else(|| self.imports.get(name))
+        self.lookup_direct(name).or_else(|| self.imports.get(name))
     }
 
     /// Look up only in direct definitions.
     pub fn lookup_direct(&self, name: &str) -> Option<&Arc<str>> {
-        self.direct_defs.get(name)
+        self.direct_defs.get(name).and_then(|qnames| qnames.last())
+    }
+
+    /// Look up all direct definitions for a simple name.
+    pub fn lookup_direct_all(&self, name: &str) -> Option<&[Arc<str>]> {
+        self.direct_defs.get(name).map(Vec::as_slice)
+    }
+
+    fn lookup_unambiguous(&self, name: &str) -> VisibleLookup<'_> {
+        if let Some(qnames) = self.lookup_direct_all(name) {
+            return match qnames {
+                [qname] => VisibleLookup::Unique(qname),
+                [] => VisibleLookup::NotFound,
+                _ => VisibleLookup::Ambiguous,
+            };
+        }
+
+        match self.lookup_import(name) {
+            Some(qname) => VisibleLookup::Unique(qname),
+            None => VisibleLookup::NotFound,
+        }
     }
 
     /// Look up only in imports.
@@ -97,7 +122,10 @@ impl ScopeVisibility {
 
     /// Add a direct definition to this scope.
     pub fn add_direct(&mut self, simple_name: Arc<str>, qualified_name: Arc<str>) {
-        self.direct_defs.insert(simple_name, qualified_name);
+        self.direct_defs
+            .entry(simple_name)
+            .or_default()
+            .push(qualified_name);
     }
 
     /// Add an imported symbol to this scope.
@@ -122,7 +150,9 @@ impl ScopeVisibility {
 
     /// Get iterator over all direct definitions.
     pub fn direct_defs(&self) -> impl Iterator<Item = (&Arc<str>, &Arc<str>)> {
-        self.direct_defs.iter()
+        self.direct_defs
+            .iter()
+            .flat_map(|(name, qnames)| qnames.iter().map(move |qname| (name, qname)))
     }
 
     /// Get iterator over all imports.
@@ -132,7 +162,7 @@ impl ScopeVisibility {
 
     /// Get count of visible symbols (direct + imported).
     pub fn len(&self) -> usize {
-        self.direct_defs.len() + self.imports.len()
+        self.direct_defs.values().map(Vec::len).sum::<usize>() + self.imports.len()
     }
 
     /// Check if visibility map is empty.
@@ -145,16 +175,17 @@ impl ScopeVisibility {
         let mut s = format!(
             "Scope '{}': {} direct, {} imports\n",
             self.scope,
-            self.direct_defs.len(),
+            self.direct_defs.values().map(Vec::len).sum::<usize>(),
             self.imports.len()
         );
-        for (name, qname) in self.direct_defs.iter().take(10) {
+        for (name, qname) in self.direct_defs().take(10) {
             s.push_str(&format!("  direct: {} -> {}\n", name, qname));
         }
-        if self.direct_defs.len() > 10 {
+        let direct_len = self.direct_defs.values().map(Vec::len).sum::<usize>();
+        if direct_len > 10 {
             s.push_str(&format!(
                 "  ... and {} more direct defs\n",
-                self.direct_defs.len() - 10
+                direct_len - 10
             ));
         }
         for (name, qname) in self.imports.iter().take(10) {
@@ -189,8 +220,10 @@ pub type SymbolIdx = usize;
 pub struct SymbolIndex {
     /// The single source of truth for all symbols.
     symbols: Vec<HirSymbol>,
-    /// Index by qualified name -> symbol index (IndexMap preserves insertion order).
-    by_qualified_name: IndexMap<Arc<str>, SymbolIdx>,
+    /// Index by unique element id -> symbol index (authoritative active symbol set).
+    by_element_id: IndexMap<Arc<str>, SymbolIdx>,
+    /// Index by qualified name -> symbol indices (multiple owned members may share a name).
+    by_qualified_name: IndexMap<Arc<str>, Vec<SymbolIdx>>,
     /// Index by simple name -> symbol indices (may have multiple).
     by_simple_name: HashMap<Arc<str>, Vec<SymbolIdx>>,
     /// Index by short name (alias) -> symbol indices (for lookups like `kg` -> `SI::kilogram`).
@@ -198,7 +231,7 @@ pub struct SymbolIndex {
     /// Index by file -> symbol indices.
     by_file: HashMap<FileId, Vec<SymbolIdx>>,
     /// Definitions only (not usages) -> symbol indices.
-    definitions: HashMap<Arc<str>, SymbolIdx>,
+    definitions: HashMap<Arc<str>, Vec<SymbolIdx>>,
     /// Lazily-built visibility map for each scope.
     /// Built on-demand when a scope is queried, not upfront.
     visibility_map: HashMap<Arc<str>, ScopeVisibility>,
@@ -224,6 +257,7 @@ impl Clone for SymbolIndex {
     fn clone(&self) -> Self {
         Self {
             symbols: self.symbols.clone(),
+            by_element_id: self.by_element_id.clone(),
             by_qualified_name: self.by_qualified_name.clone(),
             by_simple_name: self.by_simple_name.clone(),
             by_short_name: self.by_short_name.clone(),
@@ -243,6 +277,10 @@ impl Clone for SymbolIndex {
 }
 
 impl SymbolIndex {
+    fn is_symbol_active(&self, symbol: &HirSymbol) -> bool {
+        self.by_element_id.contains_key(&symbol.element_id)
+    }
+
     /// Create a new empty index.
     pub fn new() -> Self {
         Self::default()
@@ -291,9 +329,13 @@ impl SymbolIndex {
         for symbol in symbols {
             let idx = self.symbols.len();
 
+            self.by_element_id.insert(symbol.element_id.clone(), idx);
+
             // Index by qualified name
             self.by_qualified_name
-                .insert(symbol.qualified_name.clone(), idx);
+                .entry(symbol.qualified_name.clone())
+                .or_default()
+                .push(idx);
 
             // Index by simple name
             self.by_simple_name
@@ -311,7 +353,10 @@ impl SymbolIndex {
 
             // Track definitions separately
             if symbol.kind.is_definition() {
-                self.definitions.insert(symbol.qualified_name.clone(), idx);
+                self.definitions
+                    .entry(symbol.qualified_name.clone())
+                    .or_default()
+                    .push(idx);
             }
 
             // Track for file index
@@ -333,9 +378,13 @@ impl SymbolIndex {
 
         let idx = self.symbols.len();
 
+        self.by_element_id.insert(symbol.element_id.clone(), idx);
+
         // Index by qualified name
         self.by_qualified_name
-            .insert(symbol.qualified_name.clone(), idx);
+            .entry(symbol.qualified_name.clone())
+            .or_default()
+            .push(idx);
 
         // Index by simple name
         self.by_simple_name
@@ -353,7 +402,10 @@ impl SymbolIndex {
 
         // Track definitions separately
         if symbol.kind.is_definition() {
-            self.definitions.insert(symbol.qualified_name.clone(), idx);
+            self.definitions
+                .entry(symbol.qualified_name.clone())
+                .or_default()
+                .push(idx);
         }
 
         // Store the symbol
@@ -389,11 +441,24 @@ impl SymbolIndex {
             for &idx in &indices {
                 if let Some(symbol) = self.symbols.get(idx) {
                     let qname = symbol.qualified_name.clone();
+                    let element_id = symbol.element_id.clone();
                     let sname = symbol.name.clone();
                     let short = symbol.short_name.clone();
 
-                    self.by_qualified_name.shift_remove(&qname);
-                    self.definitions.remove(&qname);
+                    self.by_element_id.shift_remove(&element_id);
+
+                    if let Some(list) = self.by_qualified_name.get_mut(&qname) {
+                        list.retain(|&i| i != idx);
+                        if list.is_empty() {
+                            self.by_qualified_name.shift_remove(&qname);
+                        }
+                    }
+                    if let Some(list) = self.definitions.get_mut(&qname) {
+                        list.retain(|&i| i != idx);
+                        if list.is_empty() {
+                            self.definitions.remove(&qname);
+                        }
+                    }
 
                     // Clear visibility map for this scope (will be rebuilt lazily)
                     self.visibility_map.remove(&qname);
@@ -426,14 +491,28 @@ impl SymbolIndex {
     pub fn lookup_qualified(&self, name: &str) -> Option<&HirSymbol> {
         self.by_qualified_name
             .get(name)
-            .and_then(|&idx| self.symbols.get(idx))
+            .and_then(|indices| indices.last().copied())
+            .and_then(|idx| self.symbols.get(idx))
+    }
+
+    /// Look up all symbols by qualified name.
+    pub fn lookup_qualified_all(&self, name: &str) -> Vec<&HirSymbol> {
+        self.by_qualified_name
+            .get(name)
+            .map(|indices| {
+                indices
+                    .iter()
+                    .filter_map(|&idx| self.symbols.get(idx))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     /// Look up a symbol by qualified name (mutable).
     pub fn lookup_qualified_mut(&mut self, name: &str) -> Option<&mut HirSymbol> {
         self.by_qualified_name
             .get(name)
-            .copied()
+            .and_then(|indices| indices.last().copied())
             .and_then(move |idx| self.symbols.get_mut(idx))
     }
 
@@ -590,7 +669,8 @@ impl SymbolIndex {
     pub fn lookup_definition(&self, name: &str) -> Option<&HirSymbol> {
         self.definitions
             .get(name)
-            .and_then(|&idx| self.symbols.get(idx))
+            .and_then(|indices| indices.last().copied())
+            .and_then(|idx| self.symbols.get(idx))
     }
 
     /// Get all symbols in a file.
@@ -610,12 +690,12 @@ impl SymbolIndex {
     pub fn all_definitions(&self) -> impl Iterator<Item = &HirSymbol> {
         self.definitions
             .values()
-            .filter_map(|&idx| self.symbols.get(idx))
+            .flat_map(|indices| indices.iter().filter_map(|&idx| self.symbols.get(idx)))
     }
 
     /// Get all symbols in the index.
     pub fn all_symbols(&self) -> impl Iterator<Item = &HirSymbol> {
-        self.by_qualified_name
+        self.by_element_id
             .values()
             .filter_map(|&idx| self.symbols.get(idx))
     }
@@ -626,7 +706,8 @@ impl SymbolIndex {
     where
         F: FnMut(&mut HirSymbol),
     {
-        for &idx in self.by_qualified_name.values() {
+        let indices: Vec<_> = self.by_element_id.values().copied().collect();
+        for idx in indices {
             if let Some(symbol) = self.symbols.get_mut(idx) {
                 f(symbol);
             }
@@ -635,12 +716,12 @@ impl SymbolIndex {
 
     /// Get the total number of symbols.
     pub fn len(&self) -> usize {
-        self.by_qualified_name.len()
+        self.by_element_id.len()
     }
 
     /// Check if the index is empty.
     pub fn is_empty(&self) -> bool {
-        self.by_qualified_name.is_empty()
+        self.by_element_id.is_empty()
     }
 
     /// Get number of files indexed.
@@ -655,9 +736,13 @@ impl SymbolIndex {
         let file = FileId::new(0);
         let idx = self.symbols.len();
 
+        self.by_element_id.insert(symbol.element_id.clone(), idx);
+
         // Index by qualified name
         self.by_qualified_name
-            .insert(symbol.qualified_name.clone(), idx);
+            .entry(symbol.qualified_name.clone())
+            .or_default()
+            .push(idx);
 
         // Index by simple name
         self.by_simple_name
@@ -675,7 +760,10 @@ impl SymbolIndex {
 
         // Track definitions
         if symbol.kind.is_definition() {
-            self.definitions.insert(symbol.qualified_name.clone(), idx);
+            self.definitions
+                .entry(symbol.qualified_name.clone())
+                .or_default()
+                .push(idx);
         }
 
         // Track for file index
@@ -715,7 +803,7 @@ impl SymbolIndex {
         // but doesn't remove them from the symbols vec
         for (idx, symbol) in self.symbols.iter().enumerate() {
             // Skip symbols that have been removed (not in by_qualified_name lookup)
-            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+            if !self.is_symbol_active(symbol) {
                 continue;
             }
 
@@ -1593,10 +1681,14 @@ impl SymbolIndex {
         // Check visibility map for the type scope
         // This includes direct children and inherited members from imports
         if let Some(vis) = self.visibility_for_scope(type_scope) {
-            if let Some(qname) = vis.lookup(member_name) {
-                if let Some(sym) = self.lookup_qualified(qname) {
-                    return Some(sym.clone());
+            match vis.lookup_unambiguous(member_name) {
+                VisibleLookup::Unique(qname) => {
+                    if let Some(sym) = self.lookup_qualified(qname) {
+                        return Some(sym.clone());
+                    }
                 }
+                VisibleLookup::Ambiguous => return None,
+                VisibleLookup::NotFound => {}
             }
         }
 
@@ -1664,10 +1756,14 @@ impl SymbolIndex {
 
             // Check visibility map for this parent scope
             if let Some(vis) = self.visibility_map.get(parent) {
-                if let Some(qname) = vis.lookup(name) {
-                    if let Some(sym) = self.lookup_qualified(qname) {
-                        return Some(sym.clone());
+                match vis.lookup_unambiguous(name) {
+                    VisibleLookup::Unique(qname) => {
+                        if let Some(sym) = self.lookup_qualified(qname) {
+                            return Some(sym.clone());
+                        }
                     }
+                    VisibleLookup::Ambiguous => return None,
+                    VisibleLookup::NotFound => {}
                 }
             }
 
@@ -1816,10 +1912,14 @@ impl SymbolIndex {
 
             // Also check the visibility map for inherited members
             if let Some(vis) = self.visibility_for_scope(&type_def.qualified_name) {
-                if let Some(qname) = vis.lookup(member_name) {
-                    if self.lookup_qualified(qname).is_some() {
-                        return Some(Arc::from(qname.as_ref()));
+                match vis.lookup_unambiguous(member_name) {
+                    VisibleLookup::Unique(qname) => {
+                        if self.lookup_qualified(qname).is_some() {
+                            return Some(Arc::from(qname.as_ref()));
+                        }
                     }
+                    VisibleLookup::Ambiguous => return None,
+                    VisibleLookup::NotFound => {}
                 }
             }
         }
@@ -1859,8 +1959,10 @@ impl SymbolIndex {
                 target_type.kind,
                 SymbolKind::RequirementDefinition
                     | SymbolKind::RequirementUsage
+                    | SymbolKind::SatisfyRequirementUsage
                     | SymbolKind::ConstraintDefinition
                     | SymbolKind::ConstraintUsage
+                    | SymbolKind::AssertConstraintUsage
             ) {
                 // Look for the member in the requirement's scope
                 let member_qname = format!("{}::{}", resolved_qname, member_name);
@@ -1870,10 +1972,14 @@ impl SymbolIndex {
 
                 // Also check visibility map for inherited members
                 if let Some(vis) = self.visibility_for_scope(resolved_qname) {
-                    if let Some(qname) = vis.lookup(member_name) {
-                        if self.lookup_qualified(qname).is_some() {
-                            return Some(Arc::from(qname.as_ref()));
+                    match vis.lookup_unambiguous(member_name) {
+                        VisibleLookup::Unique(qname) => {
+                            if self.lookup_qualified(qname).is_some() {
+                                return Some(Arc::from(qname.as_ref()));
+                            }
                         }
+                        VisibleLookup::Ambiguous => return None,
+                        VisibleLookup::NotFound => {}
                     }
                 }
             }
@@ -2092,7 +2198,7 @@ impl SymbolIndex {
 
         for symbol in &self.symbols {
             // Skip symbols that have been removed (not in by_qualified_name lookup)
-            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+            if !self.is_symbol_active(symbol) {
                 continue;
             }
 
@@ -2235,7 +2341,7 @@ impl SymbolIndex {
 
         for symbol in &self.symbols {
             // Skip symbols that have been removed
-            if !self.by_qualified_name.contains_key(&symbol.qualified_name) {
+            if !self.is_symbol_active(symbol) {
                 continue;
             }
 
@@ -2278,21 +2384,17 @@ impl SymbolIndex {
                     let parent_members: Vec<(Arc<str>, Arc<str>)> = self
                         .visibility_map
                         .get(&*resolved)
-                        .map(|vis| {
-                            vis.direct_defs
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect()
-                        })
+                        .map(|vis| vis.direct_defs().map(|(k, v)| (k.clone(), v.clone())).collect())
                         .unwrap_or_default();
 
                     // Add to child's visibility if not already present
                     if let Some(child_vis) = self.visibility_map.get_mut(&**scope) {
                         for (name, qname) in parent_members {
-                            child_vis.direct_defs.entry(name).or_insert_with(|| {
+                            let entry = child_vis.direct_defs.entry(name).or_default();
+                            if !entry.iter().any(|existing| existing == &qname) {
                                 made_progress = true;
-                                qname
-                            });
+                                entry.push(qname);
+                            }
                         }
                     }
                 }
@@ -2351,19 +2453,24 @@ impl SymbolIndex {
             // Check visibility map for this scope (both direct defs AND imports)
             if let Some(vis) = self.visibility_map.get(current_scope) {
                 // Check direct definitions first
-                if let Some(resolved) = vis.direct_defs.get(name) {
-                    // Skip if this points to the excluded scope
-                    if let Some(excluded) = exclude_scope {
-                        if resolved == excluded {
-                            // Don't return, continue walking up
-                            if current_scope.is_empty() {
-                                break;
+                if let Some(resolved_candidates) = vis.lookup_direct_all(name) {
+                    for resolved in resolved_candidates.iter().rev() {
+                        // Skip if this points to the excluded scope
+                        if let Some(excluded) = exclude_scope {
+                            if resolved == excluded {
+                                continue;
                             }
-                            current_scope = Self::parent_scope(current_scope).unwrap_or("");
-                            continue;
                         }
+                        return Some(resolved.clone());
                     }
-                    return Some(resolved.clone());
+                    if exclude_scope.is_some() {
+                        // All candidates were excluded; keep walking up.
+                        if current_scope.is_empty() {
+                            break;
+                        }
+                        current_scope = Self::parent_scope(current_scope).unwrap_or("");
+                        continue;
+                    }
                 }
                 // Also check imports (important for types imported via `import X::*`)
                 if let Some(resolved) = vis.imports.get(name) {
@@ -2392,8 +2499,8 @@ impl SymbolIndex {
     /// Helper to check if a symbol passes a given list of filters.
     fn symbol_passes_filters_list(&self, symbol_qname: &str, filters: &[Arc<str>]) -> bool {
         // Find the symbol by qualified name
-        let symbol = match self.by_qualified_name.get(symbol_qname) {
-            Some(&idx) => &self.symbols[idx],
+        let symbol = match self.lookup_qualified(symbol_qname) {
+            Some(symbol) => symbol,
             None => return true, // If we can't find the symbol, let it through
         };
 
@@ -2688,8 +2795,12 @@ impl SymbolIndex {
                 // ISQ has "public import ISQBase::*", so ISQ::DurationValue resolves
                 // to ISQBase::DurationValue via ISQ's visibility map
                 if let Some(vis) = self.visibility_map.get(&parent_qualified as &str) {
-                    if let Some(resolved_qname) = vis.lookup(last_segment) {
-                        return resolved_qname.to_string();
+                    match vis.lookup_unambiguous(last_segment) {
+                        VisibleLookup::Unique(resolved_qname) => {
+                            return resolved_qname.to_string();
+                        }
+                        VisibleLookup::Ambiguous => return target.to_string(),
+                        VisibleLookup::NotFound => {}
                     }
                 }
             }
@@ -2701,9 +2812,12 @@ impl SymbolIndex {
         if !target.contains("::") {
             if let Some(vis) = self.visibility_map.get(scope) {
                 // Check if target is visible (either as direct def or import)
-                if let Some(resolved_qname) = vis.lookup(target) {
-                    // Found it - return the qualified name
-                    return resolved_qname.to_string();
+                match vis.lookup_unambiguous(target) {
+                    VisibleLookup::Unique(resolved_qname) => {
+                        return resolved_qname.to_string();
+                    }
+                    VisibleLookup::Ambiguous => return target.to_string(),
+                    VisibleLookup::NotFound => {}
                 }
             }
         }
@@ -2837,17 +2951,25 @@ impl SymbolKind {
             SymbolKind::PartUsage
                 | SymbolKind::ItemUsage
                 | SymbolKind::ActionUsage
+                | SymbolKind::PerformActionUsage
                 | SymbolKind::PortUsage
                 | SymbolKind::AttributeUsage
                 | SymbolKind::ConnectionUsage
                 | SymbolKind::InterfaceUsage
                 | SymbolKind::AllocationUsage
                 | SymbolKind::RequirementUsage
+                | SymbolKind::SatisfyRequirementUsage
                 | SymbolKind::ConstraintUsage
+                | SymbolKind::AssertConstraintUsage
                 | SymbolKind::StateUsage
+                | SymbolKind::ExhibitStateUsage
                 | SymbolKind::CalculationUsage
                 | SymbolKind::ReferenceUsage
                 | SymbolKind::OccurrenceUsage
+                | SymbolKind::UseCaseUsage
+                | SymbolKind::IncludeUseCaseUsage
+                | SymbolKind::AnalysisCaseUsage
+                | SymbolKind::VerificationCaseUsage
                 | SymbolKind::FlowConnectionUsage
         )
     }
@@ -2858,16 +2980,24 @@ impl SymbolKind {
             SymbolKind::PartUsage => Some(SymbolKind::PartDefinition),
             SymbolKind::ItemUsage => Some(SymbolKind::ItemDefinition),
             SymbolKind::ActionUsage => Some(SymbolKind::ActionDefinition),
+            SymbolKind::PerformActionUsage => Some(SymbolKind::ActionDefinition),
             SymbolKind::PortUsage => Some(SymbolKind::PortDefinition),
             SymbolKind::AttributeUsage => Some(SymbolKind::AttributeDefinition),
             SymbolKind::ConnectionUsage => Some(SymbolKind::ConnectionDefinition),
             SymbolKind::InterfaceUsage => Some(SymbolKind::InterfaceDefinition),
             SymbolKind::AllocationUsage => Some(SymbolKind::AllocationDefinition),
             SymbolKind::RequirementUsage => Some(SymbolKind::RequirementDefinition),
+            SymbolKind::SatisfyRequirementUsage => Some(SymbolKind::RequirementDefinition),
             SymbolKind::ConstraintUsage => Some(SymbolKind::ConstraintDefinition),
+            SymbolKind::AssertConstraintUsage => Some(SymbolKind::ConstraintDefinition),
             SymbolKind::StateUsage => Some(SymbolKind::StateDefinition),
+            SymbolKind::ExhibitStateUsage => Some(SymbolKind::StateDefinition),
             SymbolKind::CalculationUsage => Some(SymbolKind::CalculationDefinition),
             SymbolKind::OccurrenceUsage => Some(SymbolKind::OccurrenceDefinition),
+            SymbolKind::UseCaseUsage => Some(SymbolKind::UseCaseDefinition),
+            SymbolKind::IncludeUseCaseUsage => Some(SymbolKind::UseCaseDefinition),
+            SymbolKind::AnalysisCaseUsage => Some(SymbolKind::AnalysisCaseDefinition),
+            SymbolKind::VerificationCaseUsage => Some(SymbolKind::VerificationCaseDefinition),
             _ => None,
         }
     }
@@ -2940,6 +3070,43 @@ impl<'a> Resolver<'a> {
         self
     }
 
+    fn direct_candidates_in_scope(&self, vis: &ScopeVisibility, name: &str) -> Vec<HirSymbol> {
+        let Some(qnames) = vis.lookup_direct_all(name) else {
+            return Vec::new();
+        };
+
+        let mut unique_qnames = std::collections::HashSet::new();
+        let mut seen_elements = std::collections::HashSet::new();
+        let mut candidates = Vec::new();
+
+        for qname in qnames {
+            if !unique_qnames.insert(qname.as_ref()) {
+                continue;
+            }
+            for symbol in self.index.lookup_qualified_all(qname) {
+                if seen_elements.insert(symbol.element_id.clone()) {
+                    candidates.push(symbol.clone());
+                }
+            }
+        }
+
+        candidates
+    }
+
+    fn resolve_direct_candidates(&self, vis: &ScopeVisibility, name: &str) -> Option<ResolveResult> {
+        let candidates = self.direct_candidates_in_scope(vis, name);
+        match candidates.len() {
+            0 => None,
+            1 => Some(ResolveResult::Found(
+                candidates
+                    .into_iter()
+                    .next()
+                    .expect("len() == 1 guarantees a candidate"),
+            )),
+            _ => Some(ResolveResult::Ambiguous(candidates)),
+        }
+    }
+
     /// Resolve a name using pre-computed visibility maps.
     pub fn resolve(&self, name: &str) -> ResolveResult {
         // 1. Handle qualified paths like "ISQ::TorqueValue"
@@ -2958,16 +3125,26 @@ impl<'a> Resolver<'a> {
             scopes_checked.push(current.clone());
             if let Some(vis) = self.index.visibility_for_scope(&current) {
                 // Check direct definitions first (higher priority)
-                if let Some(qname) = vis.lookup_direct(name) {
-                    tracing::trace!(
-                        "[RESOLVE] Found '{}' as direct def in scope '{}' -> {}",
-                        name,
-                        current,
-                        qname
-                    );
-                    if let Some(sym) = self.index.lookup_qualified(qname) {
-                        return ResolveResult::Found(sym.clone());
+                if let Some(result) = self.resolve_direct_candidates(vis, name) {
+                    match &result {
+                        ResolveResult::Found(sym) => tracing::trace!(
+                            "[RESOLVE] Found '{}' as direct def in scope '{}' -> {}",
+                            name,
+                            current,
+                            sym.qualified_name
+                        ),
+                        ResolveResult::Ambiguous(candidates) => tracing::trace!(
+                            "[RESOLVE] '{}' is ambiguous in scope '{}' -> {:?}",
+                            name,
+                            current,
+                            candidates
+                                .iter()
+                                .map(|s| s.qualified_name.as_ref())
+                                .collect::<Vec<_>>()
+                        ),
+                        ResolveResult::NotFound => {}
                     }
+                    return result;
                 }
 
                 // Check imports
@@ -3061,10 +3238,8 @@ impl<'a> Resolver<'a> {
             // Look up 'rest' in target scope's visibility map
             if let Some(vis) = self.index.visibility_for_scope(target_scope) {
                 // Check direct definitions first
-                if let Some(qname) = vis.lookup_direct(rest) {
-                    if let Some(sym) = self.index.lookup_qualified(qname) {
-                        return ResolveResult::Found(sym.clone());
-                    }
+                if let Some(result) = self.resolve_direct_candidates(vis, rest) {
+                    return result;
                 }
 
                 // Check imports (handles public import ISQSpaceTime::*)
@@ -3190,10 +3365,12 @@ impl<'a> Resolver<'a> {
         let mut current = starting_scope.to_string();
         loop {
             if let Some(vis) = self.index.visibility_for_scope(&current) {
-                if let Some(qname) = vis.lookup_direct(name) {
-                    if let Some(sym) = self.index.lookup_qualified(qname) {
-                        return Some(sym.clone());
-                    }
+                let direct_candidates = self.direct_candidates_in_scope(vis, name);
+                if direct_candidates.len() == 1 {
+                    return direct_candidates.into_iter().next();
+                }
+                if direct_candidates.len() > 1 {
+                    return None;
                 }
                 if let Some(qname) = vis.lookup_import(name) {
                     if let Some(sym) = self.index.lookup_qualified(qname) {
@@ -3250,10 +3427,12 @@ impl<'a> Resolver<'a> {
 
         // Look up rest in target scope
         if let Some(vis) = self.index.visibility_for_scope(target_scope) {
-            if let Some(qname) = vis.lookup_direct(rest) {
-                if let Some(sym) = self.index.lookup_qualified(qname) {
-                    return Some(sym.clone());
-                }
+            let direct_candidates = self.direct_candidates_in_scope(vis, rest);
+            if direct_candidates.len() == 1 {
+                return direct_candidates.into_iter().next();
+            }
+            if direct_candidates.len() > 1 {
+                return None;
             }
             if let Some(qname) = vis.lookup_import(rest) {
                 if let Some(sym) = self.index.lookup_qualified(qname) {
@@ -3462,8 +3641,67 @@ mod tests {
     fn test_symbol_kind_is_usage() {
         assert!(SymbolKind::PartUsage.is_usage());
         assert!(SymbolKind::ActionUsage.is_usage());
+        assert!(SymbolKind::PerformActionUsage.is_usage());
+        assert!(SymbolKind::ExhibitStateUsage.is_usage());
+        assert!(SymbolKind::IncludeUseCaseUsage.is_usage());
+        assert!(SymbolKind::AssertConstraintUsage.is_usage());
+        assert!(SymbolKind::SatisfyRequirementUsage.is_usage());
+        assert!(SymbolKind::UseCaseUsage.is_usage());
+        assert!(SymbolKind::AnalysisCaseUsage.is_usage());
+        assert!(SymbolKind::VerificationCaseUsage.is_usage());
         assert!(!SymbolKind::PartDefinition.is_usage());
         assert!(!SymbolKind::Package.is_usage());
+    }
+
+    #[test]
+    fn test_symbol_kind_to_definition_kind_for_specialized_usages() {
+        assert_eq!(
+            SymbolKind::PerformActionUsage.to_definition_kind(),
+            Some(SymbolKind::ActionDefinition)
+        );
+        assert_eq!(
+            SymbolKind::ExhibitStateUsage.to_definition_kind(),
+            Some(SymbolKind::StateDefinition)
+        );
+        assert_eq!(
+            SymbolKind::IncludeUseCaseUsage.to_definition_kind(),
+            Some(SymbolKind::UseCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::AssertConstraintUsage.to_definition_kind(),
+            Some(SymbolKind::ConstraintDefinition)
+        );
+        assert_eq!(
+            SymbolKind::SatisfyRequirementUsage.to_definition_kind(),
+            Some(SymbolKind::RequirementDefinition)
+        );
+        assert_eq!(
+            SymbolKind::UseCaseUsage.to_definition_kind(),
+            Some(SymbolKind::UseCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::AnalysisCaseUsage.to_definition_kind(),
+            Some(SymbolKind::AnalysisCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::VerificationCaseUsage.to_definition_kind(),
+            Some(SymbolKind::VerificationCaseDefinition)
+        );
+    }
+
+    #[test]
+    fn test_scope_visibility_lookup_unambiguous_treats_duplicate_direct_defs_as_ambiguous() {
+        let mut vis = ScopeVisibility::new("sample::host");
+        vis.add_direct(Arc::from("start"), Arc::from("sample::host::start"));
+        vis.add_direct(Arc::from("start"), Arc::from("sample::host::start"));
+        vis.add_import(Arc::from("start"), Arc::from("Imported::start"));
+
+        assert_eq!(vis.lookup_direct("start").map(|q| q.as_ref()), Some("sample::host::start"));
+        assert_eq!(vis.lookup_import("start"), None);
+        assert!(matches!(
+            vis.lookup_unambiguous("start"),
+            VisibleLookup::Ambiguous
+        ));
     }
 
     #[test]

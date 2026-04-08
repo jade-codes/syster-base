@@ -70,19 +70,24 @@ impl From<SymbolKind> for TokenType {
             SymbolKind::PartUsage
             | SymbolKind::ItemUsage
             | SymbolKind::ActionUsage
+            | SymbolKind::PerformActionUsage
             | SymbolKind::PortUsage
             | SymbolKind::AttributeUsage
             | SymbolKind::ConnectionUsage
             | SymbolKind::InterfaceUsage
             | SymbolKind::AllocationUsage
             | SymbolKind::RequirementUsage
+            | SymbolKind::SatisfyRequirementUsage
             | SymbolKind::ConstraintUsage
+            | SymbolKind::AssertConstraintUsage
             | SymbolKind::StateUsage
+            | SymbolKind::ExhibitStateUsage
             | SymbolKind::TransitionUsage
             | SymbolKind::CalculationUsage
             | SymbolKind::ReferenceUsage
             | SymbolKind::OccurrenceUsage
             | SymbolKind::UseCaseUsage
+            | SymbolKind::IncludeUseCaseUsage
             | SymbolKind::AnalysisCaseUsage
             | SymbolKind::VerificationCaseUsage
             | SymbolKind::FlowConnectionUsage

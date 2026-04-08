@@ -199,8 +199,8 @@ fn test_is_composite_written_when_false() {
     );
 }
 
-/// Test that explicit special-usage relationship metaclasses keep generic
-/// source/target edges while preserving explicit metaclass kinds, and can be read back.
+/// Test that perform/include/exhibit/assert use specialized usage elements plus
+/// ReferenceSubsetting, while assume/require keep their current membership shape.
 #[test]
 fn test_special_usage_relationship_xmi_types_and_generic_targets() {
     let mut model = Model::new();
@@ -208,22 +208,26 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
     let mut pkg = Element::new("pkg", ElementKind::Package);
     pkg.name = Some("Pkg".into());
 
-    let mut perform_src = Element::new("perform-src", ElementKind::ActionUsage).with_owner("pkg");
+    let mut perform_src =
+        Element::new("perform-src", ElementKind::PerformActionUsage).with_owner("pkg");
     perform_src.name = Some("performSrc".into());
     let mut perform_tgt = Element::new("perform-tgt", ElementKind::ActionUsage).with_owner("pkg");
     perform_tgt.name = Some("performTgt".into());
 
-    let mut exhibit_src = Element::new("exhibit-src", ElementKind::StateUsage).with_owner("pkg");
+    let mut exhibit_src =
+        Element::new("exhibit-src", ElementKind::ExhibitStateUsage).with_owner("pkg");
     exhibit_src.name = Some("exhibitSrc".into());
     let mut exhibit_tgt = Element::new("exhibit-tgt", ElementKind::StateUsage).with_owner("pkg");
     exhibit_tgt.name = Some("exhibitTgt".into());
 
-    let mut include_src = Element::new("include-src", ElementKind::UseCaseUsage).with_owner("pkg");
+    let mut include_src =
+        Element::new("include-src", ElementKind::IncludeUseCaseUsage).with_owner("pkg");
     include_src.name = Some("includeSrc".into());
     let mut include_tgt = Element::new("include-tgt", ElementKind::UseCaseUsage).with_owner("pkg");
     include_tgt.name = Some("includeTgt".into());
 
-    let mut assert_src = Element::new("assert-src", ElementKind::ConstraintUsage).with_owner("pkg");
+    let mut assert_src =
+        Element::new("assert-src", ElementKind::AssertConstraintUsage).with_owner("pkg");
     assert_src.name = Some("assertSrc".into());
     let mut assert_tgt = Element::new("assert-tgt", ElementKind::ConstraintUsage).with_owner("pkg");
     assert_tgt.name = Some("assertTgt".into());
@@ -258,7 +262,7 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
 
     let perform_rel = Element::new_relationship(
         "perform-rel",
-        ElementKind::PerformActionUsage,
+        ElementKind::ReferenceSubsetting,
         "perform-src",
         "perform-tgt",
     )
@@ -267,7 +271,7 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
 
     let exhibit_rel = Element::new_relationship(
         "exhibit-rel",
-        ElementKind::ExhibitStateUsage,
+        ElementKind::ReferenceSubsetting,
         "exhibit-src",
         "exhibit-tgt",
     )
@@ -276,7 +280,7 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
 
     let include_rel = Element::new_relationship(
         "include-rel",
-        ElementKind::IncludeUseCaseUsage,
+        ElementKind::ReferenceSubsetting,
         "include-src",
         "include-tgt",
     )
@@ -285,7 +289,7 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
 
     let assert_rel = Element::new_relationship(
         "assert-rel",
-        ElementKind::AssertConstraintUsage,
+        ElementKind::ReferenceSubsetting,
         "assert-src",
         "assert-tgt",
     )
@@ -341,12 +345,16 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
     let output_str = String::from_utf8_lossy(&output);
 
     assert!(output_str.contains(r#"xsi:type="sysml:PerformActionUsage""#));
+    assert!(output_str.contains(r#"xsi:type="kerml:ReferenceSubsetting""#));
     assert!(output_str.contains(r#"target="perform-tgt""#));
     assert!(output_str.contains(r#"xsi:type="sysml:ExhibitStateUsage""#));
+    assert!(output_str.contains(r#"xsi:type="kerml:ReferenceSubsetting""#));
     assert!(output_str.contains(r#"target="exhibit-tgt""#));
     assert!(output_str.contains(r#"xsi:type="sysml:IncludeUseCaseUsage""#));
+    assert!(output_str.contains(r#"xsi:type="kerml:ReferenceSubsetting""#));
     assert!(output_str.contains(r#"target="include-tgt""#));
     assert!(output_str.contains(r#"xsi:type="sysml:AssertConstraintUsage""#));
+    assert!(output_str.contains(r#"xsi:type="kerml:ReferenceSubsetting""#));
     assert!(output_str.contains(r#"target="assert-tgt""#));
     assert!(output_str.contains(r#"xsi:type="sysml:RequirementConstraintMembership""#));
     assert!(output_str.contains(r#"target="assume-tgt""#));
@@ -363,7 +371,7 @@ fn test_special_usage_relationship_xmi_types_and_generic_targets() {
     let perform_rel_rt = roundtrip
         .get(&ElementId::new("perform-rel"))
         .expect("perform relationship should round-trip");
-    assert_eq!(perform_rel_rt.kind, ElementKind::PerformActionUsage);
+    assert_eq!(perform_rel_rt.kind, ElementKind::ReferenceSubsetting);
     assert_eq!(
         perform_rel_rt.relationship.as_ref().and_then(|rel| rel.target()),
         Some(&ElementId::new("perform-tgt"))

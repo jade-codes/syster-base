@@ -423,6 +423,50 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
     rels
 }
 
+fn rel_target_terminal_name(target: &RelTarget) -> Option<String> {
+    match target {
+        RelTarget::Simple(name) => name
+            .rsplit("::")
+            .next()
+            .map(|segment| segment.rsplit('.').next().unwrap_or(segment).to_string()),
+        RelTarget::Chain(chain) => chain.parts.last().map(|part| part.name.clone()),
+    }
+}
+
+fn shorthand_target_derived_name(
+    usage_kind: InternalUsageKind,
+    rels: &[ExtractedRel],
+) -> Option<String> {
+    let target_rel = match usage_kind {
+        InternalUsageKind::PerformAction => {
+            rels.iter().find(|rel| rel.kind == RelKind::Performs)
+        }
+        InternalUsageKind::IncludeUseCase => {
+            rels.iter().find(|rel| rel.kind == RelKind::Includes)
+        }
+        InternalUsageKind::ExhibitState => {
+            rels.iter().find(|rel| rel.kind == RelKind::Exhibits)
+        }
+        InternalUsageKind::AssertConstraint => {
+            rels.iter().find(|rel| rel.kind == RelKind::Asserts)
+        }
+        InternalUsageKind::SatisfyRequirement => {
+            rels.iter().find(|rel| rel.kind == RelKind::Satisfies)
+        }
+        InternalUsageKind::Constraint => rels
+            .iter()
+            .find(|rel| matches!(rel.kind, RelKind::Assumes | RelKind::Requires)),
+        InternalUsageKind::Requirement => {
+            rels.iter().find(|rel| rel.kind == RelKind::Verifies)
+        }
+        _ => None,
+    };
+
+    target_rel
+        .and_then(|rel| rel_target_terminal_name(&rel.target))
+        .map(|name| strip_quotes(&name))
+}
+
 /// Get children from a Usage AST node — handles perform/constraint/normal body.
 fn usage_body_members(usage: &Usage) -> Vec<NamespaceMember> {
     if let Some(perform) = usage.perform_action_usage() {
@@ -634,12 +678,16 @@ pub(super) fn extract_usage_from_ast(
                     InternalUsageKind::Part
                         | InternalUsageKind::Item
                         | InternalUsageKind::Action
+                        | InternalUsageKind::PerformAction
                         | InternalUsageKind::State
+                        | InternalUsageKind::ExhibitState
                         | InternalUsageKind::Calculation
                         | InternalUsageKind::Transition
                         | InternalUsageKind::Occurrence
                         | InternalUsageKind::Requirement
+                        | InternalUsageKind::SatisfyRequirement
                         | InternalUsageKind::Constraint
+                        | InternalUsageKind::AssertConstraint
                 ) && (matches!(
                     owner_kind,
                     SymbolKind::PartDefinition
@@ -655,11 +703,15 @@ pub(super) fn extract_usage_from_ast(
                     SymbolKind::PartUsage
                         | SymbolKind::ItemUsage
                         | SymbolKind::ActionUsage
+                        | SymbolKind::PerformActionUsage
                         | SymbolKind::StateUsage
+                        | SymbolKind::ExhibitStateUsage
                         | SymbolKind::CalculationUsage
                         | SymbolKind::OccurrenceUsage
                         | SymbolKind::RequirementUsage
+                        | SymbolKind::SatisfyRequirementUsage
                         | SymbolKind::ConstraintUsage
+                        | SymbolKind::AssertConstraintUsage
                 ))
             }
         } else {
@@ -723,11 +775,23 @@ pub(super) fn extract_usage_from_ast(
             None
         };
 
+    let shorthand_target_name = if effective_name.as_ref().and_then(|n| n.text()).is_none()
+        && shorthand_redefines_name.is_none()
+    {
+        shorthand_target_derived_name(usage_kind, &rels)
+    } else {
+        None
+    };
+
     // Anonymous usage handling
     let name = if let Some((ref redef_name, _)) = shorthand_redefines_name {
         strip_quotes(redef_name)
     } else {
-        match effective_name.as_ref().and_then(|n| n.text()) {
+        match effective_name
+            .as_ref()
+            .and_then(|n| n.text())
+            .or(shorthand_target_name)
+        {
             Some(n) => strip_quotes(&n),
             None => {
                 // Attach typing refs to parent for anonymous usages

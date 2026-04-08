@@ -6,6 +6,7 @@
 use crate::helpers::hir_helpers::*;
 use crate::helpers::source_fixtures::*;
 use crate::helpers::symbol_assertions::*;
+use syster::hir::{ResolveResult, Resolver};
 
 // =============================================================================
 // SIMPLE NAME RESOLUTION
@@ -279,4 +280,47 @@ fn test_not_ambiguous_when_shadowed() {
     // Local definition should shadow, not be ambiguous
     let sym = assert_resolves(analysis.symbol_index(), "Consumer", "Thing");
     assert_eq!(sym.qualified_name.as_ref(), "Consumer::Thing");
+}
+
+#[test]
+fn test_duplicate_shorthand_owned_members_are_ambiguous_in_scope_resolution() {
+    let source = r#"
+        package sample {
+            action def start;
+            part host {
+                perform start;
+                perform start;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+    let resolver = Resolver::new(analysis.symbol_index()).with_scope("sample::host");
+
+    match resolver.resolve("start") {
+        ResolveResult::Ambiguous(candidates) => {
+            assert_eq!(
+                candidates.len(),
+                2,
+                "expected both duplicate shorthand owned members to remain visible"
+            );
+            assert!(
+                candidates
+                    .iter()
+                    .all(|s| s.qualified_name.as_ref() == "sample::host::start"),
+                "expected ambiguous candidates to be the duplicate shorthand owned members: {:?}",
+                candidates
+                    .iter()
+                    .map(|s| s.qualified_name.as_ref())
+                    .collect::<Vec<_>>()
+            );
+        }
+        ResolveResult::Found(sym) => panic!(
+            "duplicate shorthand owned members should not resolve as a single symbol: {}",
+            sym.qualified_name
+        ),
+        ResolveResult::NotFound => {
+            panic!("duplicate shorthand owned members should remain visible, not disappear")
+        }
+    }
 }

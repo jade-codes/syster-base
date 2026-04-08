@@ -81,7 +81,7 @@ pub fn symbols_from_model(model: &Model) -> Result<Vec<HirSymbol>, InterchangeEr
         // Collect relationships where this element is the source
         let mut relationships = Vec::new();
         for re in model.rel_elements_from(&element.id) {
-            let Some(hir_kind) = relationship_element_to_hir(re)? else {
+            let Some(hir_kind) = relationship_element_to_hir(re, element)? else {
                 continue;
             };
 
@@ -261,18 +261,39 @@ fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
         ElementKind::FeatureTyping => Some(HirRelKind::TypedBy),
         ElementKind::Redefinition => Some(HirRelKind::Redefines),
         ElementKind::Subsetting => Some(HirRelKind::Subsets),
-        ElementKind::PerformActionUsage => Some(HirRelKind::Performs),
-        ElementKind::ExhibitStateUsage => Some(HirRelKind::Exhibits),
-        ElementKind::IncludeUseCaseUsage => Some(HirRelKind::Includes),
-        ElementKind::AssertConstraintUsage => Some(HirRelKind::Asserts),
-        ElementKind::Satisfaction => Some(HirRelKind::Satisfies),
         ElementKind::Verification => Some(HirRelKind::Verifies),
         _ => None,
     }
 }
 
-fn relationship_element_to_hir(element: &Element) -> Result<Option<HirRelKind>, InterchangeError> {
+fn relationship_element_to_hir(
+    element: &Element,
+    source_element: &Element,
+) -> Result<Option<HirRelKind>, InterchangeError> {
     match element.kind {
+        ElementKind::ReferenceSubsetting
+            if source_element.kind == ElementKind::PerformActionUsage =>
+        {
+            Ok(Some(HirRelKind::Performs))
+        }
+        ElementKind::ReferenceSubsetting
+            if source_element.kind == ElementKind::IncludeUseCaseUsage =>
+        {
+            Ok(Some(HirRelKind::Includes))
+        }
+        ElementKind::ReferenceSubsetting
+            if source_element.kind == ElementKind::ExhibitStateUsage =>
+        {
+            Ok(Some(HirRelKind::Exhibits))
+        }
+        ElementKind::ReferenceSubsetting
+            if source_element.kind == ElementKind::AssertConstraintUsage =>
+        {
+            Ok(Some(HirRelKind::Asserts))
+        }
+        ElementKind::ReferenceSubsetting if source_element.kind == ElementKind::Satisfaction => {
+            Ok(Some(HirRelKind::Satisfies))
+        }
         ElementKind::RequirementConstraintMembership => match element.properties.get("kind") {
             Some(PropertyValue::String(kind)) if kind.as_ref() == "assumption" => {
                 Ok(Some(HirRelKind::Assumes))
@@ -336,19 +357,24 @@ impl From<ElementKind> for SymbolKind {
             ElementKind::PartUsage => SymbolKind::PartUsage,
             ElementKind::ItemUsage => SymbolKind::ItemUsage,
             ElementKind::ActionUsage => SymbolKind::ActionUsage,
+            ElementKind::PerformActionUsage => SymbolKind::PerformActionUsage,
             ElementKind::PortUsage => SymbolKind::PortUsage,
             ElementKind::AttributeUsage => SymbolKind::AttributeUsage,
             ElementKind::ConnectionUsage => SymbolKind::ConnectionUsage,
             ElementKind::InterfaceUsage => SymbolKind::InterfaceUsage,
             ElementKind::AllocationUsage => SymbolKind::AllocationUsage,
             ElementKind::RequirementUsage => SymbolKind::RequirementUsage,
+            ElementKind::Satisfaction => SymbolKind::SatisfyRequirementUsage,
             ElementKind::ConstraintUsage => SymbolKind::ConstraintUsage,
+            ElementKind::AssertConstraintUsage => SymbolKind::AssertConstraintUsage,
             ElementKind::StateUsage => SymbolKind::StateUsage,
+            ElementKind::ExhibitStateUsage => SymbolKind::ExhibitStateUsage,
             ElementKind::TransitionUsage => SymbolKind::TransitionUsage,
             ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
             ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
             ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
             ElementKind::UseCaseUsage => SymbolKind::UseCaseUsage,
+            ElementKind::IncludeUseCaseUsage => SymbolKind::IncludeUseCaseUsage,
             ElementKind::AnalysisCaseUsage => SymbolKind::AnalysisCaseUsage,
             ElementKind::VerificationCaseUsage => SymbolKind::VerificationCaseUsage,
             ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
@@ -777,11 +803,11 @@ fn hir_relationship_kind_to_element_kind(
         HirRelKind::Redefines => Some(ElementKind::Redefinition),
         HirRelKind::Subsets => Some(ElementKind::Subsetting),
         HirRelKind::References => None, // Not a first-class relationship in interchange
-        HirRelKind::Satisfies => Some(ElementKind::Satisfaction),
-        HirRelKind::Performs => Some(ElementKind::PerformActionUsage),
-        HirRelKind::Exhibits => Some(ElementKind::ExhibitStateUsage),
-        HirRelKind::Includes => Some(ElementKind::IncludeUseCaseUsage),
-        HirRelKind::Asserts => Some(ElementKind::AssertConstraintUsage),
+        HirRelKind::Satisfies => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Performs => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Exhibits => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Includes => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Asserts => Some(ElementKind::ReferenceSubsetting),
         HirRelKind::Assumes => Some(ElementKind::RequirementConstraintMembership),
         HirRelKind::Requires => Some(ElementKind::RequirementConstraintMembership),
         HirRelKind::Verifies => Some(ElementKind::Verification),
@@ -831,19 +857,24 @@ impl From<SymbolKind> for ElementKind {
             SymbolKind::PartUsage => ElementKind::PartUsage,
             SymbolKind::ItemUsage => ElementKind::ItemUsage,
             SymbolKind::ActionUsage => ElementKind::ActionUsage,
+            SymbolKind::PerformActionUsage => ElementKind::PerformActionUsage,
             SymbolKind::PortUsage => ElementKind::PortUsage,
             SymbolKind::AttributeUsage => ElementKind::AttributeUsage,
             SymbolKind::ConnectionUsage => ElementKind::ConnectionUsage,
             SymbolKind::InterfaceUsage => ElementKind::InterfaceUsage,
             SymbolKind::AllocationUsage => ElementKind::AllocationUsage,
             SymbolKind::RequirementUsage => ElementKind::RequirementUsage,
+            SymbolKind::SatisfyRequirementUsage => ElementKind::Satisfaction,
             SymbolKind::ConstraintUsage => ElementKind::ConstraintUsage,
+            SymbolKind::AssertConstraintUsage => ElementKind::AssertConstraintUsage,
             SymbolKind::StateUsage => ElementKind::StateUsage,
+            SymbolKind::ExhibitStateUsage => ElementKind::ExhibitStateUsage,
             SymbolKind::TransitionUsage => ElementKind::TransitionUsage,
             SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
             SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
             SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
             SymbolKind::UseCaseUsage => ElementKind::UseCaseUsage,
+            SymbolKind::IncludeUseCaseUsage => ElementKind::IncludeUseCaseUsage,
             SymbolKind::AnalysisCaseUsage => ElementKind::AnalysisCaseUsage,
             SymbolKind::VerificationCaseUsage => ElementKind::VerificationCaseUsage,
             SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
@@ -1068,7 +1099,7 @@ mod tests {
     }
 
     #[test]
-    fn test_model_from_symbols_perform_chain_relationship_uses_terminal_target() {
+    fn test_model_from_symbols_perform_chain_usage_uses_target_name_and_reference_subsetting() {
         let sysml = r#"
             package sample {
                 part car {
@@ -1092,16 +1123,21 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<perform:starting.gen_start_cmd"))
+                e.kind == super::super::model::ElementKind::PerformActionUsage
+                    && e.qualified_name.as_deref() == Some("sample::car::engine::gen_start_cmd")
             })
             .expect("perform usage should exist");
 
+        assert_eq!(
+            perform_usage.name.as_deref(),
+            Some("gen_start_cmd"),
+            "perform shorthand local usage should take its name from the target terminal"
+        );
+
         let relationship = model
             .rel_elements_from(&perform_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::PerformActionUsage)
-            .expect("perform relationship should exist");
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("perform target reference should be represented as ReferenceSubsetting");
 
         let target = model
             .rel_target(relationship)
@@ -1110,7 +1146,7 @@ mod tests {
         assert_eq!(
             target.qualified_name.as_deref(),
             Some("sample::starting::gen_start_cmd"),
-            "perform chain relationship should target the terminal action usage"
+            "perform chain reference subsetting should target the terminal action usage"
         );
     }
 
@@ -1138,16 +1174,21 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<include:system.uc1"))
+                e.kind == super::super::model::ElementKind::IncludeUseCaseUsage
+                    && e.qualified_name.as_deref() == Some("sample::host::uc1")
             })
             .expect("include usage should exist");
 
+        assert_eq!(
+            include_usage.name.as_deref(),
+            Some("uc1"),
+            "include shorthand local usage should take its name from the target terminal"
+        );
+
         let relationship = model
             .rel_elements_from(&include_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::IncludeUseCaseUsage)
-            .expect("include relationship should exist");
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("include target reference should be represented as ReferenceSubsetting");
 
         let target = model
             .rel_target(relationship)
@@ -1156,7 +1197,7 @@ mod tests {
         assert_eq!(
             target.qualified_name.as_deref(),
             Some("sample::system::uc1"),
-            "include chain relationship should target the terminal use case usage"
+            "include chain reference subsetting should target the terminal use case usage"
         );
     }
 
@@ -1184,16 +1225,21 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<exhibit:system.ready"))
+                e.kind == super::super::model::ElementKind::ExhibitStateUsage
+                    && e.qualified_name.as_deref() == Some("sample::host::ready")
             })
             .expect("exhibit usage should exist");
 
+        assert_eq!(
+            exhibit_usage.name.as_deref(),
+            Some("ready"),
+            "exhibit shorthand local usage should take its name from the target terminal"
+        );
+
         let relationship = model
             .rel_elements_from(&exhibit_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::ExhibitStateUsage)
-            .expect("exhibit relationship should exist");
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("exhibit target reference should be represented as ReferenceSubsetting");
 
         let target = model
             .rel_target(relationship)
@@ -1230,16 +1276,21 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<assert:checks.limit"))
+                e.kind == super::super::model::ElementKind::AssertConstraintUsage
+                    && e.qualified_name.as_deref() == Some("sample::host::limit")
             })
             .expect("assert usage should exist");
 
+        assert_eq!(
+            assert_usage.name.as_deref(),
+            Some("limit"),
+            "assert shorthand local usage should take its name from the target terminal"
+        );
+
         let relationship = model
             .rel_elements_from(&assert_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::AssertConstraintUsage)
-            .expect("assert relationship should exist");
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("assert target reference should be represented as ReferenceSubsetting");
 
         let target = model
             .rel_target(relationship)
@@ -1277,11 +1328,7 @@ mod tests {
         let assume_usage = model
             .elements
             .values()
-            .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<assume:checks.assumed"))
-            })
+            .find(|e| e.qualified_name.as_deref() == Some("sample::host::assumed"))
             .expect("assume usage should exist");
 
         let assume_relationship = model
@@ -1303,9 +1350,8 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<require:checks.required"))
+                e.kind == super::super::model::ElementKind::ConstraintUsage
+                    && e.qualified_name.as_deref() == Some("sample::host::required")
             })
             .expect("require usage should exist");
 
@@ -1353,16 +1399,21 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<satisfy:checks.required"))
+                e.kind == super::super::model::ElementKind::Satisfaction
+                    && e.qualified_name.as_deref() == Some("sample::host::required")
             })
             .expect("satisfy usage should exist");
 
+        assert_eq!(
+            satisfy_usage.name.as_deref(),
+            Some("required"),
+            "satisfy shorthand local usage should take its name from the target terminal"
+        );
+
         let satisfy_relationship = model
             .rel_elements_from(&satisfy_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::Satisfaction)
-            .expect("satisfy relationship should exist");
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("satisfy target reference should be represented as ReferenceSubsetting");
 
         let satisfy_target = model
             .rel_target(satisfy_relationship)
@@ -1378,9 +1429,8 @@ mod tests {
             .elements
             .values()
             .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<verify:checks.verified"))
+                e.kind == super::super::model::ElementKind::RequirementUsage
+                    && e.qualified_name.as_deref() == Some("sample::host::verified")
             })
             .expect("verify usage should exist");
 
@@ -1412,7 +1462,7 @@ mod tests {
                     assert checks.limit;
                     assume checks.assumed;
                     require checks.required;
-                    satisfy reqs.required by verifier;
+                    satisfy reqs.satisfied by verifier;
                     verify reqs.verified;
                 }
 
@@ -1436,7 +1486,7 @@ mod tests {
                 }
 
                 part reqs {
-                    requirement required;
+                    requirement satisfied;
                     requirement verified;
                 }
             }
@@ -1448,52 +1498,113 @@ mod tests {
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
 
-        let rel_for = |fragment: &str| {
+        let rel_for = |qualified_name: &str, kind: super::super::model::ElementKind| {
             let usage = model
                 .elements
                 .values()
-                .find(|e| e.qualified_name.as_deref().is_some_and(|qn| qn.contains(fragment)))
-                .unwrap_or_else(|| panic!("usage {fragment} should exist"));
+                .find(|e| e.kind == kind && e.qualified_name.as_deref() == Some(qualified_name))
+                .unwrap_or_else(|| panic!("usage {qualified_name} ({kind:?}) should exist"));
             model.rel_elements_from(&usage.id)
                 .next()
-                .unwrap_or_else(|| panic!("relationship for {fragment} should exist"))
+                .unwrap_or_else(|| panic!("relationship for {qualified_name} should exist"))
         };
 
+        let perform_usage = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::host::starting"))
+            .expect("perform usage should exist");
         assert_eq!(
-            rel_for("<perform:actions.starting").kind.xsi_type(),
+            perform_usage.kind.xsi_type(),
             "sysml:PerformActionUsage"
         );
         assert_eq!(
-            rel_for("<include:system.uc1").kind.xsi_type(),
-            "sysml:IncludeUseCaseUsage"
+            model
+                .rel_elements_from(&perform_usage.id)
+                .next()
+                .expect("perform relationship should exist")
+                .kind
+                .xsi_type(),
+            "sysml:ReferenceSubsetting"
+        );
+        let include_usage = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::scenario::uc1"))
+            .expect("include usage should exist");
+        assert_eq!(include_usage.kind.xsi_type(), "sysml:IncludeUseCaseUsage");
+        assert_eq!(
+            model
+                .rel_elements_from(&include_usage.id)
+                .next()
+                .expect("include relationship should exist")
+                .kind
+                .xsi_type(),
+            "sysml:ReferenceSubsetting"
         );
         assert_eq!(
-            rel_for("<exhibit:system.ready").kind.xsi_type(),
-            "sysml:ExhibitStateUsage"
+            rel_for(
+                "sample::host::ready",
+                super::super::model::ElementKind::ExhibitStateUsage,
+            )
+            .kind
+            .xsi_type(),
+            "sysml:ReferenceSubsetting"
         );
         assert_eq!(
-            rel_for("<assert:checks.limit").kind.xsi_type(),
-            "sysml:AssertConstraintUsage"
+            rel_for(
+                "sample::host::limit",
+                super::super::model::ElementKind::AssertConstraintUsage,
+            )
+            .kind
+            .xsi_type(),
+            "sysml:ReferenceSubsetting"
         );
         assert_eq!(
-            rel_for("<assume:checks.assumed").kind.xsi_type(),
+            rel_for(
+                "sample::host::assumed",
+                super::super::model::ElementKind::ConstraintUsage,
+            )
+            .kind
+            .xsi_type(),
             "sysml:RequirementConstraintMembership"
         );
         assert_eq!(
-            rel_for("<require:checks.required").kind.xsi_type(),
+            rel_for(
+                "sample::host::required",
+                super::super::model::ElementKind::ConstraintUsage,
+            )
+            .kind
+            .xsi_type(),
             "sysml:RequirementConstraintMembership"
         );
         assert_eq!(
-            rel_for("<satisfy:reqs.required").kind.xsi_type(),
-            "sysml:SatisfyRequirementUsage"
+            rel_for(
+                "sample::host::satisfied",
+                super::super::model::ElementKind::Satisfaction,
+            )
+            .kind
+            .xsi_type(),
+            "sysml:ReferenceSubsetting"
         );
         assert_eq!(
-            rel_for("<verify:reqs.verified").kind.xsi_type(),
+            rel_for(
+                "sample::host::verified",
+                super::super::model::ElementKind::RequirementUsage,
+            )
+            .kind
+            .xsi_type(),
             "sysml:RequirementVerificationMembership"
         );
 
-        let assume_rel = rel_for("<assume:checks.assumed");
-        let require_rel = rel_for("<require:checks.required");
+        let assume_rel = rel_for(
+            "sample::host::assumed",
+            super::super::model::ElementKind::ConstraintUsage,
+        );
+        let require_rel = rel_for(
+            "sample::host::required",
+            super::super::model::ElementKind::ConstraintUsage,
+        );
 
         assert_eq!(
             assume_rel.properties.get("kind"),
@@ -1585,7 +1696,7 @@ mod tests {
                     assert checks.limit;
                     assume checks.assumed;
                     require checks.required;
-                    satisfy reqs.required by verifier;
+                    satisfy reqs.satisfied by verifier;
                     verify reqs.verified;
                 }
 
@@ -1609,7 +1720,7 @@ mod tests {
                 }
 
                 part reqs {
-                    requirement required;
+                    requirement satisfied;
                     requirement verified;
                 }
             }
@@ -1623,51 +1734,58 @@ mod tests {
         let roundtrip_symbols =
             symbols_from_model(&model).expect("round-trip import should succeed");
 
-        let rel_kinds_for = |fragment: &str| -> Vec<HirRelKind> {
+        let rel_kinds_for =
+            |qualified_name: &str, kind: SymbolKind| -> Vec<HirRelKind> {
             roundtrip_symbols
                 .iter()
-                .find(|sym| {
-                    sym.qualified_name
-                        .as_ref()
-                        .contains(fragment)
+                .find(|sym| sym.kind == kind && sym.qualified_name.as_ref() == qualified_name)
+                .unwrap_or_else(|| {
+                    panic!("round-trip symbol {qualified_name} ({kind:?}) should exist")
                 })
-                .unwrap_or_else(|| panic!("round-trip symbol {fragment} should exist"))
                 .relationships
                 .iter()
                 .map(|rel| rel.kind)
                 .collect()
-        };
+            };
 
         assert!(
-            rel_kinds_for("<perform:actions.starting").contains(&HirRelKind::Performs),
+            rel_kinds_for("sample::host::starting", SymbolKind::PerformActionUsage)
+                .contains(&HirRelKind::Performs),
             "perform relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<include:system.uc1").contains(&HirRelKind::Includes),
+            rel_kinds_for("sample::scenario::uc1", SymbolKind::IncludeUseCaseUsage)
+                .contains(&HirRelKind::Includes),
             "include relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<exhibit:system.ready").contains(&HirRelKind::Exhibits),
+            rel_kinds_for("sample::host::ready", SymbolKind::ExhibitStateUsage)
+                .contains(&HirRelKind::Exhibits),
             "exhibit relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<assert:checks.limit").contains(&HirRelKind::Asserts),
+            rel_kinds_for("sample::host::limit", SymbolKind::AssertConstraintUsage)
+                .contains(&HirRelKind::Asserts),
             "assert relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<assume:checks.assumed").contains(&HirRelKind::Assumes),
+            rel_kinds_for("sample::host::assumed", SymbolKind::ConstraintUsage)
+                .contains(&HirRelKind::Assumes),
             "assume relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<require:checks.required").contains(&HirRelKind::Requires),
+            rel_kinds_for("sample::host::required", SymbolKind::ConstraintUsage)
+                .contains(&HirRelKind::Requires),
             "require relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<satisfy:reqs.required").contains(&HirRelKind::Satisfies),
+            rel_kinds_for("sample::host::satisfied", SymbolKind::SatisfyRequirementUsage)
+                .contains(&HirRelKind::Satisfies),
             "satisfy relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("<verify:reqs.verified").contains(&HirRelKind::Verifies),
+            rel_kinds_for("sample::host::verified", SymbolKind::RequirementUsage)
+                .contains(&HirRelKind::Verifies),
             "verify relationship should survive round-trip"
         );
     }
@@ -1690,11 +1808,7 @@ mod tests {
         let exhibit_usage = model
             .elements
             .values()
-            .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qn| qn.contains("<exhibit:missing.ready"))
-            })
+            .find(|e| e.qualified_name.as_deref() == Some("sample::host::ready"))
             .expect("exhibit usage should exist");
 
         assert!(
@@ -1745,6 +1859,69 @@ mod tests {
         assert!(
             assume_rel.get("referencedConstraint").is_none(),
             "official target slot should not be emitted when source/target already carry the relationship"
+        );
+    }
+
+    #[test]
+    fn test_jsonld_perform_uses_specialized_local_usage_and_reference_subsetting() {
+        use crate::interchange::{JsonLd, ModelFormat};
+        use serde_json::Value;
+
+        let sysml = r#"
+            package sample {
+                part host {
+                    perform actions.starting;
+                }
+
+                action actions {
+                    action starting;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+        let json_bytes = JsonLd.write(&model).expect("JSON-LD export should succeed");
+        let json: Value = serde_json::from_slice(&json_bytes).expect("JSON-LD should be valid");
+        let items = json
+            .as_array()
+            .expect("perform export should serialize as an array");
+
+        let perform_usage = items
+            .iter()
+            .find(|item| {
+                item.get("@type") == Some(&Value::String("PerformActionUsage".into()))
+                    && item.get("qualifiedName")
+                        == Some(&Value::String("sample::host::starting".into()))
+            })
+            .expect("perform local usage should be exported as PerformActionUsage");
+
+        assert_eq!(
+            perform_usage.get("name"),
+            Some(&Value::String("starting".into())),
+            "perform shorthand local usage should take the target name"
+        );
+
+        let perform_usage_id = perform_usage
+            .get("@id")
+            .and_then(Value::as_str)
+            .expect("perform local usage should have an id");
+
+        let reference_subsetting = items
+            .iter()
+            .find(|item| {
+                item.get("@type") == Some(&Value::String("ReferenceSubsetting".into()))
+                    && item.get("source")
+                        == Some(&serde_json::json!({"@id": perform_usage_id}))
+            })
+            .expect("perform target reference should be exported as ReferenceSubsetting");
+
+        assert!(
+            reference_subsetting.get("target").is_some_and(Value::is_object),
+            "perform ReferenceSubsetting should continue using generic target references"
         );
     }
 

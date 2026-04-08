@@ -28,6 +28,12 @@ fn has_error_containing(diagnostics: &[Diagnostic], substring: &str) -> bool {
         .any(|d| d.severity == Severity::Error && d.message.contains(substring))
 }
 
+fn has_warning_containing(diagnostics: &[Diagnostic], substring: &str) -> bool {
+    diagnostics
+        .iter()
+        .any(|d| d.severity == Severity::Warning && d.message.contains(substring))
+}
+
 // =============================================================================
 // UNDEFINED REFERENCE ERRORS
 // =============================================================================
@@ -430,6 +436,60 @@ fn test_self_referential_type_no_crash() {
         node_errors.is_empty(),
         "Self-referential type should be valid. Got: {:?}",
         node_errors
+            .iter()
+            .map(|d| d.message.as_ref())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn test_duplicate_shorthand_owned_member_name_is_warning_not_error() {
+    let source = r#"
+        package sample {
+            action def start;
+            part host {
+                perform start;
+                perform start;
+            }
+        }
+    "#;
+
+    let diagnostics = get_diagnostics_for_source(source);
+
+    let duplicate_warnings: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| {
+            d.severity == Severity::Warning
+                && d.message.contains("Duplicate of other owned member name")
+        })
+        .collect();
+    assert_eq!(
+        duplicate_warnings.len(),
+        2,
+        "Expected duplicate owned member warning on both duplicate members. Got: {:?}",
+        diagnostics
+            .iter()
+            .map(|d| format!("{:?}: {}", d.severity, d.message))
+            .collect::<Vec<_>>()
+    );
+
+    assert!(
+        has_warning_containing(&diagnostics, "Duplicate of other owned member name"),
+        "Expected duplicate owned member warning. Got: {:?}",
+        diagnostics
+            .iter()
+            .map(|d| format!("{:?}: {}", d.severity, d.message))
+            .collect::<Vec<_>>()
+    );
+
+    let duplicate_errors: Vec<_> = diagnostics
+        .iter()
+        .filter(|d| d.severity == Severity::Error && d.message.contains("duplicate"))
+        .collect();
+    assert!(
+        duplicate_errors.is_empty(),
+        "Duplicate shorthand owned members should not be errors. Got: {:?}",
+        duplicate_errors
             .iter()
             .map(|d| d.message.as_ref())
             .collect::<Vec<_>>()
