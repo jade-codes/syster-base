@@ -51,7 +51,6 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::OccurrenceDefinition
             | SymbolKind::UseCaseDefinition
             | SymbolKind::AnalysisCaseDefinition
-            | SymbolKind::VerificationCaseDefinition
             | SymbolKind::ConcernDefinition
             | SymbolKind::ViewDefinition
             | SymbolKind::ViewpointDefinition
@@ -82,9 +81,6 @@ impl From<SymbolKind> for TokenType {
             | SymbolKind::CalculationUsage
             | SymbolKind::ReferenceUsage
             | SymbolKind::OccurrenceUsage
-            | SymbolKind::UseCaseUsage
-            | SymbolKind::AnalysisCaseUsage
-            | SymbolKind::VerificationCaseUsage
             | SymbolKind::FlowConnectionUsage
             | SymbolKind::ViewUsage
             | SymbolKind::ViewpointUsage

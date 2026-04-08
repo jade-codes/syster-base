@@ -273,10 +273,9 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
             RelKind::Verifies
         };
         if let Some(qn) = req_ver.requirement() {
-            let target_str = qn.to_string();
             rels.push(ExtractedRel {
                 kind,
-                target: make_chain_or_simple(&target_str, &qn),
+                target: RelTarget::Simple(qn.to_string()),
                 range: Some(qn.syntax().text_range()),
             });
         }
@@ -343,56 +342,67 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
 
     // Exhibit
     if usage.is_exhibit() {
-        if let Some(qn) = usage.exhibit_target() {
-            let target_str = qn.to_string();
-            rels.push(ExtractedRel {
-                kind: RelKind::Exhibits,
-                target: make_chain_or_simple(&target_str, &qn),
-                range: Some(qn.syntax().text_range()),
-            });
+        for spec in usage.specializations() {
+            if let Some(qn) = spec.target() {
+                rels.push(ExtractedRel {
+                    kind: RelKind::Exhibits,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
         }
     }
 
     // Include
     if usage.is_include() {
-        if let Some(qn) = usage.include_target() {
-            let target_str = qn.to_string();
-            rels.push(ExtractedRel {
-                kind: RelKind::Includes,
-                target: make_chain_or_simple(&target_str, &qn),
-                range: Some(qn.syntax().text_range()),
-            });
+        for spec in usage.specializations() {
+            if let Some(qn) = spec.target() {
+                rels.push(ExtractedRel {
+                    kind: RelKind::Includes,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
         }
     }
 
     // Assert
-    if let Some(qn) = usage.assert_target() {
-        let target_str = qn.to_string();
-        rels.push(ExtractedRel {
-            kind: RelKind::Asserts,
-            target: make_chain_or_simple(&target_str, &qn),
-            range: Some(qn.syntax().text_range()),
-        });
+    if usage.is_assert() && usage.requirement_verification().is_none() {
+        for spec in usage.specializations() {
+            if let Some(qn) = spec.target() {
+                rels.push(ExtractedRel {
+                    kind: RelKind::Asserts,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
+        }
     }
 
     // Assume
-    if let Some(qn) = usage.assume_target() {
-        let target_str = qn.to_string();
-        rels.push(ExtractedRel {
-            kind: RelKind::Assumes,
-            target: make_chain_or_simple(&target_str, &qn),
-            range: Some(qn.syntax().text_range()),
-        });
+    if usage.is_assume() {
+        for spec in usage.specializations() {
+            if let Some(qn) = spec.target() {
+                rels.push(ExtractedRel {
+                    kind: RelKind::Assumes,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
+        }
     }
 
     // Require
-    if let Some(qn) = usage.require_target() {
-        let target_str = qn.to_string();
-        rels.push(ExtractedRel {
-            kind: RelKind::Requires,
-            target: make_chain_or_simple(&target_str, &qn),
-            range: Some(qn.syntax().text_range()),
-        });
+    if usage.is_require() {
+        for spec in usage.specializations() {
+            if let Some(qn) = spec.target() {
+                rels.push(ExtractedRel {
+                    kind: RelKind::Requires,
+                    target: RelTarget::Simple(qn.to_string()),
+                    range: Some(qn.syntax().text_range()),
+                });
+            }
+        }
     }
 
     // Allocate

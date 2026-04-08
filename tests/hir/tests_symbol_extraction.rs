@@ -6,7 +6,7 @@
 use crate::helpers::hir_helpers::*;
 use crate::helpers::source_fixtures::*;
 use crate::helpers::symbol_assertions::*;
-use syster::hir::{RelationshipKind, SymbolKind};
+use syster::hir::SymbolKind;
 
 // =============================================================================
 // PACKAGE EXTRACTION
@@ -213,60 +213,6 @@ fn test_state_def_extraction() {
 }
 
 #[test]
-fn test_special_keyword_shorthand_usage_kinds_do_not_fall_back_to_reference_usage() {
-    let source = r#"
-        package Test {
-            requirement def R;
-            constraint def C;
-            state def S;
-
-            part host {
-                satisfy R;
-                verify R;
-                exhibit S;
-                assert C;
-                assume C;
-                require C;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-    let syms = analysis.symbol_index().all_symbols().collect::<Vec<_>>();
-
-    let satisfy_requirement_usages = syms
-        .iter()
-        .filter(|s| {
-            s.qualified_name.starts_with("Test::host::") && s.kind == SymbolKind::RequirementUsage
-        })
-        .count();
-    assert_eq!(
-        satisfy_requirement_usages, 2,
-        "host should contain satisfy/verify as RequirementUsage symbols"
-    );
-
-    let exhibit_state_usages = syms
-        .iter()
-        .filter(|s| s.qualified_name.starts_with("Test::host::") && s.kind == SymbolKind::StateUsage)
-        .count();
-    assert_eq!(
-        exhibit_state_usages, 1,
-        "host should contain exhibit shorthand as a StateUsage symbol"
-    );
-
-    let constraint_usages = syms
-        .iter()
-        .filter(|s| {
-            s.qualified_name.starts_with("Test::host::") && s.kind == SymbolKind::ConstraintUsage
-        })
-        .count();
-    assert_eq!(
-        constraint_usages, 3,
-        "host should contain assert/assume/require as ConstraintUsage symbols"
-    );
-}
-
-#[test]
 fn test_calc_def_extraction() {
     let (mut host, _) = analysis_from_sysml("calc def TotalMass;");
     let analysis = host.analysis();
@@ -358,6 +304,7 @@ fn test_enumeration_def_extraction() {
 
 #[test]
 fn test_verification_case_def_extraction() {
+    // VerificationCase maps to AnalysisCaseDef in SymbolKind
     let source = r#"
         package VerificationPkg {
             verification def TestVehicle;
@@ -368,200 +315,7 @@ fn test_verification_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "VerificationPkg::TestVehicle");
     let sym = get_symbol(analysis.symbol_index(), "VerificationPkg::TestVehicle");
-    assert_symbol_kind(sym, SymbolKind::VerificationCaseDefinition);
-}
-
-#[test]
-fn test_case_usage_extraction_uses_distinct_case_usage_kinds() {
-    let source = r#"
-        package CasePkg {
-            use case driveVehicle;
-            analysis thermalStudy;
-            verification safetyCheck;
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    assert_symbol_exists(analysis.symbol_index(), "CasePkg::driveVehicle");
-    assert_symbol_exists(analysis.symbol_index(), "CasePkg::thermalStudy");
-    assert_symbol_exists(analysis.symbol_index(), "CasePkg::safetyCheck");
-
-    assert_symbol_kind(
-        get_symbol(analysis.symbol_index(), "CasePkg::driveVehicle"),
-        SymbolKind::UseCaseUsage,
-    );
-    assert_symbol_kind(
-        get_symbol(analysis.symbol_index(), "CasePkg::thermalStudy"),
-        SymbolKind::AnalysisCaseUsage,
-    );
-    assert_symbol_kind(
-        get_symbol(analysis.symbol_index(), "CasePkg::safetyCheck"),
-        SymbolKind::VerificationCaseUsage,
-    );
-}
-
-#[test]
-fn test_include_reference_form_extracts_use_case_usage_and_includes_relationship() {
-    let source = r#"
-        package IncludePkg {
-            use case included;
-
-            use case host {
-                include included;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let include_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("IncludePkg::host::<include:included")
-        })
-        .expect("anonymous include usage should exist");
-
-    assert_symbol_kind(include_usage, SymbolKind::UseCaseUsage);
-    assert_has_relationship(include_usage, RelationshipKind::Includes, "included");
-}
-
-#[test]
-fn test_exhibit_reference_form_extracts_state_usage_and_exhibits_relationship() {
-    let source = r#"
-        package ExhibitPkg {
-            state def shown;
-
-            part host {
-                exhibit shown;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let exhibit_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("ExhibitPkg::host::<exhibit:shown")
-        })
-        .expect("anonymous exhibit usage should exist");
-
-    assert_symbol_kind(exhibit_usage, SymbolKind::StateUsage);
-    assert_has_relationship(exhibit_usage, RelationshipKind::Exhibits, "shown");
-}
-
-#[test]
-fn test_assert_reference_form_extracts_constraint_usage_and_asserts_relationship() {
-    let source = r#"
-        package AssertPkg {
-            constraint def checked;
-
-            part host {
-                assert checked;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let assert_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("AssertPkg::host::<assert:checked")
-        })
-        .expect("anonymous assert usage should exist");
-
-    assert_symbol_kind(assert_usage, SymbolKind::ConstraintUsage);
-    assert_has_relationship(assert_usage, RelationshipKind::Asserts, "checked");
-}
-
-#[test]
-fn test_assume_and_require_reference_forms_extract_constraint_usage_and_relationships() {
-    let source = r#"
-        package ConstraintPkg {
-            constraint def assumed;
-            constraint def required;
-
-            part host {
-                assume assumed;
-                require required;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let assume_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("ConstraintPkg::host::<assume:assumed")
-        })
-        .expect("anonymous assume usage should exist");
-    assert_symbol_kind(assume_usage, SymbolKind::ConstraintUsage);
-    assert_has_relationship(assume_usage, RelationshipKind::Assumes, "assumed");
-
-    let require_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("ConstraintPkg::host::<require:required")
-        })
-        .expect("anonymous require usage should exist");
-    assert_symbol_kind(require_usage, SymbolKind::ConstraintUsage);
-    assert_has_relationship(require_usage, RelationshipKind::Requires, "required");
-}
-
-#[test]
-fn test_satisfy_and_verify_reference_forms_extract_requirement_usage_and_relationships() {
-    let source = r#"
-        package RequirementPkg {
-            part verifier;
-
-            part checks {
-                requirement required;
-                requirement verified;
-            }
-
-            part host {
-                satisfy checks.required by verifier;
-                verify checks.verified;
-            }
-        }
-    "#;
-    let (mut host, _) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let satisfy_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("RequirementPkg::host::<satisfy:checks.required")
-        })
-        .expect("anonymous satisfy usage should exist");
-    assert_symbol_kind(satisfy_usage, SymbolKind::RequirementUsage);
-    assert_has_relationship(satisfy_usage, RelationshipKind::Satisfies, "checks.required");
-
-    let verify_usage = analysis
-        .symbol_index()
-        .all_symbols()
-        .find(|s| {
-            s.qualified_name
-                .starts_with("RequirementPkg::host::<verify:checks.verified")
-        })
-        .expect("anonymous verify usage should exist");
-    assert_symbol_kind(verify_usage, SymbolKind::RequirementUsage);
-    assert_has_relationship(verify_usage, RelationshipKind::Verifies, "checks.verified");
+    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDefinition);
 }
 
 #[test]

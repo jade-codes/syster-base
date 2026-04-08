@@ -71,14 +71,6 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
         InternalUsageKind::Transition
     } else if usage.perform_action_usage().is_some() {
         InternalUsageKind::Action
-    } else if usage.is_include() {
-        InternalUsageKind::UseCase
-    } else if usage.requirement_verification().is_some() {
-        InternalUsageKind::Requirement
-    } else if usage.is_exhibit() {
-        InternalUsageKind::State
-    } else if usage.requirement_constraint().is_some() {
-        InternalUsageKind::Constraint
     } else {
         match usage.usage_kind() {
             Some(UsageKind::Part) => InternalUsageKind::Part,
@@ -89,9 +81,6 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
             Some(UsageKind::State) => InternalUsageKind::State,
             Some(UsageKind::Constraint) => InternalUsageKind::Constraint,
             Some(UsageKind::Requirement) => InternalUsageKind::Requirement,
-            Some(UsageKind::UseCase) | Some(UsageKind::Case) => InternalUsageKind::UseCase,
-            Some(UsageKind::Analysis) => InternalUsageKind::AnalysisCase,
-            Some(UsageKind::Verification) => InternalUsageKind::VerificationCase,
             Some(UsageKind::Calc) => InternalUsageKind::Calculation,
             Some(UsageKind::Connection) => InternalUsageKind::Connection,
             Some(UsageKind::Interface) => InternalUsageKind::Interface,
@@ -102,6 +91,7 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
             Some(UsageKind::Step) => InternalUsageKind::Action,
             Some(UsageKind::Expr) => InternalUsageKind::Calculation,
             Some(UsageKind::Connector) => InternalUsageKind::Connection,
+            Some(UsageKind::Case) => InternalUsageKind::Other,
             None => InternalUsageKind::Reference, // No usage kind keyword => ReferenceUsage
         }
     }

@@ -213,7 +213,6 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::OccurrenceDefinition
         | SymbolKind::UseCaseDefinition
         | SymbolKind::AnalysisCaseDefinition
-        | SymbolKind::VerificationCaseDefinition
         | SymbolKind::ConcernDefinition
         | SymbolKind::ViewDefinition
         | SymbolKind::ViewpointDefinition
@@ -252,9 +251,6 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::CalculationUsage
         | SymbolKind::ReferenceUsage
         | SymbolKind::OccurrenceUsage
-        | SymbolKind::UseCaseUsage
-        | SymbolKind::AnalysisCaseUsage
-        | SymbolKind::VerificationCaseUsage
         | SymbolKind::FlowConnectionUsage
         | SymbolKind::ViewUsage
         | SymbolKind::ViewpointUsage
