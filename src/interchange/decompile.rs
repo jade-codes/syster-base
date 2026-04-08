@@ -168,6 +168,9 @@ impl<'a> DecompileContext<'a> {
             ElementKind::AnalysisCaseDefinition => {
                 self.decompile_definition(element, "analysis def")
             }
+            ElementKind::VerificationCaseDefinition => {
+                self.decompile_definition(element, "verification def")
+            }
             ElementKind::ViewDefinition => self.decompile_definition(element, "view def"),
             ElementKind::ViewpointDefinition => self.decompile_definition(element, "viewpoint def"),
             ElementKind::RenderingDefinition => self.decompile_definition(element, "rendering def"),
@@ -189,6 +192,9 @@ impl<'a> DecompileContext<'a> {
             ElementKind::CalculationUsage => self.decompile_usage(element, "calc"),
             ElementKind::ReferenceUsage => self.decompile_usage(element, "ref"),
             ElementKind::OccurrenceUsage => self.decompile_usage(element, "occurrence"),
+            ElementKind::UseCaseUsage => self.decompile_usage(element, "use case"),
+            ElementKind::AnalysisCaseUsage => self.decompile_usage(element, "analysis"),
+            ElementKind::VerificationCaseUsage => self.decompile_usage(element, "verification"),
             ElementKind::FlowConnectionUsage => self.decompile_usage(element, "flow"),
 
             // KerML classifiers

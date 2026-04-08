@@ -288,6 +288,18 @@ impl RequirementVerification {
 }
 
 // ============================================================================
+// Requirement Constraint (assert/assume/require)
+// ============================================================================
+
+ast_node!(RequirementConstraint, REQUIREMENT_CONSTRAINT);
+
+impl RequirementConstraint {
+    has_token_method!(is_assert, ASSERT_KW, "assert constraint c;");
+    has_token_method!(is_assume, ASSUME_KW, "assume constraint c;");
+    has_token_method!(is_require, REQUIRE_KW, "require constraint c;");
+}
+
+// ============================================================================
 // KerML Connector (standalone connector, not SysML Connection)
 // ============================================================================
 

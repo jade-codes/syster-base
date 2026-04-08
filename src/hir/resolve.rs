@@ -1371,16 +1371,13 @@ impl SymbolIndex {
         // members of this perform come from ActionTree::providePower (NOT the ProvidePower definition).
         // IMPORTANT: Use the USAGE (ActionTree::providePower) not the type definition (ProvidePower).
         if sym.name.starts_with("<perform:") {
-            for trk in &sym.type_refs {
-                for tr in trk.as_refs() {
-                    if tr.kind == crate::hir::symbols::RefKind::Other {
-                        if let Some(ref resolved) = tr.resolved_target {
-                            // Return the performed action USAGE directly - it's where nested members are
-                            // Don't follow to its type definition!
-                            return resolved.clone();
-                        }
-                    }
-                }
+            if let Some(resolved) = sym
+                .special_usage_terminal_ref()
+                .and_then(|tr| tr.resolved_target.as_ref())
+            {
+                // Return the performed action USAGE directly - it's where nested members are
+                // Don't follow to its type definition!
+                return resolved.clone();
             }
         }
 
@@ -2822,6 +2819,7 @@ impl SymbolKind {
                 | SymbolKind::OccurrenceDefinition
                 | SymbolKind::UseCaseDefinition
                 | SymbolKind::AnalysisCaseDefinition
+                | SymbolKind::VerificationCaseDefinition
                 | SymbolKind::ConcernDefinition
                 | SymbolKind::ViewDefinition
                 | SymbolKind::ViewpointDefinition
