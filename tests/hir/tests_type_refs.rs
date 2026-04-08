@@ -243,6 +243,42 @@ fn test_type_ref_resolved_target() {
     }
 }
 
+#[test]
+fn test_special_usage_terminal_ref_prefers_main_target_over_by_target() {
+    let source = r#"
+        package Test {
+            part def Vehicle;
+            requirement def VehicleSpec;
+
+            package VehicleConfig {
+                part vehicle_b : Vehicle;
+
+                satisfy VehicleSpec by vehicle_b {
+                    attribute massActual;
+                }
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let satisfy_sym = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| s.name.contains("satisfy"))
+        .expect("satisfy symbol should exist");
+
+    let terminal = satisfy_sym
+        .special_usage_terminal_ref()
+        .expect("satisfy symbol should expose its main target ref");
+
+    assert_eq!(
+        terminal.target.as_ref(),
+        "VehicleSpec",
+        "special-usage helper should select the main satisfy target, not the by-target"
+    );
+}
+
 // =============================================================================
 // RELATIONSHIP EXTRACTION
 // =============================================================================

@@ -115,6 +115,7 @@ pub enum ElementKind {
     OccurrenceDefinition,
     UseCaseDefinition,
     AnalysisCaseDefinition,
+    VerificationCaseDefinition,
     ConcernDefinition,
     ViewDefinition,
     ViewpointDefinition,
@@ -138,6 +139,9 @@ pub enum ElementKind {
     CalculationUsage,
     ReferenceUsage,
     OccurrenceUsage,
+    UseCaseUsage,
+    AnalysisCaseUsage,
+    VerificationCaseUsage,
     FlowConnectionUsage,
     SuccessionFlowConnectionUsage,
 
@@ -195,6 +199,11 @@ pub enum ElementKind {
 
     // Dependency and requirement relationships
     Dependency,
+    PerformActionUsage,
+    ExhibitStateUsage,
+    IncludeUseCaseUsage,
+    AssertConstraintUsage,
+    RequirementConstraintMembership,
     Satisfaction,
     Verification,
 
@@ -250,6 +259,7 @@ impl ElementKind {
                 | Self::OccurrenceDefinition
                 | Self::UseCaseDefinition
                 | Self::AnalysisCaseDefinition
+                | Self::VerificationCaseDefinition
                 | Self::ConcernDefinition
                 | Self::ViewDefinition
                 | Self::ViewpointDefinition
@@ -278,6 +288,9 @@ impl ElementKind {
                 | Self::CalculationUsage
                 | Self::ReferenceUsage
                 | Self::OccurrenceUsage
+                | Self::UseCaseUsage
+                | Self::AnalysisCaseUsage
+                | Self::VerificationCaseUsage
                 | Self::FlowConnectionUsage
                 | Self::SuccessionFlowConnectionUsage
                 | Self::Feature
@@ -316,6 +329,11 @@ impl ElementKind {
                 | Self::Disjoining
                 | Self::Unioning
                 | Self::Dependency
+                | Self::PerformActionUsage
+                | Self::ExhibitStateUsage
+                | Self::IncludeUseCaseUsage
+                | Self::AssertConstraintUsage
+                | Self::RequirementConstraintMembership
                 | Self::Satisfaction
                 | Self::Verification
                 | Self::Annotation
@@ -426,6 +444,7 @@ impl ElementKind {
                 | Self::CalculationDefinition
                 | Self::OccurrenceDefinition
                 | Self::AnalysisCaseDefinition
+                | Self::VerificationCaseDefinition
                 | Self::EnumerationDefinition
                 | Self::MetadataDefinition
                 | Self::PartUsage
@@ -442,6 +461,9 @@ impl ElementKind {
                 | Self::CalculationUsage
                 | Self::ReferenceUsage
                 | Self::OccurrenceUsage
+                | Self::UseCaseUsage
+                | Self::AnalysisCaseUsage
+                | Self::VerificationCaseUsage
                 | Self::FlowConnectionUsage
                 | Self::SuccessionFlowConnectionUsage
                 | Self::MetadataUsage
@@ -478,6 +500,7 @@ impl ElementKind {
             Self::OccurrenceDefinition => "sysml:OccurrenceDefinition",
             Self::UseCaseDefinition => "sysml:UseCaseDefinition",
             Self::AnalysisCaseDefinition => "sysml:AnalysisCaseDefinition",
+            Self::VerificationCaseDefinition => "sysml:VerificationCaseDefinition",
             Self::ConcernDefinition => "sysml:ConcernDefinition",
             Self::ViewDefinition => "sysml:ViewDefinition",
             Self::ViewpointDefinition => "sysml:ViewpointDefinition",
@@ -499,6 +522,9 @@ impl ElementKind {
             Self::CalculationUsage => "sysml:CalculationUsage",
             Self::ReferenceUsage => "sysml:ReferenceUsage",
             Self::OccurrenceUsage => "sysml:OccurrenceUsage",
+            Self::UseCaseUsage => "sysml:UseCaseUsage",
+            Self::AnalysisCaseUsage => "sysml:AnalysisCaseUsage",
+            Self::VerificationCaseUsage => "sysml:VerificationCaseUsage",
             Self::FlowConnectionUsage => "sysml:FlowConnectionUsage",
             Self::SuccessionFlowConnectionUsage => "sysml:SuccessionFlowConnectionUsage",
             Self::Feature => "kerml:Feature",
@@ -546,6 +572,11 @@ impl ElementKind {
             Self::Disjoining => "kerml:Disjoining",
             Self::Unioning => "kerml:Unioning",
             Self::Dependency => "kerml:Dependency",
+            Self::PerformActionUsage => "sysml:PerformActionUsage",
+            Self::ExhibitStateUsage => "sysml:ExhibitStateUsage",
+            Self::IncludeUseCaseUsage => "sysml:IncludeUseCaseUsage",
+            Self::AssertConstraintUsage => "sysml:AssertConstraintUsage",
+            Self::RequirementConstraintMembership => "sysml:RequirementConstraintMembership",
             Self::Satisfaction => "sysml:SatisfyRequirementUsage",
             Self::Verification => "sysml:RequirementVerificationMembership",
             Self::Comment => "kerml:Comment",
@@ -590,6 +621,7 @@ impl ElementKind {
             Self::OccurrenceDefinition => "sysml:OccurrenceDefinition",
             Self::UseCaseDefinition => "sysml:UseCaseDefinition",
             Self::AnalysisCaseDefinition => "sysml:AnalysisCaseDefinition",
+            Self::VerificationCaseDefinition => "sysml:VerificationCaseDefinition",
             Self::ConcernDefinition => "sysml:ConcernDefinition",
             Self::ViewDefinition => "sysml:ViewDefinition",
             Self::ViewpointDefinition => "sysml:ViewpointDefinition",
@@ -611,6 +643,9 @@ impl ElementKind {
             Self::CalculationUsage => "sysml:CalculationUsage",
             Self::ReferenceUsage => "sysml:ReferenceUsage",
             Self::OccurrenceUsage => "sysml:OccurrenceUsage",
+            Self::UseCaseUsage => "sysml:UseCaseUsage",
+            Self::AnalysisCaseUsage => "sysml:AnalysisCaseUsage",
+            Self::VerificationCaseUsage => "sysml:VerificationCaseUsage",
             Self::FlowConnectionUsage => "sysml:FlowConnectionUsage",
             Self::SuccessionFlowConnectionUsage => "sysml:SuccessionFlowConnectionUsage",
             Self::Feature => "sysml:Feature",
@@ -658,6 +693,11 @@ impl ElementKind {
             Self::Disjoining => "sysml:Disjoining",
             Self::Unioning => "sysml:Unioning",
             Self::Dependency => "sysml:Dependency",
+            Self::PerformActionUsage => "sysml:PerformActionUsage",
+            Self::ExhibitStateUsage => "sysml:ExhibitStateUsage",
+            Self::IncludeUseCaseUsage => "sysml:IncludeUseCaseUsage",
+            Self::AssertConstraintUsage => "sysml:AssertConstraintUsage",
+            Self::RequirementConstraintMembership => "sysml:RequirementConstraintMembership",
             Self::Satisfaction => "sysml:SatisfyRequirementUsage",
             Self::Verification => "sysml:RequirementVerificationMembership",
             Self::Comment => "sysml:Comment",
@@ -707,6 +747,7 @@ impl ElementKind {
             "OccurrenceDefinition" => Self::OccurrenceDefinition,
             "UseCaseDefinition" => Self::UseCaseDefinition,
             "AnalysisCaseDefinition" => Self::AnalysisCaseDefinition,
+            "VerificationCaseDefinition" => Self::VerificationCaseDefinition,
             "ConcernDefinition" => Self::ConcernDefinition,
             "ViewDefinition" => Self::ViewDefinition,
             "ViewpointDefinition" => Self::ViewpointDefinition,
@@ -728,6 +769,9 @@ impl ElementKind {
             "CalculationUsage" => Self::CalculationUsage,
             "ReferenceUsage" => Self::ReferenceUsage,
             "OccurrenceUsage" => Self::OccurrenceUsage,
+            "UseCaseUsage" => Self::UseCaseUsage,
+            "AnalysisCaseUsage" => Self::AnalysisCaseUsage,
+            "VerificationCaseUsage" => Self::VerificationCaseUsage,
             "FlowConnectionUsage" => Self::FlowConnectionUsage,
             "SuccessionFlowConnectionUsage" => Self::SuccessionFlowConnectionUsage,
             "Feature" => Self::Feature,
@@ -775,6 +819,11 @@ impl ElementKind {
             "Disjoining" => Self::Disjoining,
             "Unioning" => Self::Unioning,
             "Dependency" => Self::Dependency,
+            "PerformActionUsage" => Self::PerformActionUsage,
+            "ExhibitStateUsage" => Self::ExhibitStateUsage,
+            "IncludeUseCaseUsage" => Self::IncludeUseCaseUsage,
+            "AssertConstraintUsage" => Self::AssertConstraintUsage,
+            "RequirementConstraintMembership" => Self::RequirementConstraintMembership,
             "SatisfyRequirementUsage" => Self::Satisfaction,
             "RequirementVerificationMembership" => Self::Verification,
             "Comment" => Self::Comment,

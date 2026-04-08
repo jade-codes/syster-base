@@ -79,7 +79,7 @@ pub fn symbols_from_model(model: &Model) -> Vec<HirSymbol> {
         let relationships: Vec<HirRelationship> = model
             .rel_elements_from(&element.id)
             .filter_map(|re| {
-                let hir_kind = element_kind_to_hir(re.kind)?;
+                let hir_kind = relationship_element_to_hir(re)?;
 
                 // Look up target element to get its qualified name (HIR uses names, not UUIDs)
                 let target_name: Arc<str> = re
@@ -258,10 +258,28 @@ fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
         ElementKind::FeatureTyping => Some(HirRelKind::TypedBy),
         ElementKind::Redefinition => Some(HirRelKind::Redefines),
         ElementKind::Subsetting => Some(HirRelKind::Subsets),
+        ElementKind::PerformActionUsage => Some(HirRelKind::Performs),
+        ElementKind::ExhibitStateUsage => Some(HirRelKind::Exhibits),
+        ElementKind::IncludeUseCaseUsage => Some(HirRelKind::Includes),
+        ElementKind::AssertConstraintUsage => Some(HirRelKind::Asserts),
         ElementKind::Satisfaction => Some(HirRelKind::Satisfies),
         ElementKind::Verification => Some(HirRelKind::Verifies),
-        ElementKind::ActionUsage => Some(HirRelKind::Performs), // Performs maps to ActionUsage
         _ => None,
+    }
+}
+
+fn relationship_element_to_hir(element: &Element) -> Option<HirRelKind> {
+    match element.kind {
+        ElementKind::RequirementConstraintMembership => match element.properties.get("kind") {
+            Some(PropertyValue::String(kind)) if kind.as_ref() == "assumption" => {
+                Some(HirRelKind::Assumes)
+            }
+            Some(PropertyValue::String(kind)) if kind.as_ref() == "requirement" => {
+                Some(HirRelKind::Requires)
+            }
+            _ => panic!("RequirementConstraintMembership missing valid kind"),
+        },
+        _ => element_kind_to_hir(element.kind),
     }
 }
 
@@ -289,6 +307,7 @@ impl From<ElementKind> for SymbolKind {
             ElementKind::OccurrenceDefinition => SymbolKind::OccurrenceDefinition,
             ElementKind::UseCaseDefinition => SymbolKind::UseCaseDefinition,
             ElementKind::AnalysisCaseDefinition => SymbolKind::AnalysisCaseDefinition,
+            ElementKind::VerificationCaseDefinition => SymbolKind::VerificationCaseDefinition,
             ElementKind::ConcernDefinition => SymbolKind::ConcernDefinition,
             ElementKind::ViewDefinition => SymbolKind::ViewDefinition,
             ElementKind::ViewpointDefinition => SymbolKind::ViewpointDefinition,
@@ -319,6 +338,9 @@ impl From<ElementKind> for SymbolKind {
             ElementKind::CalculationUsage => SymbolKind::CalculationUsage,
             ElementKind::ReferenceUsage => SymbolKind::ReferenceUsage,
             ElementKind::OccurrenceUsage => SymbolKind::OccurrenceUsage,
+            ElementKind::UseCaseUsage => SymbolKind::UseCaseUsage,
+            ElementKind::AnalysisCaseUsage => SymbolKind::AnalysisCaseUsage,
+            ElementKind::VerificationCaseUsage => SymbolKind::VerificationCaseUsage,
             ElementKind::FlowConnectionUsage => SymbolKind::FlowConnectionUsage,
             // Other
             ElementKind::Import | ElementKind::NamespaceImport | ElementKind::MembershipImport => {
@@ -545,21 +567,46 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 // 3. Scan all symbols for a matching simple name suffix
                 //    (handles cross-type references like `redefines size`
                 //    where `size` lives in a supertype)
-                let target_name = hir_rel
-                    .resolved_target
-                    .as_deref()
-                    .unwrap_or(hir_rel.target.as_ref());
+                let is_special_usage = matches!(
+                    hir_rel.kind,
+                    HirRelKind::Performs
+                        | HirRelKind::Satisfies
+                        | HirRelKind::Verifies
+                        | HirRelKind::Exhibits
+                        | HirRelKind::Includes
+                        | HirRelKind::Asserts
+                        | HirRelKind::Assumes
+                        | HirRelKind::Requires
+                );
+
+                let target_name = if is_special_usage {
+                    hir_rel
+                        .resolved_target
+                        .as_deref()
+                        .or_else(|| {
+                            symbol
+                                .special_usage_terminal_ref()
+                                .and_then(|tr| tr.resolved_target.as_deref())
+                        })
+                } else {
+                    Some(
+                        hir_rel
+                            .resolved_target
+                            .as_deref()
+                            .unwrap_or(hir_rel.target.as_ref()),
+                    )
+                };
+
+                let Some(target_name) = target_name else {
+                    continue;
+                };
 
                 let target_id = name_to_id
                     .get(target_name)
                     .or_else(|| {
-                        // Also try the unresolved name if resolved didn't match
-                        name_to_id.get(hir_rel.target.as_ref())
-                    })
-                    .or_else(|| {
                         let mut ns = symbol.qualified_name.as_ref();
                         while let Some((parent, _)) = ns.rsplit_once("::") {
-                            let candidate = format!("{}::{}", parent, hir_rel.target);
+                            let candidate = format!("{}::{}", parent, target_name);
                             if let Some(found) = name_to_id.get(candidate.as_str()) {
                                 return Some(found);
                             }
@@ -569,19 +616,16 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     })
                     .or_else(|| {
                         // Scan for any element whose qualified name ends with
-                        // ::target.  Needed for cross-type references (e.g.
-                        // `redefines size` where size is in a supertype).
-                        let suffix = format!("::{}", hir_rel.target);
+                        // ::target. Needed for cross-type references and
+                        // perform chain terminals when we only have the last segment.
+                        let suffix = format!("::{}", target_name);
                         let mut matches: Vec<&&str> = name_to_id
                             .keys()
                             .filter(|qn| qn.ends_with(suffix.as_str()))
                             .collect();
                         if matches.len() == 1 {
-                            // Unambiguous match
                             name_to_id.get(*matches[0])
                         } else if matches.len() > 1 {
-                            // Multiple matches — try to pick one that shares
-                            // the longest common prefix with our symbol's qn
                             matches.sort_by_key(|qn| {
                                 let common = symbol
                                     .qualified_name
@@ -602,10 +646,10 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                 // If resolution failed, create a stub element for the external
                 // reference so the decompiler can still render its name.
                 let target_id = target_id.unwrap_or_else(|| {
-                    let ext_id = ElementId::new(format!("_ext_{}", hir_rel.target));
+                    let ext_id = ElementId::new(format!("_ext_{}", target_name));
                     if !model.elements.contains_key(&ext_id) {
                         let mut stub = Element::new(ext_id.clone(), ElementKind::Other)
-                            .with_name(hir_rel.target.as_ref());
+                            .with_name(target_name);
                         // Mark as external so it is never decompiled to output
                         stub.properties
                             .insert(Arc::from("_external"), PropertyValue::Boolean(true));
@@ -623,19 +667,18 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     Some(id.clone()),
                 );
 
-                // Store the resolved target name on the relationship for XMI
-                let target_attr = match ek {
-                    ElementKind::FeatureTyping => "type",
-                    ElementKind::Specialization => "general",
-                    ElementKind::Redefinition => "redefinedFeature",
-                    ElementKind::Subsetting => "subsettedFeature",
-                    _ => "target",
-                };
                 if let Some(rel_element) = model.get_mut(&rel_id) {
-                    rel_element.properties.insert(
-                        Arc::from(target_attr),
-                        PropertyValue::String(Arc::from(target_id.as_str())),
-                    );
+                    if matches!(hir_rel.kind, HirRelKind::Assumes | HirRelKind::Requires) {
+                        let kind = match hir_rel.kind {
+                            HirRelKind::Assumes => "assumption",
+                            HirRelKind::Requires => "requirement",
+                            _ => unreachable!(),
+                        };
+                        rel_element.properties.insert(
+                            Arc::from("kind"),
+                            PropertyValue::String(Arc::from(kind)),
+                        );
+                    }
                 }
                 if let Some(parent) = model.get_mut(&id) {
                     parent.owned_elements.push(rel_id);
@@ -712,10 +755,12 @@ fn hir_relationship_kind_to_element_kind(
         HirRelKind::Subsets => Some(ElementKind::Subsetting),
         HirRelKind::References => None, // Not a first-class relationship in interchange
         HirRelKind::Satisfies => Some(ElementKind::Satisfaction),
-        HirRelKind::Performs => Some(ElementKind::ActionUsage),
-        HirRelKind::Exhibits => None,
-        HirRelKind::Includes => None,
-        HirRelKind::Asserts => None,
+        HirRelKind::Performs => Some(ElementKind::PerformActionUsage),
+        HirRelKind::Exhibits => Some(ElementKind::ExhibitStateUsage),
+        HirRelKind::Includes => Some(ElementKind::IncludeUseCaseUsage),
+        HirRelKind::Asserts => Some(ElementKind::AssertConstraintUsage),
+        HirRelKind::Assumes => Some(ElementKind::RequirementConstraintMembership),
+        HirRelKind::Requires => Some(ElementKind::RequirementConstraintMembership),
         HirRelKind::Verifies => Some(ElementKind::Verification),
     }
 }
@@ -744,6 +789,7 @@ impl From<SymbolKind> for ElementKind {
             SymbolKind::OccurrenceDefinition => ElementKind::OccurrenceDefinition,
             SymbolKind::UseCaseDefinition => ElementKind::UseCaseDefinition,
             SymbolKind::AnalysisCaseDefinition => ElementKind::AnalysisCaseDefinition,
+            SymbolKind::VerificationCaseDefinition => ElementKind::VerificationCaseDefinition,
             SymbolKind::ConcernDefinition => ElementKind::ConcernDefinition,
             SymbolKind::ViewDefinition => ElementKind::ViewDefinition,
             SymbolKind::ViewpointDefinition => ElementKind::ViewpointDefinition,
@@ -774,6 +820,9 @@ impl From<SymbolKind> for ElementKind {
             SymbolKind::CalculationUsage => ElementKind::CalculationUsage,
             SymbolKind::ReferenceUsage => ElementKind::ReferenceUsage,
             SymbolKind::OccurrenceUsage => ElementKind::OccurrenceUsage,
+            SymbolKind::UseCaseUsage => ElementKind::UseCaseUsage,
+            SymbolKind::AnalysisCaseUsage => ElementKind::AnalysisCaseUsage,
+            SymbolKind::VerificationCaseUsage => ElementKind::VerificationCaseUsage,
             SymbolKind::FlowConnectionUsage => ElementKind::FlowConnectionUsage,
             // Other
             SymbolKind::Import => ElementKind::Import,
@@ -840,6 +889,7 @@ mod tests {
     use super::*;
     use crate::base::FileId;
     use crate::hir::{FileText, file_symbols_from_text};
+    use crate::ide::AnalysisHost;
 
     #[test]
     fn test_model_from_database_empty() {
@@ -992,6 +1042,639 @@ mod tests {
             Some("Vehicle"),
             "Target should be Vehicle"
         );
+    }
+
+    #[test]
+    fn test_model_from_symbols_perform_chain_relationship_uses_terminal_target() {
+        let sysml = r#"
+            package sample {
+                part car {
+                    part engine {
+                        perform starting.gen_start_cmd;
+                    }
+                }
+                action starting {
+                    action gen_start_cmd;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let perform_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<perform:starting.gen_start_cmd"))
+            })
+            .expect("perform usage should exist");
+
+        let relationship = model
+            .rel_elements_from(&perform_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::PerformActionUsage)
+            .expect("perform relationship should exist");
+
+        let target = model
+            .rel_target(relationship)
+            .expect("perform relationship should resolve to a target element");
+
+        assert_eq!(
+            target.qualified_name.as_deref(),
+            Some("sample::starting::gen_start_cmd"),
+            "perform chain relationship should target the terminal action usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_include_chain_relationship_uses_terminal_target() {
+        let sysml = r#"
+            package sample {
+                use case host {
+                    include system.uc1;
+                }
+
+                part system {
+                    use case uc1;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let include_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<include:system.uc1"))
+            })
+            .expect("include usage should exist");
+
+        let relationship = model
+            .rel_elements_from(&include_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::IncludeUseCaseUsage)
+            .expect("include relationship should exist");
+
+        let target = model
+            .rel_target(relationship)
+            .expect("include relationship should resolve to a target element");
+
+        assert_eq!(
+            target.qualified_name.as_deref(),
+            Some("sample::system::uc1"),
+            "include chain relationship should target the terminal use case usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_exhibit_chain_relationship_uses_terminal_target() {
+        let sysml = r#"
+            package sample {
+                part host {
+                    exhibit system.ready;
+                }
+
+                part system {
+                    state ready;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let exhibit_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<exhibit:system.ready"))
+            })
+            .expect("exhibit usage should exist");
+
+        let relationship = model
+            .rel_elements_from(&exhibit_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::ExhibitStateUsage)
+            .expect("exhibit relationship should exist");
+
+        let target = model
+            .rel_target(relationship)
+            .expect("exhibit relationship should resolve to a target element");
+
+        assert_eq!(
+            target.qualified_name.as_deref(),
+            Some("sample::system::ready"),
+            "exhibit chain relationship should target the terminal state usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_assert_chain_relationship_uses_terminal_target() {
+        let sysml = r#"
+            package sample {
+                part host {
+                    assert checks.limit;
+                }
+
+                part checks {
+                    constraint limit;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let assert_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<assert:checks.limit"))
+            })
+            .expect("assert usage should exist");
+
+        let relationship = model
+            .rel_elements_from(&assert_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::AssertConstraintUsage)
+            .expect("assert relationship should exist");
+
+        let target = model
+            .rel_target(relationship)
+            .expect("assert relationship should resolve to a target element");
+
+        assert_eq!(
+            target.qualified_name.as_deref(),
+            Some("sample::checks::limit"),
+            "assert chain relationship should target the terminal constraint usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_assume_and_require_chain_relationships_use_terminal_target() {
+        let sysml = r#"
+            package sample {
+                part host {
+                    assume checks.assumed;
+                    require checks.required;
+                }
+
+                part checks {
+                    constraint assumed;
+                    constraint required;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let assume_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<assume:checks.assumed"))
+            })
+            .expect("assume usage should exist");
+
+        let assume_relationship = model
+            .rel_elements_from(&assume_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::RequirementConstraintMembership)
+            .expect("assume relationship should exist");
+
+        let assume_target = model
+            .rel_target(assume_relationship)
+            .expect("assume relationship should resolve to a target element");
+
+        assert_eq!(
+            assume_target.qualified_name.as_deref(),
+            Some("sample::checks::assumed"),
+            "assume chain relationship should target the terminal constraint usage"
+        );
+
+        let require_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<require:checks.required"))
+            })
+            .expect("require usage should exist");
+
+        let require_relationship = model
+            .rel_elements_from(&require_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::RequirementConstraintMembership)
+            .expect("require relationship should exist");
+
+        let require_target = model
+            .rel_target(require_relationship)
+            .expect("require relationship should resolve to a target element");
+
+        assert_eq!(
+            require_target.qualified_name.as_deref(),
+            Some("sample::checks::required"),
+            "require chain relationship should target the terminal constraint usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_satisfy_and_verify_chain_relationships_use_terminal_target() {
+        let sysml = r#"
+            package sample {
+                part verifier;
+
+                part host {
+                    satisfy checks.required by verifier;
+                    verify checks.verified;
+                }
+
+                part checks {
+                    requirement required;
+                    requirement verified;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let satisfy_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<satisfy:checks.required"))
+            })
+            .expect("satisfy usage should exist");
+
+        let satisfy_relationship = model
+            .rel_elements_from(&satisfy_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::Satisfaction)
+            .expect("satisfy relationship should exist");
+
+        let satisfy_target = model
+            .rel_target(satisfy_relationship)
+            .expect("satisfy relationship should resolve to a target element");
+
+        assert_eq!(
+            satisfy_target.qualified_name.as_deref(),
+            Some("sample::checks::required"),
+            "satisfy chain relationship should target the terminal requirement usage"
+        );
+
+        let verify_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<verify:checks.verified"))
+            })
+            .expect("verify usage should exist");
+
+        let verify_relationship = model
+            .rel_elements_from(&verify_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::Verification)
+            .expect("verify relationship should exist");
+
+        let verify_target = model
+            .rel_target(verify_relationship)
+            .expect("verify relationship should resolve to a target element");
+
+        assert_eq!(
+            verify_target.qualified_name.as_deref(),
+            Some("sample::checks::verified"),
+            "verify chain relationship should target the terminal requirement usage"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_special_usage_relationships_use_official_metaclass_types() {
+        let sysml = r#"
+            package sample {
+                part verifier;
+
+                part host {
+                    perform actions.starting;
+                    exhibit system.ready;
+                    assert checks.limit;
+                    assume checks.assumed;
+                    require checks.required;
+                    satisfy reqs.required by verifier;
+                    verify reqs.verified;
+                }
+
+                use case scenario {
+                    include system.uc1;
+                }
+
+                action actions {
+                    action starting;
+                }
+
+                part system {
+                    state ready;
+                    use case uc1;
+                }
+
+                part checks {
+                    constraint limit;
+                    constraint assumed;
+                    constraint required;
+                }
+
+                part reqs {
+                    requirement required;
+                    requirement verified;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+
+        let rel_for = |fragment: &str| {
+            let usage = model
+                .elements
+                .values()
+                .find(|e| e.qualified_name.as_deref().is_some_and(|qn| qn.contains(fragment)))
+                .unwrap_or_else(|| panic!("usage {fragment} should exist"));
+            model.rel_elements_from(&usage.id)
+                .next()
+                .unwrap_or_else(|| panic!("relationship for {fragment} should exist"))
+        };
+
+        assert_eq!(
+            rel_for("<perform:actions.starting").kind.xsi_type(),
+            "sysml:PerformActionUsage"
+        );
+        assert_eq!(
+            rel_for("<include:system.uc1").kind.xsi_type(),
+            "sysml:IncludeUseCaseUsage"
+        );
+        assert_eq!(
+            rel_for("<exhibit:system.ready").kind.xsi_type(),
+            "sysml:ExhibitStateUsage"
+        );
+        assert_eq!(
+            rel_for("<assert:checks.limit").kind.xsi_type(),
+            "sysml:AssertConstraintUsage"
+        );
+        assert_eq!(
+            rel_for("<assume:checks.assumed").kind.xsi_type(),
+            "sysml:RequirementConstraintMembership"
+        );
+        assert_eq!(
+            rel_for("<require:checks.required").kind.xsi_type(),
+            "sysml:RequirementConstraintMembership"
+        );
+        assert_eq!(
+            rel_for("<satisfy:reqs.required").kind.xsi_type(),
+            "sysml:SatisfyRequirementUsage"
+        );
+        assert_eq!(
+            rel_for("<verify:reqs.verified").kind.xsi_type(),
+            "sysml:RequirementVerificationMembership"
+        );
+
+        let assume_rel = rel_for("<assume:checks.assumed");
+        let require_rel = rel_for("<require:checks.required");
+
+        assert_eq!(
+            assume_rel.properties.get("kind"),
+            Some(&PropertyValue::String(Arc::from("assumption"))),
+            "assume relationship should export RequirementConstraintMembership.kind=assumption"
+        );
+        assert_eq!(
+            require_rel.properties.get("kind"),
+            Some(&PropertyValue::String(Arc::from("requirement"))),
+            "require relationship should export RequirementConstraintMembership.kind=requirement"
+        );
+    }
+
+    #[test]
+    fn test_symbols_from_model_roundtrips_explicit_special_usage_relationship_kinds() {
+        let sysml = r#"
+            package sample {
+                part verifier;
+
+                part host {
+                    perform actions.starting;
+                    exhibit system.ready;
+                    assert checks.limit;
+                    assume checks.assumed;
+                    require checks.required;
+                    satisfy reqs.required by verifier;
+                    verify reqs.verified;
+                }
+
+                use case scenario {
+                    include system.uc1;
+                }
+
+                action actions {
+                    action starting;
+                }
+
+                part system {
+                    state ready;
+                    use case uc1;
+                }
+
+                part checks {
+                    constraint limit;
+                    constraint assumed;
+                    constraint required;
+                }
+
+                part reqs {
+                    requirement required;
+                    requirement verified;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+        let roundtrip_symbols = symbols_from_model(&model);
+
+        let rel_kinds_for = |fragment: &str| -> Vec<HirRelKind> {
+            roundtrip_symbols
+                .iter()
+                .find(|sym| {
+                    sym.qualified_name
+                        .as_ref()
+                        .contains(fragment)
+                })
+                .unwrap_or_else(|| panic!("round-trip symbol {fragment} should exist"))
+                .relationships
+                .iter()
+                .map(|rel| rel.kind)
+                .collect()
+        };
+
+        assert!(
+            rel_kinds_for("<perform:actions.starting").contains(&HirRelKind::Performs),
+            "perform relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<include:system.uc1").contains(&HirRelKind::Includes),
+            "include relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<exhibit:system.ready").contains(&HirRelKind::Exhibits),
+            "exhibit relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<assert:checks.limit").contains(&HirRelKind::Asserts),
+            "assert relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<assume:checks.assumed").contains(&HirRelKind::Assumes),
+            "assume relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<require:checks.required").contains(&HirRelKind::Requires),
+            "require relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<satisfy:reqs.required").contains(&HirRelKind::Satisfies),
+            "satisfy relationship should survive round-trip"
+        );
+        assert!(
+            rel_kinds_for("<verify:reqs.verified").contains(&HirRelKind::Verifies),
+            "verify relationship should survive round-trip"
+        );
+    }
+
+    #[test]
+    fn test_model_from_symbols_special_usage_unresolved_chain_target_does_not_fallback_to_raw_name() {
+        let db = RootDatabase::new();
+        let sysml = r#"
+            package sample {
+                part host {
+                    exhibit missing.ready;
+                }
+            }
+        "#;
+        let file_text = FileText::new(&db, FileId::new(0), sysml.to_string());
+
+        let symbols = file_symbols_from_text(&db, file_text);
+        let model = model_from_symbols(&symbols);
+
+        let exhibit_usage = model
+            .elements
+            .values()
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qn| qn.contains("<exhibit:missing.ready"))
+            })
+            .expect("exhibit usage should exist");
+
+        assert!(
+            model.rel_elements_from(&exhibit_usage.id).next().is_none(),
+            "unresolved special-usage target should not fallback to a raw-name relationship"
+        );
+    }
+
+    #[test]
+    fn test_jsonld_special_usage_relationship_uses_generic_target_not_official_slot() {
+        use crate::interchange::{JsonLd, ModelFormat};
+        use serde_json::Value;
+
+        let sysml = r#"
+            package sample {
+                part host {
+                    assume checks.assumed;
+                }
+
+                part checks {
+                    constraint assumed;
+                }
+            }
+        "#;
+        let mut host = AnalysisHost::new();
+        let errors = host.set_file_content("test.sysml", sysml);
+        assert!(errors.is_empty(), "source should parse cleanly: {errors:?}");
+        let analysis = host.analysis();
+        let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
+        let model = model_from_symbols(&symbols);
+        let json_bytes = JsonLd.write(&model).expect("JSON-LD export should succeed");
+        let json: Value = serde_json::from_slice(&json_bytes).expect("JSON-LD should be valid");
+        let items = json
+            .as_array()
+            .expect("special-usage export should serialize as an array");
+
+        let assume_rel = items
+            .iter()
+            .find(|item| {
+                item.get("@type") == Some(&Value::String("RequirementConstraintMembership".into()))
+            })
+            .expect("assume relationship should be present in JSON-LD");
+
+        assert!(
+            assume_rel.get("target").is_some_and(Value::is_object),
+            "special-usage relationship should continue using generic target references"
+        );
+        assert!(
+            assume_rel.get("referencedConstraint").is_none(),
+            "official target slot should not be emitted when source/target already carry the relationship"
+        );
+    }
+
+    #[test]
+    #[should_panic(expected = "RequirementConstraintMembership missing valid kind")]
+    fn test_symbols_from_model_panics_on_requirement_constraint_membership_without_kind() {
+        let mut model = Model::new();
+
+        model.add_element(Element::new("src", ElementKind::ConstraintUsage).with_name("source"));
+        model.add_element(Element::new("tgt", ElementKind::ConstraintUsage).with_name("target"));
+
+        model.add_rel(
+            "rel1",
+            ElementKind::RequirementConstraintMembership,
+            "src",
+            "tgt",
+            Some(ElementId::new("src")),
+        );
+
+        let _ = symbols_from_model(&model);
     }
 
     #[test]

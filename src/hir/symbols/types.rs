@@ -148,6 +148,9 @@ pub(crate) enum InternalUsageKind {
     State,
     Calculation,
     Occurrence,
+    UseCase,
+    AnalysisCase,
+    VerificationCase,
     Flow,
     Transition,
     Accept,
@@ -259,6 +262,10 @@ pub enum RelationshipKind {
     Includes,
     /// `assert` - constraint assertion
     Asserts,
+    /// `assume` - constraint assumption
+    Assumes,
+    /// `require` - constraint requirement
+    Requires,
     /// `verify` - verification
     Verifies,
 }
@@ -277,6 +284,8 @@ impl RelationshipKind {
             RelKind::Exhibits => Some(RelationshipKind::Exhibits),
             RelKind::Includes => Some(RelationshipKind::Includes),
             RelKind::Asserts => Some(RelationshipKind::Asserts),
+            RelKind::Assumes => Some(RelationshipKind::Assumes),
+            RelKind::Requires => Some(RelationshipKind::Requires),
             RelKind::Verifies => Some(RelationshipKind::Verifies),
             // Expression, About, Meta, Crosses are not shown as relationships
             _ => None,
@@ -296,6 +305,8 @@ impl RelationshipKind {
             RelationshipKind::Exhibits => "Exhibits",
             RelationshipKind::Includes => "Includes",
             RelationshipKind::Asserts => "Asserts",
+            RelationshipKind::Assumes => "Assumes",
+            RelationshipKind::Requires => "Requires",
             RelationshipKind::Verifies => "Verifies",
         }
     }
@@ -581,6 +592,25 @@ pub struct HirSymbol {
     pub value: Option<ValueExpression>,
 }
 
+impl HirSymbol {
+    /// Return the terminal type-ref for the main target of special-usage
+    /// relationships that are encoded as the first `RefKind::Other` entry.
+    pub fn special_usage_terminal_ref(&self) -> Option<&TypeRef> {
+        self.type_refs.iter().find_map(|trk| match trk {
+            TypeRefKind::Simple(tr) if tr.kind == RefKind::Other => Some(tr),
+            TypeRefKind::Chain(chain)
+                if chain
+                    .parts
+                    .first()
+                    .is_some_and(|tr| tr.kind == RefKind::Other) =>
+            {
+                chain.parts.last()
+            }
+            _ => None,
+        })
+    }
+}
+
 /// The kind of a symbol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolKind {
@@ -601,6 +631,7 @@ pub enum SymbolKind {
     OccurrenceDefinition,
     UseCaseDefinition,
     AnalysisCaseDefinition,
+    VerificationCaseDefinition,
     ConcernDefinition,
     ViewDefinition,
     ViewpointDefinition,
@@ -634,6 +665,9 @@ pub enum SymbolKind {
     CalculationUsage,
     ReferenceUsage,
     OccurrenceUsage,
+    UseCaseUsage,
+    AnalysisCaseUsage,
+    VerificationCaseUsage,
     FlowConnectionUsage,
     // Relationships
     ExposeRelationship,
@@ -663,9 +697,8 @@ impl SymbolKind {
             Some(DefinitionKind::State) => Self::StateDefinition,
             Some(DefinitionKind::Calc) => Self::CalculationDefinition,
             Some(DefinitionKind::Case) | Some(DefinitionKind::UseCase) => Self::UseCaseDefinition,
-            Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
-                Self::AnalysisCaseDefinition
-            }
+            Some(DefinitionKind::Analysis) => Self::AnalysisCaseDefinition,
+            Some(DefinitionKind::Verification) => Self::VerificationCaseDefinition,
             Some(DefinitionKind::Concern) => Self::ConcernDefinition,
             Some(DefinitionKind::View) => Self::ViewDefinition,
             Some(DefinitionKind::Viewpoint) => Self::ViewpointDefinition,
@@ -707,6 +740,9 @@ impl SymbolKind {
             InternalUsageKind::State => Self::StateUsage,
             InternalUsageKind::Calculation => Self::CalculationUsage,
             InternalUsageKind::Occurrence => Self::OccurrenceUsage,
+            InternalUsageKind::UseCase => Self::UseCaseUsage,
+            InternalUsageKind::AnalysisCase => Self::AnalysisCaseUsage,
+            InternalUsageKind::VerificationCase => Self::VerificationCaseUsage,
             InternalUsageKind::Flow => Self::FlowConnectionUsage,
             InternalUsageKind::Transition => Self::TransitionUsage,
             InternalUsageKind::Accept => Self::ActionUsage,
@@ -742,6 +778,7 @@ impl SymbolKind {
             Self::OccurrenceDefinition => "Occurrence def",
             Self::UseCaseDefinition => "Use case def",
             Self::AnalysisCaseDefinition => "Analysis case def",
+            Self::VerificationCaseDefinition => "Verification case def",
             Self::ConcernDefinition => "Concern def",
             Self::ViewDefinition => "View def",
             Self::ViewpointDefinition => "Viewpoint def",
@@ -774,6 +811,9 @@ impl SymbolKind {
             Self::CalculationUsage => "Calc",
             Self::ReferenceUsage => "Ref",
             Self::OccurrenceUsage => "Occurrence",
+            Self::UseCaseUsage => "Use case",
+            Self::AnalysisCaseUsage => "Analysis",
+            Self::VerificationCaseUsage => "Verification",
             Self::FlowConnectionUsage => "Flow",
             Self::ExposeRelationship => "Expose",
             Self::Import => "Import",
