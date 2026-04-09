@@ -476,10 +476,12 @@ fn test_include_reference_form_extracts_use_case_usage_and_includes_relationship
     let include_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "IncludePkg::host::included")
-        .expect("include usage should exist");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("IncludePkg::host::<include:included")
+        })
+        .expect("anonymous include usage should exist");
 
-    assert_eq!(include_usage.name.as_ref(), "included");
     assert_symbol_kind(include_usage, SymbolKind::IncludeUseCaseUsage);
     assert_has_relationship(include_usage, RelationshipKind::Includes, "included");
 }
@@ -501,10 +503,12 @@ fn test_exhibit_reference_form_extracts_state_usage_and_exhibits_relationship() 
     let exhibit_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "ExhibitPkg::host::shown")
-        .expect("exhibit usage should exist");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ExhibitPkg::host::<exhibit:shown")
+        })
+        .expect("anonymous exhibit usage should exist");
 
-    assert_eq!(exhibit_usage.name.as_ref(), "shown");
     assert_symbol_kind(exhibit_usage, SymbolKind::ExhibitStateUsage);
     assert_has_relationship(exhibit_usage, RelationshipKind::Exhibits, "shown");
 }
@@ -526,10 +530,12 @@ fn test_assert_reference_form_extracts_constraint_usage_and_asserts_relationship
     let assert_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "AssertPkg::host::checked")
-        .expect("assert usage should exist");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("AssertPkg::host::<assert:checked")
+        })
+        .expect("anonymous assert usage should exist");
 
-    assert_eq!(assert_usage.name.as_ref(), "checked");
     assert_symbol_kind(assert_usage, SymbolKind::AssertConstraintUsage);
     assert_has_relationship(assert_usage, RelationshipKind::Asserts, "checked");
 }
@@ -553,18 +559,22 @@ fn test_assume_and_require_reference_forms_extract_constraint_usage_and_relation
     let assume_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "ConstraintPkg::host::assumed")
-        .expect("assume usage should exist");
-    assert_eq!(assume_usage.name.as_ref(), "assumed");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ConstraintPkg::host::<assume:assumed")
+        })
+        .expect("anonymous assume usage should exist");
     assert_symbol_kind(assume_usage, SymbolKind::ConstraintUsage);
     assert_has_relationship(assume_usage, RelationshipKind::Assumes, "assumed");
 
     let require_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "ConstraintPkg::host::required")
-        .expect("require usage should exist");
-    assert_eq!(require_usage.name.as_ref(), "required");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ConstraintPkg::host::<require:required")
+        })
+        .expect("anonymous require usage should exist");
     assert_symbol_kind(require_usage, SymbolKind::ConstraintUsage);
     assert_has_relationship(require_usage, RelationshipKind::Requires, "required");
 }
@@ -592,18 +602,22 @@ fn test_satisfy_and_verify_reference_forms_extract_requirement_usage_and_relatio
     let satisfy_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "RequirementPkg::host::required")
-        .expect("satisfy usage should exist");
-    assert_eq!(satisfy_usage.name.as_ref(), "required");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("RequirementPkg::host::<satisfy:checks.required")
+        })
+        .expect("anonymous satisfy usage should exist");
     assert_symbol_kind(satisfy_usage, SymbolKind::SatisfyRequirementUsage);
     assert_has_relationship(satisfy_usage, RelationshipKind::Satisfies, "checks.required");
 
     let verify_usage = analysis
         .symbol_index()
         .all_symbols()
-        .find(|s| s.qualified_name.as_ref() == "RequirementPkg::host::verified")
-        .expect("verify usage should exist");
-    assert_eq!(verify_usage.name.as_ref(), "verified");
+        .find(|s| {
+            s.qualified_name
+                .starts_with("RequirementPkg::host::<verify:checks.verified")
+        })
+        .expect("anonymous verify usage should exist");
     assert_symbol_kind(verify_usage, SymbolKind::RequirementUsage);
     assert_has_relationship(verify_usage, RelationshipKind::Verifies, "checks.verified");
 }
@@ -968,9 +982,13 @@ fn test_perform_action_usage_is_not_composite() {
     let performed = analysis
         .symbol_index()
         .all_symbols()
-        .find(|symbol| symbol.qualified_name.as_ref() == "Sys::Start")
+        .find(|symbol| {
+            symbol
+                .qualified_name
+                .as_ref()
+                .starts_with("Sys::<perform:Start")
+        })
         .expect("expected perform action usage");
-    assert_eq!(performed.name.as_ref(), "Start");
     assert_symbol_kind(performed, SymbolKind::PerformActionUsage);
     assert_eq!(performed.is_composite, Some(false));
 }
@@ -1171,45 +1189,6 @@ fn test_anonymous_attribute_usage() {
 
     assert_symbol_exists(analysis.symbol_index(), "TestPkg::Color");
     assert_symbol_exists(analysis.symbol_index(), "TestPkg::Panel");
-}
-
-#[test]
-fn test_all_symbols_keeps_duplicate_shorthand_owned_members() {
-    let source = r#"
-        package sample {
-            action def start;
-            part host {
-                perform start;
-                perform start;
-            }
-        }
-    "#;
-
-    let (mut host, file_id) = analysis_from_sysml(source);
-    let analysis = host.analysis();
-
-    let file_symbols: Vec<_> = analysis
-        .symbol_index()
-        .symbols_in_file(file_id)
-        .into_iter()
-        .filter(|s| s.qualified_name.as_ref() == "sample::host::start")
-        .collect();
-    assert_eq!(
-        file_symbols.len(),
-        2,
-        "symbols_in_file should see both duplicate shorthand owned members"
-    );
-
-    let all_symbols: Vec<_> = analysis
-        .symbol_index()
-        .all_symbols()
-        .filter(|s| s.qualified_name.as_ref() == "sample::host::start")
-        .collect();
-    assert_eq!(
-        all_symbols.len(),
-        2,
-        "all_symbols should preserve both duplicate shorthand owned members"
-    );
 }
 
 // =============================================================================

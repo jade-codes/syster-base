@@ -1226,14 +1226,16 @@ mod tests {
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::ExhibitStateUsage
-                    && e.qualified_name.as_deref() == Some("sample::host::ready")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::host::<exhibit:system.ready")
+                    })
             })
             .expect("exhibit usage should exist");
 
         assert_eq!(
-            exhibit_usage.name.as_deref(),
-            Some("ready"),
-            "exhibit shorthand local usage should take its name from the target terminal"
+            exhibit_usage.name.as_deref().map(|name| name.starts_with("<exhibit:system.ready#")),
+            Some(true),
+            "exhibit shorthand local usage should use anonymous helper naming"
         );
 
         let relationship = model
@@ -1277,14 +1279,16 @@ mod tests {
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::AssertConstraintUsage
-                    && e.qualified_name.as_deref() == Some("sample::host::limit")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::host::<assert:checks.limit")
+                    })
             })
             .expect("assert usage should exist");
 
         assert_eq!(
-            assert_usage.name.as_deref(),
-            Some("limit"),
-            "assert shorthand local usage should take its name from the target terminal"
+            assert_usage.name.as_deref().map(|name| name.starts_with("<assert:checks.limit#")),
+            Some(true),
+            "assert shorthand local usage should use anonymous helper naming"
         );
 
         let relationship = model
@@ -1328,7 +1332,11 @@ mod tests {
         let assume_usage = model
             .elements
             .values()
-            .find(|e| e.qualified_name.as_deref() == Some("sample::host::assumed"))
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qname| qname.starts_with("sample::host::<assume:checks.assumed"))
+            })
             .expect("assume usage should exist");
 
         let assume_relationship = model
@@ -1351,7 +1359,9 @@ mod tests {
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::ConstraintUsage
-                    && e.qualified_name.as_deref() == Some("sample::host::required")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::host::<require:checks.required")
+                    })
             })
             .expect("require usage should exist");
 
@@ -1400,14 +1410,19 @@ mod tests {
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::Satisfaction
-                    && e.qualified_name.as_deref() == Some("sample::host::required")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::host::<satisfy:checks.required")
+                    })
             })
             .expect("satisfy usage should exist");
 
         assert_eq!(
-            satisfy_usage.name.as_deref(),
-            Some("required"),
-            "satisfy shorthand local usage should take its name from the target terminal"
+            satisfy_usage
+                .name
+                .as_deref()
+                .map(|name| name.starts_with("<satisfy:checks.required#")),
+            Some(true),
+            "satisfy shorthand local usage should use anonymous helper naming"
         );
 
         let satisfy_relationship = model
@@ -1430,7 +1445,9 @@ mod tests {
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::RequirementUsage
-                    && e.qualified_name.as_deref() == Some("sample::host::verified")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::host::<verify:checks.verified")
+                    })
             })
             .expect("verify usage should exist");
 
@@ -1498,21 +1515,35 @@ mod tests {
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
 
-        let rel_for = |qualified_name: &str, kind: super::super::model::ElementKind| {
+        let rel_for =
+            |qualified_name_prefix: &str, kind: super::super::model::ElementKind| {
             let usage = model
                 .elements
                 .values()
-                .find(|e| e.kind == kind && e.qualified_name.as_deref() == Some(qualified_name))
-                .unwrap_or_else(|| panic!("usage {qualified_name} ({kind:?}) should exist"));
+                .find(|e| {
+                    e.kind == kind
+                        && e.qualified_name
+                            .as_deref()
+                            .is_some_and(|qname| qname.starts_with(qualified_name_prefix))
+                })
+                .unwrap_or_else(|| {
+                    panic!("usage {qualified_name_prefix} ({kind:?}) should exist")
+                });
             model.rel_elements_from(&usage.id)
                 .next()
-                .unwrap_or_else(|| panic!("relationship for {qualified_name} should exist"))
+                .unwrap_or_else(|| {
+                    panic!("relationship for {qualified_name_prefix} should exist")
+                })
         };
 
         let perform_usage = model
             .elements
             .values()
-            .find(|e| e.qualified_name.as_deref() == Some("sample::host::starting"))
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qname| qname.starts_with("sample::host::<perform:actions.starting"))
+            })
             .expect("perform usage should exist");
         assert_eq!(
             perform_usage.kind.xsi_type(),
@@ -1530,7 +1561,11 @@ mod tests {
         let include_usage = model
             .elements
             .values()
-            .find(|e| e.qualified_name.as_deref() == Some("sample::scenario::uc1"))
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qname| qname.starts_with("sample::scenario::<include:system.uc1"))
+            })
             .expect("include usage should exist");
         assert_eq!(include_usage.kind.xsi_type(), "sysml:IncludeUseCaseUsage");
         assert_eq!(
@@ -1544,7 +1579,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::ready",
+                "sample::host::<exhibit:system.ready",
                 super::super::model::ElementKind::ExhibitStateUsage,
             )
             .kind
@@ -1553,7 +1588,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::limit",
+                "sample::host::<assert:checks.limit",
                 super::super::model::ElementKind::AssertConstraintUsage,
             )
             .kind
@@ -1562,7 +1597,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::assumed",
+                "sample::host::<assume:checks.assumed",
                 super::super::model::ElementKind::ConstraintUsage,
             )
             .kind
@@ -1571,7 +1606,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::required",
+                "sample::host::<require:checks.required",
                 super::super::model::ElementKind::ConstraintUsage,
             )
             .kind
@@ -1580,7 +1615,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::satisfied",
+                "sample::host::<satisfy:reqs.satisfied",
                 super::super::model::ElementKind::Satisfaction,
             )
             .kind
@@ -1589,7 +1624,7 @@ mod tests {
         );
         assert_eq!(
             rel_for(
-                "sample::host::verified",
+                "sample::host::<verify:reqs.verified",
                 super::super::model::ElementKind::RequirementUsage,
             )
             .kind
@@ -1598,11 +1633,11 @@ mod tests {
         );
 
         let assume_rel = rel_for(
-            "sample::host::assumed",
+            "sample::host::<assume:checks.assumed",
             super::super::model::ElementKind::ConstraintUsage,
         );
         let require_rel = rel_for(
-            "sample::host::required",
+            "sample::host::<require:checks.required",
             super::super::model::ElementKind::ConstraintUsage,
         );
 
@@ -1735,12 +1770,18 @@ mod tests {
             symbols_from_model(&model).expect("round-trip import should succeed");
 
         let rel_kinds_for =
-            |qualified_name: &str, kind: SymbolKind| -> Vec<HirRelKind> {
+            |qualified_name_prefix: &str, kind: SymbolKind| -> Vec<HirRelKind> {
             roundtrip_symbols
                 .iter()
-                .find(|sym| sym.kind == kind && sym.qualified_name.as_ref() == qualified_name)
+                .find(|sym| {
+                    sym.kind == kind
+                        && sym
+                            .qualified_name
+                            .as_ref()
+                            .starts_with(qualified_name_prefix)
+                })
                 .unwrap_or_else(|| {
-                    panic!("round-trip symbol {qualified_name} ({kind:?}) should exist")
+                    panic!("round-trip symbol {qualified_name_prefix} ({kind:?}) should exist")
                 })
                 .relationships
                 .iter()
@@ -1749,42 +1790,45 @@ mod tests {
             };
 
         assert!(
-            rel_kinds_for("sample::host::starting", SymbolKind::PerformActionUsage)
+            rel_kinds_for("sample::host::<perform:actions.starting", SymbolKind::PerformActionUsage)
                 .contains(&HirRelKind::Performs),
             "perform relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::scenario::uc1", SymbolKind::IncludeUseCaseUsage)
+            rel_kinds_for("sample::scenario::<include:system.uc1", SymbolKind::IncludeUseCaseUsage)
                 .contains(&HirRelKind::Includes),
             "include relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::ready", SymbolKind::ExhibitStateUsage)
+            rel_kinds_for("sample::host::<exhibit:system.ready", SymbolKind::ExhibitStateUsage)
                 .contains(&HirRelKind::Exhibits),
             "exhibit relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::limit", SymbolKind::AssertConstraintUsage)
+            rel_kinds_for("sample::host::<assert:checks.limit", SymbolKind::AssertConstraintUsage)
                 .contains(&HirRelKind::Asserts),
             "assert relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::assumed", SymbolKind::ConstraintUsage)
+            rel_kinds_for("sample::host::<assume:checks.assumed", SymbolKind::ConstraintUsage)
                 .contains(&HirRelKind::Assumes),
             "assume relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::required", SymbolKind::ConstraintUsage)
+            rel_kinds_for("sample::host::<require:checks.required", SymbolKind::ConstraintUsage)
                 .contains(&HirRelKind::Requires),
             "require relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::satisfied", SymbolKind::SatisfyRequirementUsage)
+            rel_kinds_for(
+                "sample::host::<satisfy:reqs.satisfied",
+                SymbolKind::SatisfyRequirementUsage
+            )
                 .contains(&HirRelKind::Satisfies),
             "satisfy relationship should survive round-trip"
         );
         assert!(
-            rel_kinds_for("sample::host::verified", SymbolKind::RequirementUsage)
+            rel_kinds_for("sample::host::<verify:reqs.verified", SymbolKind::RequirementUsage)
                 .contains(&HirRelKind::Verifies),
             "verify relationship should survive round-trip"
         );
@@ -1808,7 +1852,11 @@ mod tests {
         let exhibit_usage = model
             .elements
             .values()
-            .find(|e| e.qualified_name.as_deref() == Some("sample::host::ready"))
+            .find(|e| {
+                e.qualified_name
+                    .as_deref()
+                    .is_some_and(|qname| qname.starts_with("sample::host::<exhibit:missing.ready"))
+            })
             .expect("exhibit usage should exist");
 
         assert!(
@@ -1894,15 +1942,22 @@ mod tests {
             .iter()
             .find(|item| {
                 item.get("@type") == Some(&Value::String("PerformActionUsage".into()))
-                    && item.get("qualifiedName")
-                        == Some(&Value::String("sample::host::starting".into()))
+                    && item
+                        .get("qualifiedName")
+                        .and_then(Value::as_str)
+                        .is_some_and(|qname| {
+                            qname.starts_with("sample::host::<perform:actions.starting")
+                        })
             })
             .expect("perform local usage should be exported as PerformActionUsage");
 
         assert_eq!(
-            perform_usage.get("name"),
-            Some(&Value::String("starting".into())),
-            "perform shorthand local usage should take the target name"
+            perform_usage
+                .get("name")
+                .and_then(Value::as_str)
+                .map(|name| name.starts_with("<perform:actions.starting#")),
+            Some(true),
+            "perform shorthand local usage should keep anonymous helper naming"
         );
 
         let perform_usage_id = perform_usage

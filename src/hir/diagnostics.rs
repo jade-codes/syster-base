@@ -143,6 +143,8 @@ pub mod codes {
     pub const AMBIGUOUS_REFERENCE: &str = "E0002";
     /// Type mismatch.
     pub const TYPE_MISMATCH: &str = "E0003";
+    /// Duplicate definition.
+    pub const DUPLICATE_DEFINITION: &str = "E0004";
     /// Missing required element.
     pub const MISSING_REQUIRED: &str = "E0005";
     /// Invalid specialization relationship.
@@ -174,8 +176,6 @@ pub mod codes {
     pub const DEPRECATED: &str = "W0002";
     /// Naming convention violation.
     pub const NAMING_CONVENTION: &str = "W0003";
-    /// Duplicate owned member name.
-    pub const DUPLICATE_OWNED_MEMBER_NAME: &str = "W0004";
 }
 
 // ============================================================================
@@ -251,30 +251,22 @@ impl DiagnosticCollector {
         self.add(diag);
     }
 
-    /// Add a duplicate owned member name warning.
-    pub fn duplicate_owned_member_name(
-        &mut self,
-        file: FileId,
-        symbol: &HirSymbol,
-        existing: &HirSymbol,
-    ) {
+    /// Add a duplicate definition error.
+    pub fn duplicate_definition(&mut self, file: FileId, symbol: &HirSymbol, existing: &HirSymbol) {
         self.add(
-            Diagnostic::warning(
+            Diagnostic::error(
                 file,
                 symbol.start_line,
                 symbol.start_col,
-                "Duplicate of other owned member name",
+                format!("duplicate definition: '{}' is already defined", symbol.name),
             )
             .with_span(symbol.end_line, symbol.end_col)
-            .with_code(codes::DUPLICATE_OWNED_MEMBER_NAME)
+            .with_code(codes::DUPLICATE_DEFINITION)
             .with_related(RelatedInfo {
                 file: existing.file,
                 line: existing.start_line,
                 col: existing.start_col,
-                message: Arc::from(format!(
-                    "other owned member with the same name '{}'",
-                    existing.name
-                )),
+                message: Arc::from(format!("previous definition of '{}'", existing.name)),
             }),
         );
     }
@@ -690,7 +682,7 @@ impl<'a> SemanticChecker<'a> {
         }
     }
 
-    /// Check for duplicate owned member names within a file.
+    /// Check for duplicate definitions within a file.
     fn check_duplicates(&mut self, file: FileId, symbols: &[&HirSymbol]) {
         use std::collections::HashMap;
 
@@ -718,17 +710,13 @@ impl<'a> SemanticChecker<'a> {
                 .push(symbol);
         }
 
-        // Report duplicates as distinguishability warnings, matching the pilot behavior.
+        // Report duplicates
         for (_qname, defs) in by_qname {
             if defs.len() > 1 {
-                for (i, dup) in defs.iter().enumerate() {
-                    let other = defs
-                        .iter()
-                        .enumerate()
-                        .find_map(|(j, candidate)| (i != j).then_some(*candidate))
-                        .expect("defs.len() > 1 guarantees another duplicate exists");
-                    self.collector
-                        .duplicate_owned_member_name(file, dup, other);
+                // Report error on all but the first definition
+                let first = defs[0];
+                for dup in &defs[1..] {
+                    self.collector.duplicate_definition(file, dup, first);
                 }
             }
         }
