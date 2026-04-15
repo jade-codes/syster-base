@@ -1682,6 +1682,15 @@ mod tests {
 
     #[test]
     fn test_relationship_element_kinds_are_relationships() {
+        // NOTE: `Satisfaction` is intentionally absent here. Despite sharing
+        // a name family with `Verification`, it is classified as a *usage*
+        // kind (see `is_usage` — it is the `SatisfyRequirementUsage` slot
+        // element), not a relationship. The relationship that a `Satisfaction`
+        // carries is a companion `ReferenceSubsetting`. Adding it to
+        // `is_relationship()` would cause Phase-6
+        // `wrap_children_in_memberships` to skip the satisfy slot and break
+        // the HIR-round-trip test
+        // `test_symbols_from_model_roundtrips_explicit_special_usage_relationship_kinds`.
         let kinds = [
             ElementKind::Specialization,
             ElementKind::FeatureTyping,
@@ -1695,7 +1704,6 @@ mod tests {
             ElementKind::FeatureChaining,
             ElementKind::Disjoining,
             ElementKind::Dependency,
-            ElementKind::Satisfaction,
             ElementKind::Verification,
         ];
 

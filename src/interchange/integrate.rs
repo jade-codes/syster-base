@@ -78,10 +78,18 @@ pub fn symbols_from_model(model: &Model) -> Result<Vec<HirSymbol>, InterchangeEr
                     .into()
             });
 
-        // Collect relationships where this element is the source
+        // Collect relationships where this element is the source.
+        //
+        // For the 8 short-form keywords the edge is always a
+        // `ReferenceSubsetting` owned by the slot (the local usage). The
+        // reader discriminates among Performs / Satisfies / Exhibits /
+        // Includes / Asserts / Requires / Assumes / Verifies inside
+        // `relationship_element_to_hir`, using either the slot's ElementKind
+        // (Group A short) or the slot's wrap membership kind (Group B
+        // short — RCM with `kind` property, or Verification).
         let mut relationships = Vec::new();
         for re in model.rel_elements_from(&element.id) {
-            let Some(hir_kind) = relationship_element_to_hir(re, element)? else {
+            let Some(hir_kind) = relationship_element_to_hir(re, element, model)? else {
                 continue;
             };
 
@@ -255,13 +263,18 @@ fn multiplicity_from_range(range: &Element, model: &Model) -> Option<Multiplicit
 }
 
 /// Convert an element-based relationship kind to HIR relationship kind.
+///
+/// Only covers the "plain" kinds whose HirRelKind is unambiguous from the
+/// edge's ElementKind alone. ReferenceSubsetting is intentionally NOT handled
+/// here — it requires source-element / wrap context to disambiguate among
+/// perform/satisfy/exhibit/include/assert/require/assume/verify and plain
+/// `:>` subsetting, which `relationship_element_to_hir` handles directly.
 fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
     match kind {
         ElementKind::Specialization => Some(HirRelKind::Specializes),
         ElementKind::FeatureTyping => Some(HirRelKind::TypedBy),
         ElementKind::Redefinition => Some(HirRelKind::Redefines),
         ElementKind::Subsetting => Some(HirRelKind::Subsets),
-        ElementKind::Verification => Some(HirRelKind::Verifies),
         _ => None,
     }
 }
@@ -269,49 +282,98 @@ fn element_kind_to_hir(kind: ElementKind) -> Option<HirRelKind> {
 fn relationship_element_to_hir(
     element: &Element,
     source_element: &Element,
+    model: &Model,
 ) -> Result<Option<HirRelKind>, InterchangeError> {
+    // Defensive path: an external producer may still emit
+    // RequirementConstraintMembership / Verification directly as an edge
+    // (via `Model::add_rel`). Our own emit never does this — it wraps the
+    // slot and places a ReferenceSubsetting edge underneath — but we still
+    // have to refuse malformed inputs clearly. Validate `kind` on RCM-as-
+    // edge the same way we do on the wrap.
     match element.kind {
-        ElementKind::ReferenceSubsetting
-            if source_element.kind == ElementKind::PerformActionUsage =>
-        {
-            Ok(Some(HirRelKind::Performs))
+        ElementKind::RequirementConstraintMembership => {
+            return match element.properties.get("kind") {
+                Some(PropertyValue::String(k)) if k.as_ref() == "assumption" => {
+                    Ok(Some(HirRelKind::Assumes))
+                }
+                Some(PropertyValue::String(k)) if k.as_ref() == "requirement" => {
+                    Ok(Some(HirRelKind::Requires))
+                }
+                Some(PropertyValue::String(k)) => Err(InterchangeError::invalid_attribute(
+                    format!(
+                        "RequirementConstraintMembership missing valid kind: expected assumption or requirement, got {k}"
+                    ),
+                )),
+                _ => Err(InterchangeError::invalid_attribute(
+                    "RequirementConstraintMembership missing valid kind",
+                )),
+            };
         }
-        ElementKind::ReferenceSubsetting
-            if source_element.kind == ElementKind::IncludeUseCaseUsage =>
-        {
-            Ok(Some(HirRelKind::Includes))
+        ElementKind::Verification => {
+            return Ok(Some(HirRelKind::Verifies));
         }
-        ElementKind::ReferenceSubsetting
-            if source_element.kind == ElementKind::ExhibitStateUsage =>
-        {
-            Ok(Some(HirRelKind::Exhibits))
-        }
-        ElementKind::ReferenceSubsetting
-            if source_element.kind == ElementKind::AssertConstraintUsage =>
-        {
-            Ok(Some(HirRelKind::Asserts))
-        }
-        ElementKind::ReferenceSubsetting if source_element.kind == ElementKind::Satisfaction => {
-            Ok(Some(HirRelKind::Satisfies))
-        }
-        ElementKind::RequirementConstraintMembership => match element.properties.get("kind") {
-            Some(PropertyValue::String(kind)) if kind.as_ref() == "assumption" => {
-                Ok(Some(HirRelKind::Assumes))
-            }
-            Some(PropertyValue::String(kind)) if kind.as_ref() == "requirement" => {
-                Ok(Some(HirRelKind::Requires))
-            }
-            Some(PropertyValue::String(kind)) => Err(InterchangeError::invalid_attribute(
-                format!(
-                    "RequirementConstraintMembership missing valid kind: expected assumption or requirement, got {kind}"
-                ),
-            )),
-            _ => Err(InterchangeError::invalid_attribute(
-                "RequirementConstraintMembership missing valid kind",
-            )),
-        },
-        _ => Ok(element_kind_to_hir(element.kind)),
+        _ => {}
     }
+
+    // All 8 short-form keywords emit their edge as ReferenceSubsetting. The
+    // specific HirRelKind is recovered from (a) the source element's kind —
+    // PerformActionUsage / IncludeUseCaseUsage / etc. disambiguate Group A
+    // short — or (b) the source element's owner kind, for Group B short:
+    // slot.owner == RCM → Requires/Assumes (discriminated by the wrap's
+    // `kind` property); slot.owner == Verification → Verifies.
+    if element.kind == ElementKind::ReferenceSubsetting {
+        // Check slot.owner for the specialized-wrap case first. Both RCM and
+        // Verification wraps are built by
+        // `emit_group_b_short_specialized_membership` with the slot as the
+        // sole `ownedMember` and `kind=requirement/assumption` on RCM.
+        if let Some(owner) = source_element
+            .owner
+            .as_ref()
+            .and_then(|oid| model.elements.get(oid))
+        {
+            match owner.kind {
+                ElementKind::RequirementConstraintMembership => {
+                    return match owner.properties.get("kind") {
+                        Some(PropertyValue::String(k)) if k.as_ref() == "assumption" => {
+                            Ok(Some(HirRelKind::Assumes))
+                        }
+                        Some(PropertyValue::String(k)) if k.as_ref() == "requirement" => {
+                            Ok(Some(HirRelKind::Requires))
+                        }
+                        Some(PropertyValue::String(k)) => {
+                            Err(InterchangeError::invalid_attribute(format!(
+                                "RequirementConstraintMembership missing valid kind: expected assumption or requirement, got {k}"
+                            )))
+                        }
+                        _ => Err(InterchangeError::invalid_attribute(
+                            "RequirementConstraintMembership missing valid kind",
+                        )),
+                    };
+                }
+                ElementKind::Verification => {
+                    return Ok(Some(HirRelKind::Verifies));
+                }
+                _ => { /* fall through to source-kind discrimination */ }
+            }
+        }
+
+        // Group A short — discriminate by the usage kind of the slot that
+        // owns this ReferenceSubsetting edge.
+        return Ok(match source_element.kind {
+            ElementKind::PerformActionUsage => Some(HirRelKind::Performs),
+            ElementKind::IncludeUseCaseUsage => Some(HirRelKind::Includes),
+            ElementKind::ExhibitStateUsage => Some(HirRelKind::Exhibits),
+            ElementKind::AssertConstraintUsage => Some(HirRelKind::Asserts),
+            ElementKind::Satisfaction => Some(HirRelKind::Satisfies),
+            // A plain ReferenceSubsetting (e.g. `:> feat` on a usage or
+            // `redefines x` via specialization pathways) has no Group A/B
+            // short-form provenance — leave it as `None` so the caller
+            // doesn't synthesize a spurious HirRelationship.
+            _ => None,
+        });
+    }
+
+    Ok(element_kind_to_hir(element.kind))
 }
 
 /// Convert interchange `ElementKind` to HIR `SymbolKind`.
@@ -694,7 +756,44 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                     ext_id
                 });
 
-                // Use add_rel to create the relationship element directly
+                // Group B · short forms (require / assume / verify) need the
+                // slot pre-wrapped in a specialized RCM / Verification
+                // membership so the wrap's @type (and for RCM, its `kind`
+                // property) carries the KerML discrimination that can't live
+                // on the edge alone (all 8 short forms now emit the edge as
+                // plain ReferenceSubsetting). Dispatch when we know the
+                // slot's enclosing namespace (needed as the wrap's owner).
+                let needs_specialized_wrap = matches!(
+                    hir_rel.kind,
+                    HirRelKind::Requires | HirRelKind::Assumes | HirRelKind::Verifies
+                );
+                if needs_specialized_wrap {
+                    if let Some(parent_owner_id) = owner.as_ref() {
+                        emit_group_b_short_specialized_membership(
+                            &mut model,
+                            &hir_rel.kind,
+                            &id,
+                            &target_id,
+                            parent_owner_id,
+                            &rel_id,
+                        );
+                        continue;
+                    }
+                    // No known parent owner: fall through to the plain
+                    // single-element path so we don't silently lose the
+                    // relationship. This branch is not expected for
+                    // well-formed short-form usages (the slot always has an
+                    // enclosing RequirementUsage / RequirementDefinition),
+                    // and the caller will see a plain ReferenceSubsetting
+                    // without the RCM/RVM wrap — i.e. the reader will
+                    // decode it as a generic ReferenceSubsetting (None) not
+                    // as Requires/Assumes/Verifies. Acceptable for the
+                    // degenerate case.
+                }
+
+                // Plain single-element emit (all other relationships,
+                // including the 5 Group A short forms whose slot gets wrapped
+                // by Phase-6 in a default FeatureMembership).
                 model.add_rel(
                     rel_id.clone(),
                     ek,
@@ -715,17 +814,6 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
                         rel_element.properties.insert(
                             Arc::from(attr),
                             PropertyValue::Reference(target_id.clone()),
-                        );
-                    }
-                    if matches!(hir_rel.kind, HirRelKind::Assumes | HirRelKind::Requires) {
-                        let kind = match hir_rel.kind {
-                            HirRelKind::Assumes => "assumption",
-                            HirRelKind::Requires => "requirement",
-                            _ => unreachable!(),
-                        };
-                        rel_element.properties.insert(
-                            Arc::from("kind"),
-                            PropertyValue::String(Arc::from(kind)),
                         );
                     }
                 }
@@ -792,6 +880,111 @@ pub fn model_from_symbols(symbols: &[HirSymbol]) -> Model {
     model
 }
 
+/// Pre-wrap a `require` / `assume` / `verify` slot in the correct specialized
+/// membership and emit its inner `ReferenceSubsetting` edge.
+///
+/// All 8 short-form keywords (perform/satisfy/exhibit/include/assert/require/
+/// assume/verify) share the same edge shape — a single `ReferenceSubsetting`
+/// from `slot` to `external`, owned by the slot. For 5 of them (Group A short)
+/// Phase-6 `wrap_children_in_memberships` wraps the slot in a plain
+/// `FeatureMembership` with only `owner` + `ownedMember` set. For the 3 that
+/// need KerML-level specialization (Group B short) we pre-wrap here so the
+/// wrap element carries the right `@type` — and, for require/assume, a `kind`
+/// property — and so Phase-6 skips the slot (its owner is now a relationship
+/// element per `ElementKind::is_relationship`).
+///
+/// The wrap carries only: `owner`, `ownedMember[slot]`, and (for RCM) a
+/// `kind` string property. Deliberately NOT emitted: `referencedConstraint`,
+/// `referencedRequirement`, `ownedConstraint`, `memberName`,
+/// `ownedMemberName`, `owningType`, `owningRelatedElement`,
+/// `membershipOwningNamespace`, `ownedRelatedElement`, `relatedElement`, or
+/// any of the OMG-API-style aliases. Consumers derive those from the graph
+/// skeleton (edge + wrap + slot) per the original author's
+/// "structural only, aliases are consumer-side" philosophy.
+///
+/// Wrap kind table:
+/// - `Requires` → `RequirementConstraintMembership`, `kind="requirement"`
+/// - `Assumes`  → `RequirementConstraintMembership`, `kind="assumption"`
+/// - `Verifies` → `Verification` (serialized as `RequirementVerificationMembership`)
+///
+/// ID conventions:
+/// - wrap id = `{slot_id}-m` (matches the Phase-6 auto-wrap convention so
+///   readers can't tell pre-wrapped apart from auto-wrapped by id alone)
+/// - edge id = `rel_{N}` using the pre-allocated id passed by the caller
+fn emit_group_b_short_specialized_membership(
+    model: &mut Model,
+    hir_rel_kind: &HirRelKind,
+    slot_id: &ElementId,
+    target_id: &ElementId,
+    parent_owner_id: &ElementId,
+    pre_allocated_rel_id: &ElementId,
+) {
+    use crate::interchange::model::Element;
+
+    let (wrap_kind, kind_prop) = match hir_rel_kind {
+        HirRelKind::Requires => (
+            ElementKind::RequirementConstraintMembership,
+            Some("requirement"),
+        ),
+        HirRelKind::Assumes => (
+            ElementKind::RequirementConstraintMembership,
+            Some("assumption"),
+        ),
+        HirRelKind::Verifies => (ElementKind::Verification, None),
+        _ => unreachable!(
+            "emit_group_b_short_specialized_membership only dispatches for Requires/Assumes/Verifies"
+        ),
+    };
+
+    // (1) Build the specialized membership wrap. Mirrors the Phase-6
+    // `-m` suffix convention so the graph shape is indistinguishable from
+    // an auto-wrapped FeatureMembership except for `@type` and `kind`.
+    let wrap_id = ElementId::new(format!("{}-m", slot_id.as_str()));
+    let mut wrap = Element::new(wrap_id.clone(), wrap_kind);
+    wrap.owner = Some(parent_owner_id.clone());
+    wrap.owned_elements.push(slot_id.clone());
+    if let Some(kind_str) = kind_prop {
+        wrap.properties.insert(
+            Arc::from("kind"),
+            PropertyValue::String(Arc::from(kind_str)),
+        );
+    }
+    model.add_element(wrap);
+
+    // (2) Re-seat slot.owner → wrap, and swap slot → wrap in parent's
+    // owned_elements. This triggers the Phase-6 skip via
+    // `ElementKind::is_relationship()` on the slot's owner (RCM/Verification
+    // are both `is_relationship() == true`).
+    if let Some(slot) = model.get_mut(slot_id) {
+        slot.owner = Some(wrap_id.clone());
+    }
+    if let Some(parent) = model.get_mut(parent_owner_id) {
+        if let Some(pos) = parent.owned_elements.iter().position(|eid| eid == slot_id) {
+            parent.owned_elements[pos] = wrap_id.clone();
+        } else {
+            parent.owned_elements.push(wrap_id.clone());
+        }
+    }
+
+    // (3) Emit the ReferenceSubsetting edge on the slot → external. Shape
+    // matches the 5 Group A short keywords exactly: source/target/owner only.
+    // The reader (`symbols_from_model`) tells this edge's HirRelKind apart
+    // from a plain ReferenceSubsetting by inspecting the slot's owner kind
+    // (RCM → Requires/Assumes via `kind` prop, Verification → Verifies).
+    model.add_rel(
+        pre_allocated_rel_id.clone(),
+        ElementKind::ReferenceSubsetting,
+        slot_id.clone(),
+        target_id.clone(),
+        Some(slot_id.clone()),
+    );
+    if let Some(slot) = model.get_mut(slot_id) {
+        if !slot.owned_elements.contains(pre_allocated_rel_id) {
+            slot.owned_elements.push(pre_allocated_rel_id.clone());
+        }
+    }
+}
+
 /// Convert HIR RelationshipKind to interchange ElementKind.
 fn hir_relationship_kind_to_element_kind(
     kind: &crate::hir::RelationshipKind,
@@ -808,9 +1001,14 @@ fn hir_relationship_kind_to_element_kind(
         HirRelKind::Exhibits => Some(ElementKind::ReferenceSubsetting),
         HirRelKind::Includes => Some(ElementKind::ReferenceSubsetting),
         HirRelKind::Asserts => Some(ElementKind::ReferenceSubsetting),
-        HirRelKind::Assumes => Some(ElementKind::RequirementConstraintMembership),
-        HirRelKind::Requires => Some(ElementKind::RequirementConstraintMembership),
-        HirRelKind::Verifies => Some(ElementKind::Verification),
+        // require/assume/verify all emit the edge as ReferenceSubsetting —
+        // architecturally identical to perform/satisfy/exhibit/include/assert.
+        // The KerML specialization (RCM / RVM) lives on the *wrap* membership,
+        // built separately by `emit_group_b_short_specialized_membership` using
+        // `hir_rel.kind` as the source of truth, not on the edge's ElementKind.
+        HirRelKind::Assumes => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Requires => Some(ElementKind::ReferenceSubsetting),
+        HirRelKind::Verifies => Some(ElementKind::ReferenceSubsetting),
     }
 }
 
@@ -1119,20 +1317,23 @@ mod tests {
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
 
+        // Slot qname under the anon-scope mangling contract
+        // (`hir/symbols/context.rs::next_anon_scope`, authored 2026-02-17):
+        // `<{rel_prefix}{target}#{counter}@L{line}>`. A prior codex attempt to
+        // have short-form slots inherit their terminal target's short name
+        // was reverted (commit d170dc0 "Revert shorthand naming ..."); this
+        // test's assertions are realigned to the live mangled contract, in
+        // line with sibling tests at lines ~2241/2246.
         let perform_usage = model
             .elements
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::PerformActionUsage
-                    && e.qualified_name.as_deref() == Some("sample::car::engine::gen_start_cmd")
+                    && e.qualified_name.as_deref().is_some_and(|qname| {
+                        qname.starts_with("sample::car::engine::<perform:starting.gen_start_cmd")
+                    })
             })
             .expect("perform usage should exist");
-
-        assert_eq!(
-            perform_usage.name.as_deref(),
-            Some("gen_start_cmd"),
-            "perform shorthand local usage should take its name from the target terminal"
-        );
 
         let relationship = model
             .rel_elements_from(&perform_usage.id)
@@ -1170,20 +1371,17 @@ mod tests {
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
 
+        // Mangled anon-scope contract — see perform-chain sibling test above.
         let include_usage = model
             .elements
             .values()
             .find(|e| {
                 e.kind == super::super::model::ElementKind::IncludeUseCaseUsage
-                    && e.qualified_name.as_deref() == Some("sample::host::uc1")
+                    && e.qualified_name
+                        .as_deref()
+                        .is_some_and(|qname| qname.starts_with("sample::host::<include:system.uc1"))
             })
             .expect("include usage should exist");
-
-        assert_eq!(
-            include_usage.name.as_deref(),
-            Some("uc1"),
-            "include shorthand local usage should take its name from the target terminal"
-        );
 
         let relationship = model
             .rel_elements_from(&include_usage.id)
@@ -1309,6 +1507,13 @@ mod tests {
 
     #[test]
     fn test_model_from_symbols_assume_and_require_chain_relationships_use_terminal_target() {
+        // Minimal Group B · short shape (post cleanup per 2026-04-15 plan):
+        //   - slot ConstraintUsage (anon-named via naming helper)
+        //   - wrap: RequirementConstraintMembership with `kind=requirement|assumption`
+        //   - edge: single ReferenceSubsetting from slot → terminal external
+        // No `referencedConstraint` / `ownedConstraint` / `ownedMemberName` /
+        // etc. aliases on the wrap — those were part of the OMG-API pilot
+        // bloat that we reverted.
         let sysml = r#"
             package sample {
                 part host {
@@ -1329,55 +1534,70 @@ mod tests {
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
 
-        let assume_usage = model
-            .elements
-            .values()
-            .find(|e| {
-                e.qualified_name
-                    .as_deref()
-                    .is_some_and(|qname| qname.starts_with("sample::host::<assume:checks.assumed"))
-            })
-            .expect("assume usage should exist");
+        let assert_b_short_rcm = |slot_qname_prefix: &str,
+                                  expected_kind: &str,
+                                  expected_terminal: &str| {
+            let slot = model
+                .elements
+                .values()
+                .find(|e| {
+                    e.qualified_name
+                        .as_deref()
+                        .is_some_and(|qname| qname.starts_with(slot_qname_prefix))
+                })
+                .unwrap_or_else(|| {
+                    panic!("slot for {slot_qname_prefix} should exist")
+                });
 
-        let assume_relationship = model
-            .rel_elements_from(&assume_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::RequirementConstraintMembership)
-            .expect("assume relationship should exist");
+            // (A) slot.owner → RCM.
+            let rcm_id = slot
+                .owner
+                .as_ref()
+                .unwrap_or_else(|| panic!("slot {slot_qname_prefix} should have an owner"));
+            let rcm = model
+                .elements
+                .get(rcm_id)
+                .unwrap_or_else(|| panic!("slot owner {rcm_id:?} should exist"));
+            assert_eq!(
+                rcm.kind,
+                super::super::model::ElementKind::RequirementConstraintMembership,
+                "slot {slot_qname_prefix} should be owned by an RCM"
+            );
 
-        let assume_target = model
-            .rel_target(assume_relationship)
-            .expect("assume relationship should resolve to a target element");
+            // (B) RCM carries `kind` property distinguishing requirement/assumption.
+            match rcm.properties.get("kind") {
+                Some(PropertyValue::String(k)) => assert_eq!(k.as_ref(), expected_kind),
+                other => panic!(
+                    "RCM for {slot_qname_prefix} should have kind={expected_kind}, got {other:?}"
+                ),
+            };
 
-        assert_eq!(
-            assume_target.qualified_name.as_deref(),
-            Some("sample::checks::assumed"),
-            "assume chain relationship should target the terminal constraint usage"
+            // (C) Slot has a single ReferenceSubsetting edge → terminal external.
+            let rs = model
+                .rel_elements_from(&slot.id)
+                .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+                .unwrap_or_else(|| {
+                    panic!("slot {slot_qname_prefix} should have a ReferenceSubsetting")
+                });
+            let rs_target = model
+                .rel_target(rs)
+                .unwrap_or_else(|| panic!("ReferenceSubsetting should resolve a target"));
+            assert_eq!(
+                rs_target.qualified_name.as_deref(),
+                Some(expected_terminal),
+                "slot's ReferenceSubsetting should target the terminal constraint"
+            );
+        };
+
+        assert_b_short_rcm(
+            "sample::host::<assume:checks.assumed",
+            "assumption",
+            "sample::checks::assumed",
         );
-
-        let require_usage = model
-            .elements
-            .values()
-            .find(|e| {
-                e.kind == super::super::model::ElementKind::ConstraintUsage
-                    && e.qualified_name.as_deref().is_some_and(|qname| {
-                        qname.starts_with("sample::host::<require:checks.required")
-                    })
-            })
-            .expect("require usage should exist");
-
-        let require_relationship = model
-            .rel_elements_from(&require_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::RequirementConstraintMembership)
-            .expect("require relationship should exist");
-
-        let require_target = model
-            .rel_target(require_relationship)
-            .expect("require relationship should resolve to a target element");
-
-        assert_eq!(
-            require_target.qualified_name.as_deref(),
-            Some("sample::checks::required"),
-            "require chain relationship should target the terminal constraint usage"
+        assert_b_short_rcm(
+            "sample::host::<require:checks.required",
+            "requirement",
+            "sample::checks::required",
         );
     }
 
@@ -1440,6 +1660,12 @@ mod tests {
             "satisfy chain relationship should target the terminal requirement usage"
         );
 
+        // `verify` is a Group B · short form. Minimal shape post-cleanup:
+        //   - slot (RequirementUsage here since `verify` of a requirement)
+        //   - wrap: Verification membership (serialized as
+        //     RequirementVerificationMembership), owner=parent, no extra
+        //     properties
+        //   - edge: single ReferenceSubsetting from slot → terminal external
         let verify_usage = model
             .elements
             .values()
@@ -1451,19 +1677,31 @@ mod tests {
             })
             .expect("verify usage should exist");
 
-        let verify_relationship = model
-            .rel_elements_from(&verify_usage.id)
-            .find(|rel| rel.kind == super::super::model::ElementKind::Verification)
-            .expect("verify relationship should exist");
-
-        let verify_target = model
-            .rel_target(verify_relationship)
-            .expect("verify relationship should resolve to a target element");
-
+        let verify_wrapper_id = verify_usage
+            .owner
+            .as_ref()
+            .expect("verify slot should have an owner");
+        let verify_wrapper = model
+            .elements
+            .get(verify_wrapper_id)
+            .expect("verify slot's owner should exist");
         assert_eq!(
-            verify_target.qualified_name.as_deref(),
+            verify_wrapper.kind,
+            super::super::model::ElementKind::Verification,
+            "verify slot should be owned by a Verification (RequirementVerificationMembership) element"
+        );
+
+        let verify_rs = model
+            .rel_elements_from(&verify_usage.id)
+            .find(|rel| rel.kind == super::super::model::ElementKind::ReferenceSubsetting)
+            .expect("verify slot should carry a ReferenceSubsetting");
+        let verify_rs_target = model
+            .rel_target(verify_rs)
+            .expect("ReferenceSubsetting should resolve target");
+        assert_eq!(
+            verify_rs_target.qualified_name.as_deref(),
             Some("sample::checks::verified"),
-            "verify chain relationship should target the terminal requirement usage"
+            "verify slot's ReferenceSubsetting should target the terminal requirement"
         );
     }
 
@@ -1595,22 +1833,52 @@ mod tests {
             .xsi_type(),
             "sysml:ReferenceSubsetting"
         );
-        assert_eq!(
-            rel_for(
-                "sample::host::<assume:checks.assumed",
-                super::super::model::ElementKind::ConstraintUsage,
-            )
-            .kind
-            .xsi_type(),
-            "sysml:RequirementConstraintMembership"
+        // Group B · short forms (`assume` / `require` / `verify`) emit a
+        // specialized membership as the *outer* wrap of the slot (OMG pilot
+        // shape); the slot's companion relationship is a ReferenceSubsetting.
+        // The specialized membership therefore appears as the slot's owner,
+        // not in `rel_elements_from(slot)`. See the helper
+        // `emit_group_b_short_specialized_membership` and
+        // `docs/conformance/2026-04-15-syster-group-b-short-fix-plan-v2.md`.
+        let b_short_wrapper = |slot_qname_prefix: &str,
+                               slot_kind: super::super::model::ElementKind|
+         -> &Element {
+            let slot = model
+                .elements
+                .values()
+                .find(|e| {
+                    e.kind == slot_kind
+                        && e.qualified_name
+                            .as_deref()
+                            .is_some_and(|qname| qname.starts_with(slot_qname_prefix))
+                })
+                .unwrap_or_else(|| {
+                    panic!("slot {slot_qname_prefix} ({slot_kind:?}) should exist")
+                });
+            let owner_id = slot
+                .owner
+                .as_ref()
+                .unwrap_or_else(|| panic!("slot {slot_qname_prefix} should have an owner"));
+            model
+                .elements
+                .get(owner_id)
+                .unwrap_or_else(|| panic!("slot owner {owner_id:?} should exist"))
+        };
+
+        let assume_rel = b_short_wrapper(
+            "sample::host::<assume:checks.assumed",
+            super::super::model::ElementKind::ConstraintUsage,
         );
         assert_eq!(
-            rel_for(
-                "sample::host::<require:checks.required",
-                super::super::model::ElementKind::ConstraintUsage,
-            )
-            .kind
-            .xsi_type(),
+            assume_rel.kind.xsi_type(),
+            "sysml:RequirementConstraintMembership"
+        );
+        let require_rel = b_short_wrapper(
+            "sample::host::<require:checks.required",
+            super::super::model::ElementKind::ConstraintUsage,
+        );
+        assert_eq!(
+            require_rel.kind.xsi_type(),
             "sysml:RequirementConstraintMembership"
         );
         assert_eq!(
@@ -1622,23 +1890,13 @@ mod tests {
             .xsi_type(),
             "sysml:ReferenceSubsetting"
         );
+        let verify_rel = b_short_wrapper(
+            "sample::host::<verify:reqs.verified",
+            super::super::model::ElementKind::RequirementUsage,
+        );
         assert_eq!(
-            rel_for(
-                "sample::host::<verify:reqs.verified",
-                super::super::model::ElementKind::RequirementUsage,
-            )
-            .kind
-            .xsi_type(),
+            verify_rel.kind.xsi_type(),
             "sysml:RequirementVerificationMembership"
-        );
-
-        let assume_rel = rel_for(
-            "sample::host::<assume:checks.assumed",
-            super::super::model::ElementKind::ConstraintUsage,
-        );
-        let require_rel = rel_for(
-            "sample::host::<require:checks.required",
-            super::super::model::ElementKind::ConstraintUsage,
         );
 
         assert_eq!(
@@ -1866,18 +2124,43 @@ mod tests {
     }
 
     #[test]
-    fn test_jsonld_special_usage_relationship_uses_generic_target_not_official_slot() {
-        use crate::interchange::{JsonLd, ModelFormat};
-        use serde_json::Value;
-
+    fn test_group_b_short_minimal_wrap_shape() {
+        // Pins the minimal structural contract for all three Group B · short
+        // keywords (`require`, `assume`, `verify`) post-cleanup.
+        //
+        // For each keyword the emitter must produce:
+        //   (A) slot (usage) owned by a specialized membership wrap:
+        //       - require/assume → RequirementConstraintMembership (RCM)
+        //       - verify         → Verification (serialized as RVM)
+        //   (B) wrap.owner = enclosing RequirementUsage/RequirementDefinition
+        //   (C) wrap carries ONLY: `owner`, `ownedMember=[slot]`, and for RCM
+        //       a `kind="requirement"|"assumption"` property. NO
+        //       `referencedConstraint`, `referencedRequirement`,
+        //       `ownedConstraint`, `ownedMemberName`, `memberName`,
+        //       `membershipOwningNamespace`, `owningType`,
+        //       `owningRelatedElement`, `ownedRelatedElement`,
+        //       `relatedElement`.
+        //   (D) slot carries a single ReferenceSubsetting edge to external:
+        //       - source=[slot], target=[external], owner=slot
+        //       - NO aliases (`subsettedFeature`, `referencedFeature`,
+        //         `general`, `specific`, `subsettingFeature`,
+        //         `referencingFeature`, `owningType`, `owningFeature`,
+        //         `owningRelatedElement`, `relatedElement`).
+        //   (E) parent.owned_elements contains the wrap (not the slot
+        //       directly — Phase-6 skip condition).
+        use super::super::model::{ElementKind, PropertyValue};
         let sysml = r#"
             package sample {
                 part host {
                     assume checks.assumed;
+                    require checks.required;
+                    verify checks.verified;
                 }
 
                 part checks {
                     constraint assumed;
+                    constraint required;
+                    requirement verified;
                 }
             }
         "#;
@@ -1887,27 +2170,175 @@ mod tests {
         let analysis = host.analysis();
         let symbols: Vec<_> = analysis.symbol_index().all_symbols().cloned().collect();
         let model = model_from_symbols(&symbols);
-        let json_bytes = JsonLd.write(&model).expect("JSON-LD export should succeed");
-        let json: Value = serde_json::from_slice(&json_bytes).expect("JSON-LD should be valid");
-        let items = json
-            .as_array()
-            .expect("special-usage export should serialize as an array");
 
-        let assume_rel = items
-            .iter()
-            .find(|item| {
-                item.get("@type") == Some(&Value::String("RequirementConstraintMembership".into()))
-            })
-            .expect("assume relationship should be present in JSON-LD");
+        let parent = model
+            .elements
+            .values()
+            .find(|e| e.qualified_name.as_deref() == Some("sample::host"))
+            .expect("parent `sample::host` should exist");
 
-        assert!(
-            assume_rel.get("target").is_some_and(Value::is_object),
-            "special-usage relationship should continue using generic target references"
-        );
-        assert!(
-            assume_rel.get("referencedConstraint").is_none(),
-            "official target slot should not be emitted when source/target already carry the relationship"
-        );
+        // (slot prefix, external qname, wrap kind, kind property or None for Verification)
+        let cases: &[(&str, &str, ElementKind, Option<&str>)] = &[
+            (
+                "sample::host::<assume:checks.assumed",
+                "sample::checks::assumed",
+                ElementKind::RequirementConstraintMembership,
+                Some("assumption"),
+            ),
+            (
+                "sample::host::<require:checks.required",
+                "sample::checks::required",
+                ElementKind::RequirementConstraintMembership,
+                Some("requirement"),
+            ),
+            (
+                "sample::host::<verify:checks.verified",
+                "sample::checks::verified",
+                ElementKind::Verification,
+                None,
+            ),
+        ];
+
+        // Properties that must NOT appear anywhere on wrap or edge — these are
+        // the 20+ OMG-API-pilot aliases we reverted.
+        const FORBIDDEN_WRAP_PROPS: &[&str] = &[
+            "referencedConstraint",
+            "referencedRequirement",
+            "ownedConstraint",
+            "ownedMemberName",
+            "memberName",
+            "membershipOwningNamespace",
+            "owningType",
+            "owningRelatedElement",
+            "ownedRelatedElement",
+            "relatedElement",
+        ];
+        const FORBIDDEN_EDGE_PROPS: &[&str] = &[
+            "subsettedFeature",
+            "referencedFeature",
+            "general",
+            "specific",
+            "subsettingFeature",
+            "referencingFeature",
+            "owningType",
+            "owningFeature",
+            "owningRelatedElement",
+            "relatedElement",
+        ];
+
+        for (slot_qname_prefix, external_qname, carrier_kind, kind_prop) in cases.iter() {
+            let slot = model
+                .elements
+                .values()
+                .find(|e| {
+                    e.qualified_name
+                        .as_deref()
+                        .is_some_and(|qname| qname.starts_with(slot_qname_prefix))
+                })
+                .unwrap_or_else(|| panic!("slot for {slot_qname_prefix} should exist"));
+            let external = model
+                .elements
+                .values()
+                .find(|e| e.qualified_name.as_deref() == Some(external_qname))
+                .unwrap_or_else(|| panic!("external {external_qname} should exist"));
+
+            // (A) slot.owner → wrap of expected kind.
+            let wrap_id = slot
+                .owner
+                .as_ref()
+                .unwrap_or_else(|| panic!("slot {slot_qname_prefix} must have an owner"));
+            let wrap = model
+                .elements
+                .get(wrap_id)
+                .unwrap_or_else(|| panic!("wrap {wrap_id:?} must exist"));
+            assert_eq!(
+                wrap.kind, *carrier_kind,
+                "slot {slot_qname_prefix} must be owned by {carrier_kind:?}"
+            );
+
+            // (B) wrap.owner = parent.
+            assert_eq!(
+                wrap.owner.as_ref(),
+                Some(&parent.id),
+                "wrap for {slot_qname_prefix} must be owned by the enclosing parent"
+            );
+
+            // (C) wrap carries `kind` iff RCM; no other property aliases.
+            match (kind_prop, wrap.properties.get("kind")) {
+                (Some(expected), Some(PropertyValue::String(k))) => {
+                    assert_eq!(
+                        k.as_ref(),
+                        *expected,
+                        "RCM.kind for {slot_qname_prefix} must equal {expected:?}"
+                    );
+                }
+                (Some(expected), other) => panic!(
+                    "RCM for {slot_qname_prefix} must carry kind={expected:?}, got {other:?}"
+                ),
+                (None, None) => {}
+                (None, Some(other)) => panic!(
+                    "Verification for {slot_qname_prefix} must NOT carry kind property, got {other:?}"
+                ),
+            }
+            for prop in FORBIDDEN_WRAP_PROPS {
+                assert!(
+                    wrap.properties.get(*prop).is_none(),
+                    "wrap for {slot_qname_prefix} must NOT carry {prop} (OMG-API alias)"
+                );
+            }
+
+            // wrap.ownedMember must be exactly [slot] — the wrap IS the
+            // membership, its sole member is the slot.
+            assert_eq!(
+                wrap.owned_elements.as_slice(),
+                &[slot.id.clone()],
+                "wrap.owned_elements for {slot_qname_prefix} must be exactly [slot]"
+            );
+
+            // (D) slot has exactly one ReferenceSubsetting edge → external,
+            // with no aliases.
+            let edges: Vec<_> = model
+                .rel_elements_from(&slot.id)
+                .filter(|rel| rel.kind == ElementKind::ReferenceSubsetting)
+                .collect();
+            assert_eq!(
+                edges.len(),
+                1,
+                "slot {slot_qname_prefix} must have exactly one ReferenceSubsetting edge"
+            );
+            let rs = edges[0];
+            assert_eq!(
+                rs.source(),
+                Some(&slot.id),
+                "RS for {slot_qname_prefix} must have source=[slot]"
+            );
+            assert_eq!(
+                rs.target(),
+                Some(&external.id),
+                "RS for {slot_qname_prefix} must have target=[external]"
+            );
+            assert_eq!(
+                rs.owner.as_ref(),
+                Some(&slot.id),
+                "RS for {slot_qname_prefix} must be owned by the slot"
+            );
+            for prop in FORBIDDEN_EDGE_PROPS {
+                assert!(
+                    rs.properties.get(*prop).is_none(),
+                    "RS for {slot_qname_prefix} must NOT carry {prop} (OMG-API alias)"
+                );
+            }
+
+            // (E) parent.owned_elements contains the wrap, not the slot.
+            assert!(
+                parent.owned_elements.contains(wrap_id),
+                "parent.owned_elements must list the wrap for {slot_qname_prefix}"
+            );
+            assert!(
+                !parent.owned_elements.contains(&slot.id),
+                "parent.owned_elements must NOT list the slot directly for {slot_qname_prefix}"
+            );
+        }
     }
 
     #[test]
