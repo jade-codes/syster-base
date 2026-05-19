@@ -310,7 +310,7 @@ pub fn render_dirty(
     }
 
     // Sort by start offset (descending) so we can splice from back to front
-    regions_to_patch.sort_by(|a, b| b.start.cmp(&a.start));
+    regions_to_patch.sort_by_key(|b| std::cmp::Reverse(b.start));
 
     let mut result = original_text.to_string();
     for patch in &regions_to_patch {
