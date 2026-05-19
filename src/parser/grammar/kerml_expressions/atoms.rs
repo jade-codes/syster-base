@@ -147,7 +147,7 @@ pub fn parse_base_expression<P: ExpressionParser>(p: &mut P) {
     p.skip_trivia();
 
     match p.current_kind() {
-        kind if parse_literal(p) => {}
+        _kind if parse_literal(p) => {}
         SyntaxKind::NEW_KW => parse_instantiation(p),
         SyntaxKind::L_BRACE => parse_block_expression(p),
         SyntaxKind::L_PAREN => parse_parenthesized_expression(p),
