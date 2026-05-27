@@ -128,7 +128,7 @@ fn run_hover_triage() {
 
     println!("\n=== Failure Categories ===");
     let mut categories: Vec<_> = hover_failures.iter().collect();
-    categories.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+    categories.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
 
     for (category, failures) in categories {
         println!("\n{} ({} failures):", category, failures.len());
