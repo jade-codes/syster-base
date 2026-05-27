@@ -217,13 +217,12 @@ fn multiplicity_from_range(range: &Element, model: &Model) -> Option<Multiplicit
                         }
                     }
                 }
-                ElementKind::LiteralInfinity => {
+                ElementKind::LiteralInfinity
                     // Infinity is represented as upper = None (None means "*")
-                    if i == 0 {
+                    if i == 0 => {
                         lower = None;
                     }
                     // upper stays None → means unbounded
-                }
                 _ => {}
             }
         }

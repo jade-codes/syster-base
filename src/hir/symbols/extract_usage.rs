@@ -71,7 +71,7 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
                 // A SPECIALIZATION with no operator but a scope-qualified target (X::Y)
                 // is a references relationship. Plain comma-continuation items are
                 // simple names without ::, so this check is safe.
-                if spec.target().map_or(false, |t| t.to_string().contains("::")) {
+                if spec.target().is_some_and(|t| t.to_string().contains("::")) {
                     RelKind::References
                 } else {
                     RelKind::Subsets
