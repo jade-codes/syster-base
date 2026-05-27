@@ -146,7 +146,7 @@ fn test_sysml_examples_parsing() {
 
         // Sort by count descending
         let mut error_counts: Vec<_> = failed.iter().collect();
-        error_counts.sort_by(|a, b| b.1.len().cmp(&a.1.len()));
+        error_counts.sort_by_key(|b| std::cmp::Reverse(b.1.len()));
 
         for (error, files) in error_counts {
             eprintln!("\n  ❌ {} ({} files)", error, files.len());
