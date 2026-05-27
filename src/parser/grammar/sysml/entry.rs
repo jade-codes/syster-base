@@ -398,8 +398,14 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
             p.parse_shorthand_feature_member();
         }
 
-        // Identifier - shorthand feature member
-        SyntaxKind::IDENT => p.parse_shorthand_feature_member(),
+        // Identifier - shorthand feature member, or contextual 'edge X to Y' view member
+        SyntaxKind::IDENT => {
+            if is_edge_member_start(p) {
+                parse_edge_succession(p);
+            } else {
+                p.parse_shorthand_feature_member()
+            }
+        }
 
         // Contextual keywords used as names (e.g., enum variants like 'done', 'closed')
         _ if p.at_name_token() => p.parse_shorthand_feature_member(),

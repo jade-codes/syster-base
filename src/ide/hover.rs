@@ -281,7 +281,8 @@ fn build_signature(symbol: &HirSymbol) -> String {
         SymbolKind::Comment
         | SymbolKind::Other
         | SymbolKind::Dependency
-        | SymbolKind::ExposeRelationship => name_with_alias,
+        | SymbolKind::ExposeRelationship
+        | SymbolKind::SuccessionUsage => name_with_alias,
     }
 }
 

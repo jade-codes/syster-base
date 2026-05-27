@@ -90,6 +90,7 @@ impl From<SymbolKind> for TokenType {
             SymbolKind::Comment => TokenType::Comment,
             SymbolKind::Dependency => TokenType::Variable,
             SymbolKind::ExposeRelationship => TokenType::Variable,
+            SymbolKind::SuccessionUsage => TokenType::Variable,
             SymbolKind::Other => TokenType::Variable,
         }
     }

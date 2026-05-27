@@ -67,7 +67,16 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
             Some(SpecializationKind::References) => RelKind::References,
             Some(SpecializationKind::Conjugates) => RelKind::Specializes,
             Some(SpecializationKind::FeatureChain) => RelKind::FeatureChain,
-            None => RelKind::Subsets, // Comma-continuation for usages
+            None => {
+                // A SPECIALIZATION with no operator but a scope-qualified target (X::Y)
+                // is a references relationship. Plain comma-continuation items are
+                // simple names without ::, so this check is safe.
+                if spec.target().map_or(false, |t| t.to_string().contains("::")) {
+                    RelKind::References
+                } else {
+                    RelKind::Subsets
+                }
+            }
         };
         if let Some(target) = spec.target() {
             let target_str = target.to_string();
@@ -671,9 +680,33 @@ pub(super) fn extract_usage_from_ast(
             None
         };
 
+    // Scope-qualified reference naming: `ref action X::Y` → name is `Y` (last segment).
+    // Applies when the usage has the `ref` keyword, no explicit name was parsed, and
+    // exactly one References relationship targets a scope-qualified path.
+    let scope_ref_name: Option<(String, TextRange)> =
+        if effective_name.as_ref().and_then(|n| n.text()).is_none() && usage.is_ref() {
+            rels.iter().find_map(|r| {
+                if r.kind == RelKind::References {
+                    let target_str = r.target.as_str();
+                    if target_str.contains("::") {
+                        let last = target_str.split("::").last()?;
+                        r.range.map(|range| (last.to_string(), range))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        };
+
     // Anonymous usage handling
     let name = if let Some((ref redef_name, _)) = shorthand_redefines_name {
         strip_quotes(redef_name)
+    } else if let Some((ref ref_name, _)) = scope_ref_name {
+        strip_quotes(ref_name)
     } else {
         match effective_name.as_ref().and_then(|n| n.text()) {
             Some(n) => strip_quotes(&n),
@@ -820,8 +853,10 @@ pub(super) fn extract_usage_from_ast(
     // Named usage
     let qualified_name = ctx.qualified_name(&name);
     let kind = SymbolKind::from_usage_kind(usage_kind);
-    // For shorthand redefines, use the redefines target range as the name range
+    // For shorthand redefines / scope-ref, use the target range as the name range
     let name_range = if let Some((_, ref range)) = shorthand_redefines_name {
+        Some(*range)
+    } else if let Some((_, ref range)) = scope_ref_name {
         Some(*range)
     } else {
         effective_name.as_ref().map(|n| n.syntax().text_range())

@@ -636,6 +636,98 @@ fn test_anonymous_attribute_usage() {
 }
 
 // =============================================================================
+// VIEW DEF BODY (issue #21 regression tests)
+// =============================================================================
+
+/// Regression: `ref action X::Y` in view def body — qualified member name must be preserved.
+/// Previously `has_chain` in usage.rs only detected `.`, so `MyAction::a` was parsed as
+/// name=`MyAction` (the qualifier), discarding `::a`. Fixed by extending `has_chain` to also
+/// detect `COLON_COLON`.
+#[test]
+fn test_ref_action_qualified_name_in_view_body() {
+    let source = r#"
+action def MyAction {
+    action a;
+}
+view def MyView {
+    expose MyAction;
+    ref action MyAction::a;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let sym = get_symbol(analysis.symbol_index(), "MyView::a");
+    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
+}
+
+/// Regression: `edge X::A to X::B` in view def body must be scoped to the view, not escape
+/// to compilation-unit level, and must carry a SuccessionUsage kind.
+/// Previously `edge` (a contextual IDENT keyword) was dispatched to `parse_shorthand_feature_member`,
+/// which consumed only `edge` as the name and left `X::A to X::B` as garbage. Fixed by
+/// adding `is_edge_member_start` lookahead in entry.rs and `parse_edge_succession` in connectors.rs.
+#[test]
+fn test_edge_succession_in_view_body() {
+    let source = r#"
+action def MyAction {
+    action b;
+    action c;
+}
+view def MyView {
+    expose MyAction;
+    edge MyAction::b to MyAction::c;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let index = analysis.symbol_index();
+    let succession = index
+        .all_symbols()
+        .find(|s| s.qualified_name.starts_with("MyView::") && s.kind == SymbolKind::SuccessionUsage);
+    assert!(
+        succession.is_some(),
+        "Expected a SuccessionUsage scoped to MyView"
+    );
+}
+
+/// Regression: `@MetadataDef {{ :>> attr = EnumType::member; }}` annotation preceding
+/// `ref action X::Y` must appear in the HIR and not drop the annotated element.
+/// The root cause was Bug 1 (ref action qualified name): the misparse left `::a;` tokens
+/// that error recovery consumed along with the annotation body's closing brace, silently
+/// dropping both elements from the view scope.
+#[test]
+fn test_annotation_with_qualified_enum_value_in_view_body() {
+    let source = r#"
+enum def NodeKind { branch; parallel; }
+metadata def NodeMeta { attribute nodeKind : NodeKind; }
+action def MyAction { action a; }
+view def MyView {
+    expose MyAction;
+    @NodeMeta { :>> nodeKind = NodeKind::branch; }
+    ref action MyAction::a;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let index = analysis.symbol_index();
+
+    // The annotation must appear as a child of MyView
+    let annotation = index
+        .all_symbols()
+        .find(|s| s.qualified_name.starts_with("MyView::") && s.qualified_name.contains("NodeMeta"));
+    assert!(
+        annotation.is_some(),
+        "Annotation @NodeMeta should appear as a child of MyView"
+    );
+
+    // The ref action must also appear, not be swallowed by annotation error recovery
+    let sym = get_symbol(index, "MyView::a");
+    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
+}
+
+// =============================================================================
 // GENERATED/STRESS TESTS
 // =============================================================================
 

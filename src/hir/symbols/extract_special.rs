@@ -365,7 +365,7 @@ pub(super) fn extract_succession_from_ast(
         symbols,
         ctx,
         None, // Succession statements are anonymous
-        InternalUsageKind::Other,
+        InternalUsageKind::Succession,
         rels,
         range,
         body_members,
