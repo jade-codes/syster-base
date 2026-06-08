@@ -123,7 +123,6 @@ impl Definition {
     has_token_method!(is_abstract, ABSTRACT_KW, "abstract part def P {}");
     has_token_method!(is_variation, VARIATION_KW, "variation part def V {}");
     has_token_method!(is_individual, INDIVIDUAL_KW, "individual part def Earth;");
-
     token_to_enum_method!(definition_kind, DefinitionKind, [
         PART_KW => Part,
         ATTRIBUTE_KW => Attribute,
@@ -414,6 +413,7 @@ impl Usage {
     first_child_method!(accept_action_usage, AcceptActionUsage);
     first_child_method!(send_action_usage, SendActionUsage);
     first_child_method!(requirement_verification, RequirementVerification);
+    first_child_method!(requirement_constraint, RequirementConstraint);
     first_child_method!(connect_usage, ConnectUsage);
     first_child_method!(constraint_body, ConstraintBody);
     first_child_method!(connector_part, ConnectorPart);
@@ -423,6 +423,98 @@ impl Usage {
     has_token_method!(is_include, INCLUDE_KW, "include use case u;");
     has_token_method!(is_allocate, ALLOCATE_KW, "allocate x to y;");
     has_token_method!(is_flow, FLOW_KW, "flow x to y;");
+
+    /// Get the direct include target for reference-form include usages.
+    ///
+    /// Examples:
+    /// - `include included;` -> `included`
+    /// - `include system.uc1;` -> `system.uc1`
+    ///
+    /// Returns `None` for local include declarations such as:
+    /// - `include use case uc1 : UC1;`
+    /// - `include use case uc2 { ... }`
+    pub fn include_target(&self) -> Option<QualifiedName> {
+        if !self.is_include() {
+            return None;
+        }
+
+        if self.specializations().next().is_some() {
+            return None;
+        }
+
+        self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the direct exhibit target for reference-form exhibit usages.
+    ///
+    /// Examples:
+    /// - `exhibit shown;` -> `shown`
+    /// - `exhibit system.ready;` -> `system.ready`
+    ///
+    /// Returns `None` for local exhibit declarations such as:
+    /// - `exhibit state ready;`
+    /// - `exhibit state ready : ReadyState;`
+    pub fn exhibit_target(&self) -> Option<QualifiedName> {
+        if !self.is_exhibit() {
+            return None;
+        }
+
+        if self.usage_kind().is_some() || self.specializations().next().is_some() {
+            return None;
+        }
+
+        self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the direct assert target for reference-form assert usages.
+    ///
+    /// Examples:
+    /// - `assert checked;` -> `checked`
+    /// - `assert checks.limit;` -> `checks.limit`
+    ///
+    /// Returns `None` for local assert declarations such as:
+    /// - `assert constraint c;`
+    /// - `assert constraint c : C;`
+    pub fn assert_target(&self) -> Option<QualifiedName> {
+        let requirement_constraint = self.requirement_constraint()?;
+        if !requirement_constraint.is_assert() {
+            return None;
+        }
+
+        if self.usage_kind().is_some() || self.specializations().next().is_some() {
+            return None;
+        }
+
+        self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the direct assume target for reference-form assume usages.
+    pub fn assume_target(&self) -> Option<QualifiedName> {
+        let requirement_constraint = self.requirement_constraint()?;
+        if !requirement_constraint.is_assume() {
+            return None;
+        }
+
+        if self.usage_kind().is_some() || self.specializations().next().is_some() {
+            return None;
+        }
+
+        self.0.children().find_map(QualifiedName::cast)
+    }
+
+    /// Get the direct require target for reference-form require usages.
+    pub fn require_target(&self) -> Option<QualifiedName> {
+        let requirement_constraint = self.requirement_constraint()?;
+        if !requirement_constraint.is_require() {
+            return None;
+        }
+
+        if self.usage_kind().is_some() || self.specializations().next().is_some() {
+            return None;
+        }
+
+        self.0.children().find_map(QualifiedName::cast)
+    }
 
     /// Get direct flow endpoints for flows without `from` keyword.
     /// Pattern: `flow X.Y to A.B` returns (Some(X.Y), Some(A.B))
@@ -478,6 +570,7 @@ impl Usage {
         STATE_KW => State,
         CONSTRAINT_KW => Constraint,
         REQUIREMENT_KW => Requirement,
+        USE_KW => UseCase,
         CASE_KW => Case,
         CALC_KW => Calc,
         CONNECTION_KW => Connection,
@@ -486,7 +579,8 @@ impl Usage {
         FLOW_KW => Flow,
         MESSAGE_KW => Flow,
         OCCURRENCE_KW => Occurrence,
-        REF_KW => Ref,
+        ANALYSIS_KW => Analysis,
+        VERIFICATION_KW => Verification,
         // KerML usage keywords
         FEATURE_KW => Feature,
         STEP_KW => Step,
@@ -505,6 +599,7 @@ pub enum UsageKind {
     State,
     Constraint,
     Requirement,
+    UseCase,
     Case,
     Calc,
     Connection,
@@ -512,7 +607,8 @@ pub enum UsageKind {
     Allocation,
     Flow,
     Occurrence,
-    Ref,
+    Analysis,
+    Verification,
     // KerML
     Feature,
     Step,

@@ -541,6 +541,74 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+/// Check if the current position looks like an `edge <name> to <name>` view member.
+/// Used in parse_package_body_element to dispatch IDENT "edge" contextually.
+pub(super) fn is_edge_member_start<P: SysMLParser>(p: &P) -> bool {
+    if p.current_token_text() != Some("edge") {
+        return false;
+    }
+    // Look past "edge" to find a qualified name followed by TO_KW
+    let mut la = 1;
+    la = skip_trivia_lookahead(p, la);
+    if !is_name_kind(p.peek_kind(la)) {
+        return false;
+    }
+    la += 1;
+    // Consume rest of qualified name (:: IDENT pairs)
+    loop {
+        la = skip_trivia_lookahead(p, la);
+        if p.peek_kind(la) == SyntaxKind::COLON_COLON {
+            la += 1;
+            la = skip_trivia_lookahead(p, la);
+            if is_name_kind(p.peek_kind(la)) {
+                la += 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+    la = skip_trivia_lookahead(p, la);
+    p.peek_kind(la) == SyntaxKind::TO_KW
+}
+
+/// Parse a view edge member: `edge <source> to <target> ;`
+///
+/// This is a SysML v2 view body element that declares a directed succession
+/// between two model elements exposed by the view.  The `edge` token is a
+/// contextual keyword (bare IDENT) rather than a reserved word.
+pub fn parse_edge_succession<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::SUCCESSION);
+    p.bump(); // consume "edge" IDENT
+    p.skip_trivia();
+
+    // Source wrapped in SUCCESSION_ITEM
+    p.start_node(SyntaxKind::SUCCESSION_ITEM);
+    if p.at_name_token() {
+        p.parse_qualified_name();
+        p.skip_trivia();
+    }
+    p.finish_node(); // SUCCESSION_ITEM (source)
+
+    // 'to' keyword
+    if p.at(SyntaxKind::TO_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
+
+    // Target wrapped in SUCCESSION_ITEM
+    p.start_node(SyntaxKind::SUCCESSION_ITEM);
+    if p.at_name_token() {
+        p.parse_qualified_name();
+        p.skip_trivia();
+    }
+    p.finish_node(); // SUCCESSION_ITEM (target)
+
+    p.expect(SyntaxKind::SEMICOLON);
+    p.finish_node(); // SUCCESSION
+}
+
 /// Helper to detect direct flow pattern (flow X.Y to A.B) vs named flow (flow name from X to Y)
 fn peek_for_direct_flow<P: SysMLParser>(p: &P) -> bool {
     // Check if we see "name [.name]* to ..." pattern (direct flow endpoints)

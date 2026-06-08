@@ -11,8 +11,8 @@ use rowan::TextRange;
 use super::context::{ExtractionContext, strip_quotes};
 use super::extract::extract_from_ast_member_into_symbols;
 use super::helpers::{
-    determine_usage_kind, extract_expression_chains, extract_hir_relationships,
-    extract_metadata_from_ast_context, extract_type_refs,
+    determine_usage_kind, extract_expression_chains,
+    extract_hir_relationships, extract_metadata_from_ast_context, extract_type_refs,
     implicit_supertype_for_internal_usage_kind, make_chain_or_simple, rel_kind_to_anon_prefix,
 };
 use super::types::{
@@ -67,7 +67,16 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
             Some(SpecializationKind::References) => RelKind::References,
             Some(SpecializationKind::Conjugates) => RelKind::Specializes,
             Some(SpecializationKind::FeatureChain) => RelKind::FeatureChain,
-            None => RelKind::Subsets, // Comma-continuation for usages
+            None => {
+                // A SPECIALIZATION with no operator but a scope-qualified target (X::Y)
+                // is a references relationship. Plain comma-continuation items are
+                // simple names without ::, so this check is safe.
+                if spec.target().is_some_and(|t| t.to_string().contains("::")) {
+                    RelKind::References
+                } else {
+                    RelKind::Subsets
+                }
+            }
         };
         if let Some(target) = spec.target() {
             let target_str = target.to_string();
@@ -273,9 +282,10 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
             RelKind::Verifies
         };
         if let Some(qn) = req_ver.requirement() {
+            let target_str = qn.to_string();
             rels.push(ExtractedRel {
                 kind,
-                target: RelTarget::Simple(qn.to_string()),
+                target: make_chain_or_simple(&target_str, &qn),
                 range: Some(qn.syntax().text_range()),
             });
         }
@@ -342,67 +352,56 @@ fn extract_usage_rels_from_ast(usage: &Usage) -> Vec<ExtractedRel> {
 
     // Exhibit
     if usage.is_exhibit() {
-        for spec in usage.specializations() {
-            if let Some(qn) = spec.target() {
-                rels.push(ExtractedRel {
-                    kind: RelKind::Exhibits,
-                    target: RelTarget::Simple(qn.to_string()),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
+        if let Some(qn) = usage.exhibit_target() {
+            let target_str = qn.to_string();
+            rels.push(ExtractedRel {
+                kind: RelKind::Exhibits,
+                target: make_chain_or_simple(&target_str, &qn),
+                range: Some(qn.syntax().text_range()),
+            });
         }
     }
 
     // Include
     if usage.is_include() {
-        for spec in usage.specializations() {
-            if let Some(qn) = spec.target() {
-                rels.push(ExtractedRel {
-                    kind: RelKind::Includes,
-                    target: RelTarget::Simple(qn.to_string()),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
+        if let Some(qn) = usage.include_target() {
+            let target_str = qn.to_string();
+            rels.push(ExtractedRel {
+                kind: RelKind::Includes,
+                target: make_chain_or_simple(&target_str, &qn),
+                range: Some(qn.syntax().text_range()),
+            });
         }
     }
 
     // Assert
-    if usage.is_assert() && usage.requirement_verification().is_none() {
-        for spec in usage.specializations() {
-            if let Some(qn) = spec.target() {
-                rels.push(ExtractedRel {
-                    kind: RelKind::Asserts,
-                    target: RelTarget::Simple(qn.to_string()),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
-        }
+    if let Some(qn) = usage.assert_target() {
+        let target_str = qn.to_string();
+        rels.push(ExtractedRel {
+            kind: RelKind::Asserts,
+            target: make_chain_or_simple(&target_str, &qn),
+            range: Some(qn.syntax().text_range()),
+        });
     }
 
     // Assume
-    if usage.is_assume() {
-        for spec in usage.specializations() {
-            if let Some(qn) = spec.target() {
-                rels.push(ExtractedRel {
-                    kind: RelKind::Assumes,
-                    target: RelTarget::Simple(qn.to_string()),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
-        }
+    if let Some(qn) = usage.assume_target() {
+        let target_str = qn.to_string();
+        rels.push(ExtractedRel {
+            kind: RelKind::Assumes,
+            target: make_chain_or_simple(&target_str, &qn),
+            range: Some(qn.syntax().text_range()),
+        });
     }
 
     // Require
-    if usage.is_require() {
-        for spec in usage.specializations() {
-            if let Some(qn) = spec.target() {
-                rels.push(ExtractedRel {
-                    kind: RelKind::Requires,
-                    target: RelTarget::Simple(qn.to_string()),
-                    range: Some(qn.syntax().text_range()),
-                });
-            }
-        }
+    if let Some(qn) = usage.require_target() {
+        let target_str = qn.to_string();
+        rels.push(ExtractedRel {
+            kind: RelKind::Requires,
+            target: make_chain_or_simple(&target_str, &qn),
+            range: Some(qn.syntax().text_range()),
+        });
     }
 
     // Allocate
@@ -500,6 +499,7 @@ fn collect_endpoint_children_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: Vec::new(),
+                    is_composite: Some(false),
                     is_abstract: false,
                     is_variation: false,
                     is_readonly: false,
@@ -587,6 +587,7 @@ fn collect_transition_payload_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: Vec::new(),
+                    is_composite: Some(false),
                     is_abstract: false,
                     is_variation: false,
                     is_readonly: false,
@@ -614,6 +615,74 @@ pub(super) fn extract_usage_from_ast(
     usage: &Usage,
 ) {
     let usage_kind = determine_usage_kind(usage);
+    let is_composite = Some({
+        let owner_kind = symbols
+            .iter()
+            .rev()
+            .find(|symbol| symbol.qualified_name.as_ref() == ctx.prefix)
+            .map(|symbol| symbol.kind);
+
+        if usage.perform_action_usage().is_some()
+            || matches!(
+                usage_kind,
+                InternalUsageKind::Connection
+                    | InternalUsageKind::Attribute
+                    | InternalUsageKind::Reference
+            )
+            || usage.is_ref()
+            || usage.is_end()
+            || usage.direction().is_some()
+        {
+            false
+        } else if let Some(owner_kind) = owner_kind {
+            if matches!(usage_kind, InternalUsageKind::Port) {
+                matches!(owner_kind, SymbolKind::PortDefinition | SymbolKind::PortUsage)
+            } else {
+                matches!(
+                    usage_kind,
+                    InternalUsageKind::Part
+                        | InternalUsageKind::Item
+                        | InternalUsageKind::Action
+                        | InternalUsageKind::PerformAction
+                        | InternalUsageKind::State
+                        | InternalUsageKind::ExhibitState
+                        | InternalUsageKind::Calculation
+                        | InternalUsageKind::Transition
+                        | InternalUsageKind::Occurrence
+                        | InternalUsageKind::Requirement
+                        | InternalUsageKind::SatisfyRequirement
+                        | InternalUsageKind::Constraint
+                        | InternalUsageKind::AssertConstraint
+                ) && (matches!(
+                    owner_kind,
+                    SymbolKind::PartDefinition
+                        | SymbolKind::ItemDefinition
+                        | SymbolKind::ActionDefinition
+                        | SymbolKind::StateDefinition
+                        | SymbolKind::CalculationDefinition
+                        | SymbolKind::OccurrenceDefinition
+                        | SymbolKind::RequirementDefinition
+                        | SymbolKind::ConstraintDefinition
+                ) || matches!(
+                    owner_kind,
+                    SymbolKind::PartUsage
+                        | SymbolKind::ItemUsage
+                        | SymbolKind::ActionUsage
+                        | SymbolKind::PerformActionUsage
+                        | SymbolKind::StateUsage
+                        | SymbolKind::ExhibitStateUsage
+                        | SymbolKind::CalculationUsage
+                        | SymbolKind::OccurrenceUsage
+                        | SymbolKind::RequirementUsage
+                        | SymbolKind::SatisfyRequirementUsage
+                        | SymbolKind::ConstraintUsage
+                        | SymbolKind::AssertConstraintUsage
+                ))
+            }
+        } else {
+            false
+        }
+    });
     let rels = extract_usage_rels_from_ast(usage);
     let type_refs = extract_type_refs(&rels, &ctx.line_index);
     let relationships = extract_hir_relationships(&rels, &ctx.line_index);
@@ -671,9 +740,33 @@ pub(super) fn extract_usage_from_ast(
             None
         };
 
+    // Scope-qualified reference naming: `ref action X::Y` → name is `Y` (last segment).
+    // Applies when the usage has the `ref` keyword, no explicit name was parsed, and
+    // exactly one References relationship targets a scope-qualified path.
+    let scope_ref_name: Option<(String, TextRange)> =
+        if effective_name.as_ref().and_then(|n| n.text()).is_none() && usage.is_ref() {
+            rels.iter().find_map(|r| {
+                if r.kind == RelKind::References {
+                    let target_str = r.target.as_str();
+                    if target_str.contains("::") {
+                        let last = target_str.split("::").last()?;
+                        r.range.map(|range| (last.to_string(), range))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+        } else {
+            None
+        };
+
     // Anonymous usage handling
     let name = if let Some((ref redef_name, _)) = shorthand_redefines_name {
         strip_quotes(redef_name)
+    } else if let Some((ref ref_name, _)) = scope_ref_name {
+        strip_quotes(ref_name)
     } else {
         match effective_name.as_ref().and_then(|n| n.text()) {
             Some(n) => strip_quotes(&n),
@@ -786,6 +879,7 @@ pub(super) fn extract_usage_from_ast(
                     is_public: false,
                     view_data: None,
                     metadata_annotations: metadata_annotations.clone(),
+                    is_composite,
                     is_abstract: usage.is_abstract(),
                     is_variation: usage.is_variation(),
                     is_readonly: usage.is_readonly(),
@@ -820,8 +914,10 @@ pub(super) fn extract_usage_from_ast(
     // Named usage
     let qualified_name = ctx.qualified_name(&name);
     let kind = SymbolKind::from_usage_kind(usage_kind);
-    // For shorthand redefines, use the redefines target range as the name range
+    // For shorthand redefines / scope-ref, use the target range as the name range
     let name_range = if let Some((_, ref range)) = shorthand_redefines_name {
+        Some(*range)
+    } else if let Some((_, ref range)) = scope_ref_name {
         Some(*range)
     } else {
         effective_name.as_ref().map(|n| n.syntax().text_range())
@@ -957,6 +1053,7 @@ pub(super) fn extract_usage_from_ast(
         is_public: false,
         view_data,
         metadata_annotations,
+        is_composite,
         is_abstract: usage.is_abstract(),
         is_variation: usage.is_variation(),
         is_readonly: usage.is_readonly(),
@@ -1101,6 +1198,7 @@ pub(super) fn extract_metadata_member_from_ast(
         is_public: false,
         view_data: None,
         metadata_annotations,
+        is_composite: Some(false),
         is_abstract: false,
         is_variation: false,
         is_readonly: false,

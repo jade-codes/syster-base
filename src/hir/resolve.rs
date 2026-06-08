@@ -80,9 +80,7 @@ impl ScopeVisibility {
     /// Checks direct definitions first, then imports.
     /// Returns the qualified name if found.
     pub fn lookup(&self, name: &str) -> Option<&Arc<str>> {
-        self.direct_defs
-            .get(name)
-            .or_else(|| self.imports.get(name))
+        self.direct_defs.get(name).or_else(|| self.imports.get(name))
     }
 
     /// Look up only in direct definitions.
@@ -1371,16 +1369,13 @@ impl SymbolIndex {
         // members of this perform come from ActionTree::providePower (NOT the ProvidePower definition).
         // IMPORTANT: Use the USAGE (ActionTree::providePower) not the type definition (ProvidePower).
         if sym.name.starts_with("<perform:") {
-            for trk in &sym.type_refs {
-                for tr in trk.as_refs() {
-                    if tr.kind == crate::hir::symbols::RefKind::Other {
-                        if let Some(ref resolved) = tr.resolved_target {
-                            // Return the performed action USAGE directly - it's where nested members are
-                            // Don't follow to its type definition!
-                            return resolved.clone();
-                        }
-                    }
-                }
+            if let Some(resolved) = sym
+                .special_usage_terminal_ref()
+                .and_then(|tr| tr.resolved_target.as_ref())
+            {
+                // Return the performed action USAGE directly - it's where nested members are
+                // Don't follow to its type definition!
+                return resolved.clone();
             }
         }
 
@@ -1862,8 +1857,10 @@ impl SymbolIndex {
                 target_type.kind,
                 SymbolKind::RequirementDefinition
                     | SymbolKind::RequirementUsage
+                    | SymbolKind::SatisfyRequirementUsage
                     | SymbolKind::ConstraintDefinition
                     | SymbolKind::ConstraintUsage
+                    | SymbolKind::AssertConstraintUsage
             ) {
                 // Look for the member in the requirement's scope
                 let member_qname = format!("{}::{}", resolved_qname, member_name);
@@ -2281,12 +2278,7 @@ impl SymbolIndex {
                     let parent_members: Vec<(Arc<str>, Arc<str>)> = self
                         .visibility_map
                         .get(&*resolved)
-                        .map(|vis| {
-                            vis.direct_defs
-                                .iter()
-                                .map(|(k, v)| (k.clone(), v.clone()))
-                                .collect()
-                        })
+                        .map(|vis| vis.direct_defs().map(|(k, v)| (k.clone(), v.clone())).collect())
                         .unwrap_or_default();
 
                     // Add to child's visibility if not already present
@@ -2354,7 +2346,7 @@ impl SymbolIndex {
             // Check visibility map for this scope (both direct defs AND imports)
             if let Some(vis) = self.visibility_map.get(current_scope) {
                 // Check direct definitions first
-                if let Some(resolved) = vis.direct_defs.get(name) {
+                if let Some(resolved) = vis.lookup_direct(name) {
                     // Skip if this points to the excluded scope
                     if let Some(excluded) = exclude_scope {
                         if resolved == excluded {
@@ -2395,8 +2387,8 @@ impl SymbolIndex {
     /// Helper to check if a symbol passes a given list of filters.
     fn symbol_passes_filters_list(&self, symbol_qname: &str, filters: &[Arc<str>]) -> bool {
         // Find the symbol by qualified name
-        let symbol = match self.by_qualified_name.get(symbol_qname) {
-            Some(&idx) => &self.symbols[idx],
+        let symbol = match self.lookup_qualified(symbol_qname) {
+            Some(symbol) => symbol,
             None => return true, // If we can't find the symbol, let it through
         };
 
@@ -2819,8 +2811,10 @@ impl SymbolKind {
                 | SymbolKind::ConstraintDefinition
                 | SymbolKind::StateDefinition
                 | SymbolKind::CalculationDefinition
+                | SymbolKind::OccurrenceDefinition
                 | SymbolKind::UseCaseDefinition
                 | SymbolKind::AnalysisCaseDefinition
+                | SymbolKind::VerificationCaseDefinition
                 | SymbolKind::ConcernDefinition
                 | SymbolKind::ViewDefinition
                 | SymbolKind::ViewpointDefinition
@@ -2838,17 +2832,25 @@ impl SymbolKind {
             SymbolKind::PartUsage
                 | SymbolKind::ItemUsage
                 | SymbolKind::ActionUsage
+                | SymbolKind::PerformActionUsage
                 | SymbolKind::PortUsage
                 | SymbolKind::AttributeUsage
                 | SymbolKind::ConnectionUsage
                 | SymbolKind::InterfaceUsage
                 | SymbolKind::AllocationUsage
                 | SymbolKind::RequirementUsage
+                | SymbolKind::SatisfyRequirementUsage
                 | SymbolKind::ConstraintUsage
+                | SymbolKind::AssertConstraintUsage
                 | SymbolKind::StateUsage
+                | SymbolKind::ExhibitStateUsage
                 | SymbolKind::CalculationUsage
                 | SymbolKind::ReferenceUsage
                 | SymbolKind::OccurrenceUsage
+                | SymbolKind::UseCaseUsage
+                | SymbolKind::IncludeUseCaseUsage
+                | SymbolKind::AnalysisCaseUsage
+                | SymbolKind::VerificationCaseUsage
                 | SymbolKind::FlowConnectionUsage
         )
     }
@@ -2859,15 +2861,24 @@ impl SymbolKind {
             SymbolKind::PartUsage => Some(SymbolKind::PartDefinition),
             SymbolKind::ItemUsage => Some(SymbolKind::ItemDefinition),
             SymbolKind::ActionUsage => Some(SymbolKind::ActionDefinition),
+            SymbolKind::PerformActionUsage => Some(SymbolKind::ActionDefinition),
             SymbolKind::PortUsage => Some(SymbolKind::PortDefinition),
             SymbolKind::AttributeUsage => Some(SymbolKind::AttributeDefinition),
             SymbolKind::ConnectionUsage => Some(SymbolKind::ConnectionDefinition),
             SymbolKind::InterfaceUsage => Some(SymbolKind::InterfaceDefinition),
             SymbolKind::AllocationUsage => Some(SymbolKind::AllocationDefinition),
             SymbolKind::RequirementUsage => Some(SymbolKind::RequirementDefinition),
+            SymbolKind::SatisfyRequirementUsage => Some(SymbolKind::RequirementDefinition),
             SymbolKind::ConstraintUsage => Some(SymbolKind::ConstraintDefinition),
+            SymbolKind::AssertConstraintUsage => Some(SymbolKind::ConstraintDefinition),
             SymbolKind::StateUsage => Some(SymbolKind::StateDefinition),
+            SymbolKind::ExhibitStateUsage => Some(SymbolKind::StateDefinition),
             SymbolKind::CalculationUsage => Some(SymbolKind::CalculationDefinition),
+            SymbolKind::OccurrenceUsage => Some(SymbolKind::OccurrenceDefinition),
+            SymbolKind::UseCaseUsage => Some(SymbolKind::UseCaseDefinition),
+            SymbolKind::IncludeUseCaseUsage => Some(SymbolKind::UseCaseDefinition),
+            SymbolKind::AnalysisCaseUsage => Some(SymbolKind::AnalysisCaseDefinition),
+            SymbolKind::VerificationCaseUsage => Some(SymbolKind::VerificationCaseDefinition),
             _ => None,
         }
     }
@@ -3319,6 +3330,7 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_composite: None,
             is_abstract: false,
             is_variation: false,
             is_readonly: false,
@@ -3461,8 +3473,52 @@ mod tests {
     fn test_symbol_kind_is_usage() {
         assert!(SymbolKind::PartUsage.is_usage());
         assert!(SymbolKind::ActionUsage.is_usage());
+        assert!(SymbolKind::PerformActionUsage.is_usage());
+        assert!(SymbolKind::ExhibitStateUsage.is_usage());
+        assert!(SymbolKind::IncludeUseCaseUsage.is_usage());
+        assert!(SymbolKind::AssertConstraintUsage.is_usage());
+        assert!(SymbolKind::SatisfyRequirementUsage.is_usage());
+        assert!(SymbolKind::UseCaseUsage.is_usage());
+        assert!(SymbolKind::AnalysisCaseUsage.is_usage());
+        assert!(SymbolKind::VerificationCaseUsage.is_usage());
         assert!(!SymbolKind::PartDefinition.is_usage());
         assert!(!SymbolKind::Package.is_usage());
+    }
+
+    #[test]
+    fn test_symbol_kind_to_definition_kind_for_specialized_usages() {
+        assert_eq!(
+            SymbolKind::PerformActionUsage.to_definition_kind(),
+            Some(SymbolKind::ActionDefinition)
+        );
+        assert_eq!(
+            SymbolKind::ExhibitStateUsage.to_definition_kind(),
+            Some(SymbolKind::StateDefinition)
+        );
+        assert_eq!(
+            SymbolKind::IncludeUseCaseUsage.to_definition_kind(),
+            Some(SymbolKind::UseCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::AssertConstraintUsage.to_definition_kind(),
+            Some(SymbolKind::ConstraintDefinition)
+        );
+        assert_eq!(
+            SymbolKind::SatisfyRequirementUsage.to_definition_kind(),
+            Some(SymbolKind::RequirementDefinition)
+        );
+        assert_eq!(
+            SymbolKind::UseCaseUsage.to_definition_kind(),
+            Some(SymbolKind::UseCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::AnalysisCaseUsage.to_definition_kind(),
+            Some(SymbolKind::AnalysisCaseDefinition)
+        );
+        assert_eq!(
+            SymbolKind::VerificationCaseUsage.to_definition_kind(),
+            Some(SymbolKind::VerificationCaseDefinition)
+        );
     }
 
     #[test]

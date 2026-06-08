@@ -124,8 +124,17 @@ mod reader {
             match value {
                 Value::Object(obj) => {
                     // Single element - could be element or relationship
-                    if let Some((id, kind, source, target, owner)) = parse_relationship(&obj) {
-                        model.add_rel(id, kind, source, target, owner);
+                    if let Some((element, source, target)) = parse_relationship(&obj) {
+                        let rel_id = model.add_rel(
+                            element.id.clone(),
+                            element.kind,
+                            source,
+                            target,
+                            element.owner.clone(),
+                        );
+                        if let Some(rel) = model.get_mut(&rel_id) {
+                            rel.properties = element.properties;
+                        }
                     } else if let Some(element) = parse_element(&obj)? {
                         model.add_element(element);
                     }
@@ -135,10 +144,17 @@ mod reader {
                     for item in arr {
                         if let Value::Object(obj) = item {
                             // Try parsing as relationship first
-                            if let Some((id, kind, source, target, owner)) =
-                                parse_relationship(&obj)
-                            {
-                                model.add_rel(id, kind, source, target, owner);
+                            if let Some((element, source, target)) = parse_relationship(&obj) {
+                                let rel_id = model.add_rel(
+                                    element.id.clone(),
+                                    element.kind,
+                                    source,
+                                    target,
+                                    element.owner.clone(),
+                                );
+                                if let Some(rel) = model.get_mut(&rel_id) {
+                                    rel.properties = element.properties;
+                                }
                             } else if let Some(element) = parse_element(&obj)? {
                                 model.add_element(element);
                             }
@@ -158,10 +174,10 @@ mod reader {
     }
 
     /// Parse a JSON object as a Relationship if it has source/target fields.
-    /// Returns (id, ElementKind, source, target, owner) tuple.
+    /// Returns the relationship element plus source/target ids.
     fn parse_relationship(
         obj: &serde_json::Map<String, Value>,
-    ) -> Option<(String, ElementKind, String, String, Option<ElementId>)> {
+    ) -> Option<(Element, String, String)> {
         // Must have @id, @type, source, and target
         let id = match obj.get("@id") {
             Some(Value::String(s)) => s.clone(),
@@ -195,18 +211,50 @@ mod reader {
             _ => return None,
         };
 
-        // Get owner if present
-        let owner = if let Some(Value::Object(owner_obj)) = obj.get("owner") {
-            if let Some(Value::String(owner_id)) = owner_obj.get("@id") {
-                Some(ElementId::new(owner_id.clone()))
-            } else {
-                None
-            }
-        } else {
-            None
-        };
+        let mut element = Element::new(id, kind);
 
-        Some((id, kind, source, target, owner))
+        if let Some(Value::Object(owner_obj)) = obj.get("owner") {
+            if let Some(Value::String(owner_id)) = owner_obj.get("@id") {
+                element.owner = Some(ElementId::new(owner_id.clone()));
+            }
+        }
+
+        for (key, value) in obj {
+            if matches!(
+                key.as_str(),
+                "@id" | "@type" | "@context" | "source" | "target" | "owner"
+            ) {
+                continue;
+            }
+            let prop_key: Arc<str> = Arc::from(key.as_str());
+            match value {
+                Value::String(s) => {
+                    element
+                        .properties
+                        .insert(prop_key, PropertyValue::from(s.as_str()));
+                }
+                Value::Bool(b) => {
+                    element.properties.insert(prop_key, PropertyValue::from(*b));
+                }
+                Value::Number(n) => {
+                    if let Some(i) = n.as_i64() {
+                        element.properties.insert(prop_key, PropertyValue::from(i));
+                    } else if let Some(f) = n.as_f64() {
+                        element.properties.insert(prop_key, PropertyValue::from(f));
+                    }
+                }
+                Value::Object(obj) => {
+                    if let Some(Value::String(id)) = obj.get("@id") {
+                        element
+                            .properties
+                            .insert(prop_key, PropertyValue::Reference(ElementId::new(id.clone())));
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Some((element, source, target))
     }
 
     /// Parse a JSON object into an Element.
@@ -231,6 +279,11 @@ mod reader {
         // Get name (also check declaredName for compatibility)
         if let Some(Value::String(name)) = obj.get("name").or_else(|| obj.get("declaredName")) {
             element.name = Some(Arc::from(name.as_str()));
+        }
+
+        // Get qualifiedName
+        if let Some(Value::String(qualified_name)) = obj.get("qualifiedName") {
+            element.qualified_name = Some(Arc::from(qualified_name.as_str()));
         }
 
         // Get shortName (also check declaredShortName)
@@ -331,6 +384,7 @@ mod reader {
                     | "@context"
                     | "name"
                     | "declaredName"
+                    | "qualifiedName"
                     | "shortName"
                     | "declaredShortName"
                     | "isAbstract"
@@ -470,6 +524,11 @@ mod writer {
             obj.insert("owner".to_string(), json!({"@id": owner_id.as_str()}));
         }
 
+        for (key, value) in &element.properties {
+            let json_value = property_value_to_json(value);
+            obj.insert(key.to_string(), json_value);
+        }
+
         Value::Object(obj)
     }
 
@@ -493,9 +552,18 @@ mod writer {
             obj.insert("name".to_string(), json!(name.as_ref()));
         }
 
+        if let Some(ref qualified_name) = element.qualified_name {
+            obj.insert("qualifiedName".to_string(), json!(qualified_name.as_ref()));
+        }
+
         // shortName
         if let Some(ref short_name) = element.short_name {
             obj.insert("shortName".to_string(), json!(short_name.as_ref()));
+        }
+
+        // qualifiedName
+        if let Some(ref qn) = element.qualified_name {
+            obj.insert("qualifiedName".to_string(), json!(qn.as_ref()));
         }
 
         // isAbstract (only if true)
@@ -674,6 +742,7 @@ mod tests {
     mod interchange_tests {
         use super::*;
         use crate::interchange::model::{Element, ElementId, ElementKind, PropertyValue};
+        use serde_json::Value;
         use std::sync::Arc;
 
         #[test]
@@ -741,6 +810,7 @@ mod tests {
                 "@type": "Class",
                 "@id": "cls1",
                 "name": "AbstractClass",
+                "qualifiedName": "Pkg::AbstractClass",
                 "shortName": "AC",
                 "isAbstract": true,
                 "documentation": "This is a doc comment",
@@ -753,6 +823,7 @@ mod tests {
             let cls = model.get(&ElementId::new("cls1")).expect("Class not found");
 
             assert_eq!(cls.name.as_deref(), Some("AbstractClass"));
+            assert_eq!(cls.qualified_name.as_deref(), Some("Pkg::AbstractClass"));
             assert_eq!(cls.short_name.as_deref(), Some("AC"));
             assert!(cls.is_abstract);
             assert_eq!(cls.documentation.as_deref(), Some("This is a doc comment"));
@@ -776,6 +847,7 @@ mod tests {
             let mut cls = Element::new("cls1", ElementKind::Class);
             cls.name = Some(Arc::from("AbstractClass"));
             cls.short_name = Some(Arc::from("AC"));
+            cls.qualified_name = Some(Arc::from("Pkg::AbstractClass"));
             cls.set_abstract(true);
             cls.documentation = Some(Arc::from("This is documented"));
             cls.properties
@@ -792,6 +864,78 @@ mod tests {
             assert!(json_str.contains("\"isStandard\": true"));
             assert!(json_str.contains("\"count\": 99"));
             assert!(json_str.contains("\"shortName\": \"AC\""));
+            assert!(json_str.contains("\"qualifiedName\": \"Pkg::AbstractClass\""));
+        }
+
+        #[test]
+        fn test_jsonld_write_relationship_properties() {
+            let mut model = Model::new();
+            model.add_element(Element::new("src", ElementKind::ConstraintUsage).with_name("source"));
+            model.add_element(Element::new("tgt", ElementKind::ConstraintUsage).with_name("target"));
+
+            let rel_id = model.add_rel(
+                "rel1",
+                ElementKind::RequirementConstraintMembership,
+                "src",
+                "tgt",
+                Some(ElementId::new("src")),
+            );
+            let rel = model.get_mut(&rel_id).expect("relationship should exist");
+            rel.properties.insert(
+                Arc::from("kind"),
+                PropertyValue::String(Arc::from("assumption")),
+            );
+
+            let json_bytes = JsonLd.write(&model).expect("Write failed");
+            let json: Value = serde_json::from_slice(&json_bytes).expect("valid json");
+            let items = json.as_array().expect("multiple elements should serialize as array");
+            let rel_json = items
+                .iter()
+                .find(|item| item.get("@id") == Some(&Value::String("rel1".to_string())))
+                .expect("relationship element should be present");
+
+            assert_eq!(
+                rel_json.get("@type"),
+                Some(&Value::String("RequirementConstraintMembership".to_string()))
+            );
+            assert_eq!(
+                rel_json.get("kind"),
+                Some(&Value::String("assumption".to_string()))
+            );
+            assert_eq!(
+                rel_json.get("target"),
+                Some(&serde_json::json!({"@id": "tgt"}))
+            );
+            assert!(
+                rel_json.get("referencedConstraint").is_none(),
+                "generic target should remain the only target-carrying field in JSON-LD"
+            );
+        }
+
+        #[test]
+        fn test_jsonld_read_relationship_properties() {
+            let json = br#"[
+                {"@type": "ConstraintUsage", "@id": "src", "name": "source"},
+                {"@type": "ConstraintUsage", "@id": "tgt", "name": "target"},
+                {
+                    "@type": "RequirementConstraintMembership",
+                    "@id": "rel1",
+                    "source": {"@id": "src"},
+                    "target": {"@id": "tgt"},
+                    "owner": {"@id": "src"},
+                    "kind": "assumption"
+                }
+            ]"#;
+
+            let model = JsonLd.read(json).expect("Read failed");
+            let rel = model.get(&ElementId::new("rel1")).expect("relationship should exist");
+
+            assert_eq!(rel.kind, ElementKind::RequirementConstraintMembership);
+            assert_eq!(
+                rel.properties.get(&Arc::from("kind")),
+                Some(&PropertyValue::String(Arc::from("assumption")))
+            );
+            assert!(rel.properties.get(&Arc::from("referencedConstraint")).is_none());
         }
 
         #[test]

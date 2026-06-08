@@ -70,7 +70,29 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
     if usage.transition_usage().is_some() {
         InternalUsageKind::Transition
     } else if usage.perform_action_usage().is_some() {
-        InternalUsageKind::Action
+        InternalUsageKind::PerformAction
+    } else if usage.is_include() {
+        InternalUsageKind::IncludeUseCase
+    } else if usage.requirement_verification().is_some() {
+        if usage
+            .requirement_verification()
+            .is_some_and(|req_ver| req_ver.is_satisfy())
+        {
+            InternalUsageKind::SatisfyRequirement
+        } else {
+            InternalUsageKind::Requirement
+        }
+    } else if usage.is_exhibit() {
+        InternalUsageKind::ExhibitState
+    } else if usage.requirement_constraint().is_some() {
+        if usage
+            .requirement_constraint()
+            .is_some_and(|req_constraint| req_constraint.is_assert())
+        {
+            InternalUsageKind::AssertConstraint
+        } else {
+            InternalUsageKind::Constraint
+        }
     } else {
         match usage.usage_kind() {
             Some(UsageKind::Part) => InternalUsageKind::Part,
@@ -81,19 +103,20 @@ pub(super) fn determine_usage_kind(usage: &Usage) -> InternalUsageKind {
             Some(UsageKind::State) => InternalUsageKind::State,
             Some(UsageKind::Constraint) => InternalUsageKind::Constraint,
             Some(UsageKind::Requirement) => InternalUsageKind::Requirement,
+            Some(UsageKind::UseCase) | Some(UsageKind::Case) => InternalUsageKind::UseCase,
+            Some(UsageKind::Analysis) => InternalUsageKind::AnalysisCase,
+            Some(UsageKind::Verification) => InternalUsageKind::VerificationCase,
             Some(UsageKind::Calc) => InternalUsageKind::Calculation,
             Some(UsageKind::Connection) => InternalUsageKind::Connection,
             Some(UsageKind::Interface) => InternalUsageKind::Interface,
             Some(UsageKind::Allocation) => InternalUsageKind::Allocation,
             Some(UsageKind::Flow) => InternalUsageKind::Flow,
             Some(UsageKind::Occurrence) => InternalUsageKind::Occurrence,
-            Some(UsageKind::Ref) => InternalUsageKind::Reference,
             Some(UsageKind::Feature) => InternalUsageKind::Attribute,
             Some(UsageKind::Step) => InternalUsageKind::Action,
             Some(UsageKind::Expr) => InternalUsageKind::Calculation,
             Some(UsageKind::Connector) => InternalUsageKind::Connection,
-            Some(UsageKind::Case) => InternalUsageKind::Other,
-            None => InternalUsageKind::Part, // Default to Part for usages without keyword
+            None => InternalUsageKind::Reference, // No usage kind keyword => ReferenceUsage
         }
     }
 }
@@ -126,9 +149,8 @@ pub(super) fn implicit_supertype_for_definition_kind(
         Some(DefinitionKind::Interface) => Some("Interfaces::Interface"),
         Some(DefinitionKind::Allocation) => Some("Allocations::Allocation"),
         Some(DefinitionKind::UseCase) | Some(DefinitionKind::Case) => Some("UseCases::UseCase"),
-        Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
-            Some("AnalysisCases::AnalysisCase")
-        }
+        Some(DefinitionKind::Analysis) => Some("AnalysisCases::AnalysisCase"),
+        Some(DefinitionKind::Verification) => Some("VerificationCases::VerificationCase"),
         Some(DefinitionKind::Attribute) | Some(DefinitionKind::Datatype) => {
             Some("Attributes::AttributeValue")
         }
@@ -144,16 +166,24 @@ pub(super) fn implicit_supertype_for_internal_usage_kind(
         InternalUsageKind::Part => Some("Parts::Part"),
         InternalUsageKind::Item => Some("Items::Item"),
         InternalUsageKind::Action => Some("Actions::Action"),
+        InternalUsageKind::PerformAction => Some("Actions::Action"),
         InternalUsageKind::State => Some("States::StateAction"),
+        InternalUsageKind::ExhibitState => Some("States::StateAction"),
         InternalUsageKind::Flow => Some("Flows::Message"),
         InternalUsageKind::Connection => Some("Connections::Connection"),
         InternalUsageKind::Interface => Some("Interfaces::Interface"),
         InternalUsageKind::Allocation => Some("Allocations::Allocation"),
         InternalUsageKind::Requirement => Some("Requirements::RequirementCheck"),
+        InternalUsageKind::SatisfyRequirement => Some("Requirements::RequirementCheck"),
         InternalUsageKind::Constraint => Some("Constraints::ConstraintCheck"),
+        InternalUsageKind::AssertConstraint => Some("Constraints::ConstraintCheck"),
         InternalUsageKind::Calculation => Some("Calculations::Calculation"),
         InternalUsageKind::Port => Some("Ports::Port"),
         InternalUsageKind::Attribute => Some("Attributes::AttributeValue"),
+        InternalUsageKind::UseCase => Some("UseCases::UseCase"),
+        InternalUsageKind::IncludeUseCase => Some("UseCases::UseCase"),
+        InternalUsageKind::AnalysisCase => Some("AnalysisCases::AnalysisCase"),
+        InternalUsageKind::VerificationCase => Some("VerificationCases::VerificationCase"),
         _ => None,
     }
 }

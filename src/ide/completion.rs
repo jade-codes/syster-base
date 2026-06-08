@@ -272,6 +272,7 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_composite: None,
             is_abstract: false,
             is_variation: false,
             is_readonly: false,

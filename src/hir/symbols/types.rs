@@ -137,17 +137,25 @@ pub(crate) enum InternalUsageKind {
     Part,
     Item,
     Action,
+    PerformAction,
     Port,
+    Reference,
     Attribute,
     Connection,
     Interface,
     Allocation,
     Requirement,
+    SatisfyRequirement,
     Constraint,
+    AssertConstraint,
     State,
+    ExhibitState,
     Calculation,
-    Reference,
     Occurrence,
+    UseCase,
+    IncludeUseCase,
+    AnalysisCase,
+    VerificationCase,
     Flow,
     Transition,
     Accept,
@@ -160,6 +168,7 @@ pub(crate) enum InternalUsageKind {
     Viewpoint,
     Rendering,
     Feature,
+    Succession,
     Other,
 }
 
@@ -259,6 +268,10 @@ pub enum RelationshipKind {
     Includes,
     /// `assert` - constraint assertion
     Asserts,
+    /// `assume` - constraint assumption
+    Assumes,
+    /// `require` - constraint requirement
+    Requires,
     /// `verify` - verification
     Verifies,
 }
@@ -277,6 +290,8 @@ impl RelationshipKind {
             RelKind::Exhibits => Some(RelationshipKind::Exhibits),
             RelKind::Includes => Some(RelationshipKind::Includes),
             RelKind::Asserts => Some(RelationshipKind::Asserts),
+            RelKind::Assumes => Some(RelationshipKind::Assumes),
+            RelKind::Requires => Some(RelationshipKind::Requires),
             RelKind::Verifies => Some(RelationshipKind::Verifies),
             // Expression, About, Meta, Crosses are not shown as relationships
             _ => None,
@@ -296,6 +311,8 @@ impl RelationshipKind {
             RelationshipKind::Exhibits => "Exhibits",
             RelationshipKind::Includes => "Includes",
             RelationshipKind::Asserts => "Asserts",
+            RelationshipKind::Assumes => "Assumes",
+            RelationshipKind::Requires => "Requires",
             RelationshipKind::Verifies => "Verifies",
         }
     }
@@ -546,6 +563,11 @@ pub struct HirSymbol {
     /// Metadata types applied to this symbol (e.g., ["Safety", "Approved"])
     /// Used for filter import evaluation (SysML v2 §7.5.4)
     pub metadata_annotations: Vec<Arc<str>>,
+    /// Parsed composite semantic result for standard interchange/export.
+    ///
+    /// `None` means this symbol does not participate in feature-level
+    /// composite semantics.
+    pub is_composite: Option<bool>,
     /// Whether this symbol is abstract (for definitions and usages)
     pub is_abstract: bool,
     /// Whether this symbol is a variation (for definitions and usages)
@@ -576,6 +598,25 @@ pub struct HirSymbol {
     pub value: Option<ValueExpression>,
 }
 
+impl HirSymbol {
+    /// Return the terminal type-ref for the main target of special-usage
+    /// relationships that are encoded as the first `RefKind::Other` entry.
+    pub fn special_usage_terminal_ref(&self) -> Option<&TypeRef> {
+        self.type_refs.iter().find_map(|trk| match trk {
+            TypeRefKind::Simple(tr) if tr.kind == RefKind::Other => Some(tr),
+            TypeRefKind::Chain(chain)
+                if chain
+                    .parts
+                    .first()
+                    .is_some_and(|tr| tr.kind == RefKind::Other) =>
+            {
+                chain.parts.last()
+            }
+            _ => None,
+        })
+    }
+}
+
 /// The kind of a symbol.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum SymbolKind {
@@ -593,8 +634,10 @@ pub enum SymbolKind {
     ConstraintDefinition,
     StateDefinition,
     CalculationDefinition,
+    OccurrenceDefinition,
     UseCaseDefinition,
     AnalysisCaseDefinition,
+    VerificationCaseDefinition,
     ConcernDefinition,
     ViewDefinition,
     ViewpointDefinition,
@@ -616,19 +659,28 @@ pub enum SymbolKind {
     PartUsage,
     ItemUsage,
     ActionUsage,
+    PerformActionUsage,
     PortUsage,
     AttributeUsage,
     ConnectionUsage,
     InterfaceUsage,
     AllocationUsage,
     RequirementUsage,
+    SatisfyRequirementUsage,
     ConstraintUsage,
+    AssertConstraintUsage,
     StateUsage,
+    ExhibitStateUsage,
     TransitionUsage,
     CalculationUsage,
     ReferenceUsage,
     OccurrenceUsage,
+    UseCaseUsage,
+    IncludeUseCaseUsage,
+    AnalysisCaseUsage,
+    VerificationCaseUsage,
     FlowConnectionUsage,
+    SuccessionUsage,
     // Relationships
     ExposeRelationship,
     // Other
@@ -657,9 +709,8 @@ impl SymbolKind {
             Some(DefinitionKind::State) => Self::StateDefinition,
             Some(DefinitionKind::Calc) => Self::CalculationDefinition,
             Some(DefinitionKind::Case) | Some(DefinitionKind::UseCase) => Self::UseCaseDefinition,
-            Some(DefinitionKind::Analysis) | Some(DefinitionKind::Verification) => {
-                Self::AnalysisCaseDefinition
-            }
+            Some(DefinitionKind::Analysis) => Self::AnalysisCaseDefinition,
+            Some(DefinitionKind::Verification) => Self::VerificationCaseDefinition,
             Some(DefinitionKind::Concern) => Self::ConcernDefinition,
             Some(DefinitionKind::View) => Self::ViewDefinition,
             Some(DefinitionKind::Viewpoint) => Self::ViewpointDefinition,
@@ -667,7 +718,7 @@ impl SymbolKind {
             Some(DefinitionKind::Enum) => Self::EnumerationDefinition,
             Some(DefinitionKind::Flow) => Self::Other,
             Some(DefinitionKind::Metadata) => Self::Other,
-            Some(DefinitionKind::Occurrence) => Self::Other,
+            Some(DefinitionKind::Occurrence) => Self::OccurrenceDefinition,
             // KerML mappings
             Some(DefinitionKind::Class) => Self::PartDefinition,
             Some(DefinitionKind::Struct) => Self::PartDefinition,
@@ -690,17 +741,25 @@ impl SymbolKind {
             InternalUsageKind::Part => Self::PartUsage,
             InternalUsageKind::Item => Self::ItemUsage,
             InternalUsageKind::Action => Self::ActionUsage,
+            InternalUsageKind::PerformAction => Self::PerformActionUsage,
             InternalUsageKind::Port => Self::PortUsage,
+            InternalUsageKind::Reference => Self::ReferenceUsage,
             InternalUsageKind::Attribute => Self::AttributeUsage,
             InternalUsageKind::Connection => Self::ConnectionUsage,
             InternalUsageKind::Interface => Self::InterfaceUsage,
             InternalUsageKind::Allocation => Self::AllocationUsage,
             InternalUsageKind::Requirement => Self::RequirementUsage,
+            InternalUsageKind::SatisfyRequirement => Self::SatisfyRequirementUsage,
             InternalUsageKind::Constraint => Self::ConstraintUsage,
+            InternalUsageKind::AssertConstraint => Self::AssertConstraintUsage,
             InternalUsageKind::State => Self::StateUsage,
+            InternalUsageKind::ExhibitState => Self::ExhibitStateUsage,
             InternalUsageKind::Calculation => Self::CalculationUsage,
-            InternalUsageKind::Reference => Self::ReferenceUsage,
             InternalUsageKind::Occurrence => Self::OccurrenceUsage,
+            InternalUsageKind::UseCase => Self::UseCaseUsage,
+            InternalUsageKind::IncludeUseCase => Self::IncludeUseCaseUsage,
+            InternalUsageKind::AnalysisCase => Self::AnalysisCaseUsage,
+            InternalUsageKind::VerificationCase => Self::VerificationCaseUsage,
             InternalUsageKind::Flow => Self::FlowConnectionUsage,
             InternalUsageKind::Transition => Self::TransitionUsage,
             InternalUsageKind::Accept => Self::ActionUsage,
@@ -713,6 +772,7 @@ impl SymbolKind {
             InternalUsageKind::Viewpoint => Self::ViewpointUsage,
             InternalUsageKind::Rendering => Self::RenderingUsage,
             InternalUsageKind::Feature => Self::AttributeUsage,
+            InternalUsageKind::Succession => Self::SuccessionUsage,
             InternalUsageKind::Other => Self::Other,
         }
     }
@@ -733,8 +793,10 @@ impl SymbolKind {
             Self::ConstraintDefinition => "Constraint def",
             Self::StateDefinition => "State def",
             Self::CalculationDefinition => "Calc def",
+            Self::OccurrenceDefinition => "Occurrence def",
             Self::UseCaseDefinition => "Use case def",
             Self::AnalysisCaseDefinition => "Analysis case def",
+            Self::VerificationCaseDefinition => "Verification case def",
             Self::ConcernDefinition => "Concern def",
             Self::ViewDefinition => "View def",
             Self::ViewpointDefinition => "Viewpoint def",
@@ -755,19 +817,28 @@ impl SymbolKind {
             Self::PartUsage => "Part",
             Self::ItemUsage => "Item",
             Self::ActionUsage => "Action",
+            Self::PerformActionUsage => "Perform action",
             Self::PortUsage => "Port",
             Self::AttributeUsage => "Attribute",
             Self::ConnectionUsage => "Connection",
             Self::InterfaceUsage => "Interface",
             Self::AllocationUsage => "Allocation",
             Self::RequirementUsage => "Requirement",
+            Self::SatisfyRequirementUsage => "Satisfy requirement",
             Self::ConstraintUsage => "Constraint",
+            Self::AssertConstraintUsage => "Assert constraint",
             Self::StateUsage => "State",
+            Self::ExhibitStateUsage => "Exhibit state",
             Self::TransitionUsage => "Transition",
             Self::CalculationUsage => "Calc",
             Self::ReferenceUsage => "Ref",
             Self::OccurrenceUsage => "Occurrence",
+            Self::UseCaseUsage => "Use case",
+            Self::IncludeUseCaseUsage => "Include use case",
+            Self::AnalysisCaseUsage => "Analysis",
+            Self::VerificationCaseUsage => "Verification",
             Self::FlowConnectionUsage => "Flow",
+            Self::SuccessionUsage => "Succession",
             Self::ExposeRelationship => "Expose",
             Self::Import => "Import",
             Self::Alias => "Alias",

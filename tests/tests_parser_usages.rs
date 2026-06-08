@@ -82,7 +82,7 @@ fn parse_usage_in_def(input: &str) -> Option<Usage> {
     UsageKind::Occurrence,
     "myOccurrence"
 )]
-#[case("package Test { ref myRef; }", UsageKind::Ref, "myRef")]
+#[case("package Test { ref part myRef; }", UsageKind::Part, "myRef")]
 fn test_usage_kind(
     #[case] input: &str,
     #[case] expected_kind: UsageKind,

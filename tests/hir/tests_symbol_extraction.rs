@@ -6,7 +6,7 @@
 use crate::helpers::hir_helpers::*;
 use crate::helpers::source_fixtures::*;
 use crate::helpers::symbol_assertions::*;
-use syster::hir::SymbolKind;
+use syster::hir::{RelationshipKind, SymbolKind};
 
 // =============================================================================
 // PACKAGE EXTRACTION
@@ -213,6 +213,90 @@ fn test_state_def_extraction() {
 }
 
 #[test]
+fn test_special_keyword_shorthand_usage_kinds_do_not_fall_back_to_reference_usage() {
+    let source = r#"
+        package Test {
+            requirement def satisfiedReq;
+            requirement def verifiedReq;
+            constraint def assertedConstraint;
+            constraint def assumedConstraint;
+            constraint def requiredConstraint;
+            state def shownState;
+
+            part host {
+                satisfy satisfiedReq;
+                verify verifiedReq;
+                exhibit shownState;
+                assert assertedConstraint;
+                assume assumedConstraint;
+                require requiredConstraint;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+    let syms = analysis.symbol_index().all_symbols().collect::<Vec<_>>();
+
+    let satisfy_requirement_usages = syms
+        .iter()
+        .filter(|s| {
+            s.qualified_name.starts_with("Test::host::")
+                && s.kind == SymbolKind::SatisfyRequirementUsage
+        })
+        .count();
+    assert_eq!(
+        satisfy_requirement_usages, 1,
+        "host should contain satisfy shorthand as a SatisfyRequirementUsage symbol"
+    );
+
+    let verify_requirement_usages = syms
+        .iter()
+        .filter(|s| {
+            s.qualified_name.starts_with("Test::host::") && s.kind == SymbolKind::RequirementUsage
+        })
+        .count();
+    assert_eq!(
+        verify_requirement_usages, 1,
+        "host should contain verify shorthand as a RequirementUsage symbol"
+    );
+
+    let exhibit_state_usages = syms
+        .iter()
+        .filter(|s| {
+            s.qualified_name.starts_with("Test::host::")
+                && s.kind == SymbolKind::ExhibitStateUsage
+        })
+        .count();
+    assert_eq!(
+        exhibit_state_usages, 1,
+        "host should contain exhibit shorthand as an ExhibitStateUsage symbol"
+    );
+
+    let assert_constraint_usages = syms
+        .iter()
+        .filter(|s| {
+            s.qualified_name.starts_with("Test::host::")
+                && s.kind == SymbolKind::AssertConstraintUsage
+        })
+        .count();
+    assert_eq!(
+        assert_constraint_usages, 1,
+        "host should contain assert shorthand as an AssertConstraintUsage symbol"
+    );
+
+    let constraint_usages = syms
+        .iter()
+        .filter(|s| {
+            s.qualified_name.starts_with("Test::host::") && s.kind == SymbolKind::ConstraintUsage
+        })
+        .count();
+    assert_eq!(
+        constraint_usages, 2,
+        "host should contain assume/require as ConstraintUsage symbols"
+    );
+}
+
+#[test]
 fn test_calc_def_extraction() {
     let (mut host, _) = analysis_from_sysml("calc def TotalMass;");
     let analysis = host.analysis();
@@ -220,6 +304,16 @@ fn test_calc_def_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "TotalMass");
     let sym = get_symbol(analysis.symbol_index(), "TotalMass");
     assert_symbol_kind(sym, SymbolKind::CalculationDefinition);
+}
+
+#[test]
+fn test_occurrence_def_extraction() {
+    let (mut host, _) = analysis_from_sysml("occurrence def Lifetime;");
+    let analysis = host.analysis();
+
+    assert_symbol_exists(analysis.symbol_index(), "Lifetime");
+    let sym = get_symbol(analysis.symbol_index(), "Lifetime");
+    assert_symbol_kind(sym, SymbolKind::OccurrenceDefinition);
 }
 
 #[test]
@@ -294,7 +388,6 @@ fn test_enumeration_def_extraction() {
 
 #[test]
 fn test_verification_case_def_extraction() {
-    // VerificationCase maps to AnalysisCaseDef in SymbolKind
     let source = r#"
         package VerificationPkg {
             verification def TestVehicle;
@@ -305,7 +398,228 @@ fn test_verification_case_def_extraction() {
 
     assert_symbol_exists(analysis.symbol_index(), "VerificationPkg::TestVehicle");
     let sym = get_symbol(analysis.symbol_index(), "VerificationPkg::TestVehicle");
-    assert_symbol_kind(sym, SymbolKind::AnalysisCaseDefinition);
+    assert_symbol_kind(sym, SymbolKind::VerificationCaseDefinition);
+}
+
+#[test]
+fn test_verification_case_def_uses_verification_case_implicit_supertype() {
+    let source = r#"
+        package VerificationPkg {
+            verification def TestVehicle;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let sym = get_symbol(analysis.symbol_index(), "VerificationPkg::TestVehicle");
+    assert_symbol_kind(sym, SymbolKind::VerificationCaseDefinition);
+    assert!(
+        sym.supertypes
+            .iter()
+            .any(|s| s.as_ref() == "VerificationCases::VerificationCase"),
+        "verification defs should implicitly inherit VerificationCases::VerificationCase, got {:?}",
+        sym.supertypes
+    );
+    assert!(
+        !sym.supertypes
+            .iter()
+            .any(|s| s.as_ref() == "AnalysisCases::AnalysisCase"),
+        "verification defs should no longer inherit AnalysisCases::AnalysisCase, got {:?}",
+        sym.supertypes
+    );
+}
+
+#[test]
+fn test_case_usage_extraction_uses_distinct_case_usage_kinds() {
+    let source = r#"
+        package CasePkg {
+            use case driveVehicle;
+            analysis thermalStudy;
+            verification safetyCheck;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    assert_symbol_exists(analysis.symbol_index(), "CasePkg::driveVehicle");
+    assert_symbol_exists(analysis.symbol_index(), "CasePkg::thermalStudy");
+    assert_symbol_exists(analysis.symbol_index(), "CasePkg::safetyCheck");
+
+    assert_symbol_kind(
+        get_symbol(analysis.symbol_index(), "CasePkg::driveVehicle"),
+        SymbolKind::UseCaseUsage,
+    );
+    assert_symbol_kind(
+        get_symbol(analysis.symbol_index(), "CasePkg::thermalStudy"),
+        SymbolKind::AnalysisCaseUsage,
+    );
+    assert_symbol_kind(
+        get_symbol(analysis.symbol_index(), "CasePkg::safetyCheck"),
+        SymbolKind::VerificationCaseUsage,
+    );
+}
+
+#[test]
+fn test_include_reference_form_extracts_use_case_usage_and_includes_relationship() {
+    let source = r#"
+        package IncludePkg {
+            use case included;
+
+            use case host {
+                include included;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let include_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("IncludePkg::host::<include:included")
+        })
+        .expect("anonymous include usage should exist");
+
+    assert_symbol_kind(include_usage, SymbolKind::IncludeUseCaseUsage);
+    assert_has_relationship(include_usage, RelationshipKind::Includes, "included");
+}
+
+#[test]
+fn test_exhibit_reference_form_extracts_state_usage_and_exhibits_relationship() {
+    let source = r#"
+        package ExhibitPkg {
+            state def shown;
+
+            part host {
+                exhibit shown;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let exhibit_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ExhibitPkg::host::<exhibit:shown")
+        })
+        .expect("anonymous exhibit usage should exist");
+
+    assert_symbol_kind(exhibit_usage, SymbolKind::ExhibitStateUsage);
+    assert_has_relationship(exhibit_usage, RelationshipKind::Exhibits, "shown");
+}
+
+#[test]
+fn test_assert_reference_form_extracts_constraint_usage_and_asserts_relationship() {
+    let source = r#"
+        package AssertPkg {
+            constraint def checked;
+
+            part host {
+                assert checked;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let assert_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("AssertPkg::host::<assert:checked")
+        })
+        .expect("anonymous assert usage should exist");
+
+    assert_symbol_kind(assert_usage, SymbolKind::AssertConstraintUsage);
+    assert_has_relationship(assert_usage, RelationshipKind::Asserts, "checked");
+}
+
+#[test]
+fn test_assume_and_require_reference_forms_extract_constraint_usage_and_relationships() {
+    let source = r#"
+        package ConstraintPkg {
+            constraint def assumed;
+            constraint def required;
+
+            part host {
+                assume assumed;
+                require required;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let assume_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ConstraintPkg::host::<assume:assumed")
+        })
+        .expect("anonymous assume usage should exist");
+    assert_symbol_kind(assume_usage, SymbolKind::ConstraintUsage);
+    assert_has_relationship(assume_usage, RelationshipKind::Assumes, "assumed");
+
+    let require_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("ConstraintPkg::host::<require:required")
+        })
+        .expect("anonymous require usage should exist");
+    assert_symbol_kind(require_usage, SymbolKind::ConstraintUsage);
+    assert_has_relationship(require_usage, RelationshipKind::Requires, "required");
+}
+
+#[test]
+fn test_satisfy_and_verify_reference_forms_extract_requirement_usage_and_relationships() {
+    let source = r#"
+        package RequirementPkg {
+            part verifier;
+
+            part checks {
+                requirement required;
+                requirement verified;
+            }
+
+            part host {
+                satisfy checks.required by verifier;
+                verify checks.verified;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let satisfy_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("RequirementPkg::host::<satisfy:checks.required")
+        })
+        .expect("anonymous satisfy usage should exist");
+    assert_symbol_kind(satisfy_usage, SymbolKind::SatisfyRequirementUsage);
+    assert_has_relationship(satisfy_usage, RelationshipKind::Satisfies, "checks.required");
+
+    let verify_usage = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|s| {
+            s.qualified_name
+                .starts_with("RequirementPkg::host::<verify:checks.verified")
+        })
+        .expect("anonymous verify usage should exist");
+    assert_symbol_kind(verify_usage, SymbolKind::RequirementUsage);
+    assert_has_relationship(verify_usage, RelationshipKind::Verifies, "checks.verified");
 }
 
 #[test]
@@ -441,7 +755,7 @@ fn test_item_usage_extraction() {
 fn test_ref_usage_extraction() {
     let source = r#"
         part def System {
-            ref target;
+            ref part target;
         }
     "#;
     let (mut host, _) = analysis_from_sysml(source);
@@ -450,7 +764,249 @@ fn test_ref_usage_extraction() {
     assert_symbol_exists(analysis.symbol_index(), "System::target");
 
     let ref_usage = get_symbol(analysis.symbol_index(), "System::target");
+    assert_symbol_kind(ref_usage, SymbolKind::PartUsage);
+    assert_eq!(ref_usage.is_composite, Some(false));
+}
+
+#[test]
+fn test_bare_ref_usage_defaults_to_reference_usage() {
+    let source = r#"
+        package sample {
+            part def A {
+                ref b;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let ref_usage = get_symbol(analysis.symbol_index(), "sample::A::b");
     assert_symbol_kind(ref_usage, SymbolKind::ReferenceUsage);
+    assert_eq!(ref_usage.is_composite, Some(false));
+}
+
+#[test]
+fn test_definition_symbols_do_not_get_composite_semantics() {
+    let source = r#"
+        package sample {
+            part def A {
+                part def B;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let nested_def = get_symbol(analysis.symbol_index(), "sample::A::B");
+    assert_symbol_kind(nested_def, SymbolKind::PartDefinition);
+    assert_eq!(nested_def.is_composite, None);
+}
+
+#[test]
+fn test_usage_modifier_and_composite_semantics_extraction() {
+    let source = r#"
+        package Root {
+            composite part assembly;
+            part def Vehicle {
+                composite part wheel;
+                part axle;
+                ref part borrowed;
+                port p {
+                    part nested;
+                }
+                attribute values[*] nonunique;
+            }
+            action def Control {
+                in port inputPort;
+            }
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let assembly = get_symbol(analysis.symbol_index(), "Root::assembly");
+    assert_symbol_kind(assembly, SymbolKind::PartUsage);
+    assert_eq!(assembly.is_composite, Some(false));
+
+    let wheel = get_symbol(analysis.symbol_index(), "Root::Vehicle::wheel");
+    assert_symbol_kind(wheel, SymbolKind::PartUsage);
+    assert_eq!(wheel.is_composite, Some(true));
+
+    let axle = get_symbol(analysis.symbol_index(), "Root::Vehicle::axle");
+    assert_symbol_kind(axle, SymbolKind::PartUsage);
+    assert_eq!(axle.is_composite, Some(true));
+
+    let borrowed = get_symbol(analysis.symbol_index(), "Root::Vehicle::borrowed");
+    assert_symbol_kind(borrowed, SymbolKind::PartUsage);
+    assert_eq!(borrowed.is_composite, Some(false));
+
+    let nested = get_symbol(analysis.symbol_index(), "Root::Vehicle::p::nested");
+    assert_symbol_kind(nested, SymbolKind::PartUsage);
+    assert_eq!(nested.is_composite, Some(false));
+
+    let values = get_symbol(analysis.symbol_index(), "Root::Vehicle::values");
+    assert_symbol_kind(values, SymbolKind::AttributeUsage);
+    assert!(values.is_nonunique);
+    assert_eq!(values.is_composite, Some(false));
+
+    let input_port = get_symbol(analysis.symbol_index(), "Root::Control::inputPort");
+    assert_symbol_kind(input_port, SymbolKind::PortUsage);
+    assert_eq!(input_port.direction, Some(syster::parser::Direction::In));
+    assert_eq!(input_port.is_composite, Some(false));
+}
+
+#[test]
+fn test_end_usage_does_not_become_composite() {
+    let source = r#"
+        interface def WaterDelivery {
+            end port supplied;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let supplied = get_symbol(analysis.symbol_index(), "WaterDelivery::supplied");
+    assert_symbol_kind(supplied, SymbolKind::PortUsage);
+    assert!(supplied.is_end);
+    assert_eq!(supplied.is_composite, Some(false));
+}
+
+#[test]
+fn test_port_owned_by_part_is_not_composite() {
+    let source = r#"
+        part def Vehicle {
+            port p;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let port = get_symbol(analysis.symbol_index(), "Vehicle::p");
+    assert_symbol_kind(port, SymbolKind::PortUsage);
+    assert_eq!(port.is_composite, Some(false));
+}
+
+#[test]
+fn test_port_owned_by_port_is_composite() {
+    let source = r#"
+        port def Channel {
+            port nested;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let port = get_symbol(analysis.symbol_index(), "Channel::nested");
+    assert_symbol_kind(port, SymbolKind::PortUsage);
+    assert_eq!(port.is_composite, Some(true));
+}
+
+#[test]
+fn test_state_owned_by_part_is_composite() {
+    let source = r#"
+        part def Vehicle {
+            state idle;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let state = get_symbol(analysis.symbol_index(), "Vehicle::idle");
+    assert_symbol_kind(state, SymbolKind::StateUsage);
+    assert_eq!(state.is_composite, Some(true));
+}
+
+#[test]
+fn test_occurrence_and_part_owned_by_occurrence_are_composite() {
+    let source = r#"
+        occurrence def Lifetime {
+            occurrence phase;
+            part artifact;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let phase = get_symbol(analysis.symbol_index(), "Lifetime::phase");
+    assert_symbol_kind(phase, SymbolKind::OccurrenceUsage);
+    assert_eq!(phase.is_composite, Some(true));
+
+    let artifact = get_symbol(analysis.symbol_index(), "Lifetime::artifact");
+    assert_symbol_kind(artifact, SymbolKind::PartUsage);
+    assert_eq!(artifact.is_composite, Some(true));
+}
+
+#[test]
+fn test_calculation_owned_by_calculation_is_composite() {
+    let source = r#"
+        calc def Total {
+            calc subtotal;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let calc = get_symbol(analysis.symbol_index(), "Total::subtotal");
+    assert_symbol_kind(calc, SymbolKind::CalculationUsage);
+    assert_eq!(calc.is_composite, Some(true));
+}
+
+#[test]
+fn test_transition_owned_by_state_is_composite() {
+    let source = r#"
+        state def VehicleState {
+            state off;
+            state on;
+            transition off_to_on first off then on;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let transition = get_symbol(analysis.symbol_index(), "VehicleState::off_to_on");
+    assert_symbol_kind(transition, SymbolKind::TransitionUsage);
+    assert_eq!(transition.is_composite, Some(true));
+}
+
+#[test]
+fn test_perform_action_usage_is_not_composite() {
+    let source = r#"
+        part def Sys {
+            perform Start;
+        }
+        action def Start;
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let performed = analysis
+        .symbol_index()
+        .all_symbols()
+        .find(|symbol| {
+            symbol
+                .qualified_name
+                .as_ref()
+                .starts_with("Sys::<perform:Start")
+        })
+        .expect("expected perform action usage");
+    assert_symbol_kind(performed, SymbolKind::PerformActionUsage);
+    assert_eq!(performed.is_composite, Some(false));
+}
+
+#[test]
+fn test_connection_usage_is_not_composite() {
+    let source = r#"
+        connection def C;
+        part def Sys {
+            connection link : C;
+        }
+    "#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let link = get_symbol(analysis.symbol_index(), "Sys::link");
+    assert_symbol_kind(link, SymbolKind::ConnectionUsage);
+    assert_eq!(link.is_composite, Some(false));
 }
 
 // =============================================================================
@@ -633,6 +1189,98 @@ fn test_anonymous_attribute_usage() {
 
     assert_symbol_exists(analysis.symbol_index(), "TestPkg::Color");
     assert_symbol_exists(analysis.symbol_index(), "TestPkg::Panel");
+}
+
+// =============================================================================
+// VIEW DEF BODY (issue #21 regression tests)
+// =============================================================================
+
+/// Regression: `ref action X::Y` in view def body — qualified member name must be preserved.
+/// Previously `has_chain` in usage.rs only detected `.`, so `MyAction::a` was parsed as
+/// name=`MyAction` (the qualifier), discarding `::a`. Fixed by extending `has_chain` to also
+/// detect `COLON_COLON`.
+#[test]
+fn test_ref_action_qualified_name_in_view_body() {
+    let source = r#"
+action def MyAction {
+    action a;
+}
+view def MyView {
+    expose MyAction;
+    ref action MyAction::a;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let sym = get_symbol(analysis.symbol_index(), "MyView::a");
+    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
+}
+
+/// Regression: `edge X::A to X::B` in view def body must be scoped to the view, not escape
+/// to compilation-unit level, and must carry a SuccessionUsage kind.
+/// Previously `edge` (a contextual IDENT keyword) was dispatched to `parse_shorthand_feature_member`,
+/// which consumed only `edge` as the name and left `X::A to X::B` as garbage. Fixed by
+/// adding `is_edge_member_start` lookahead in entry.rs and `parse_edge_succession` in connectors.rs.
+#[test]
+fn test_edge_succession_in_view_body() {
+    let source = r#"
+action def MyAction {
+    action b;
+    action c;
+}
+view def MyView {
+    expose MyAction;
+    edge MyAction::b to MyAction::c;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let index = analysis.symbol_index();
+    let succession = index
+        .all_symbols()
+        .find(|s| s.qualified_name.starts_with("MyView::") && s.kind == SymbolKind::SuccessionUsage);
+    assert!(
+        succession.is_some(),
+        "Expected a SuccessionUsage scoped to MyView"
+    );
+}
+
+/// Regression: `@MetadataDef {{ :>> attr = EnumType::member; }}` annotation preceding
+/// `ref action X::Y` must appear in the HIR and not drop the annotated element.
+/// The root cause was Bug 1 (ref action qualified name): the misparse left `::a;` tokens
+/// that error recovery consumed along with the annotation body's closing brace, silently
+/// dropping both elements from the view scope.
+#[test]
+fn test_annotation_with_qualified_enum_value_in_view_body() {
+    let source = r#"
+enum def NodeKind { branch; parallel; }
+metadata def NodeMeta { attribute nodeKind : NodeKind; }
+action def MyAction { action a; }
+view def MyView {
+    expose MyAction;
+    @NodeMeta { :>> nodeKind = NodeKind::branch; }
+    ref action MyAction::a;
+}
+"#;
+    let (mut host, _) = analysis_from_sysml(source);
+    let analysis = host.analysis();
+
+    let index = analysis.symbol_index();
+
+    // The annotation must appear as a child of MyView
+    let annotation = index
+        .all_symbols()
+        .find(|s| s.qualified_name.starts_with("MyView::") && s.qualified_name.contains("NodeMeta"));
+    assert!(
+        annotation.is_some(),
+        "Annotation @NodeMeta should appear as a child of MyView"
+    );
+
+    // The ref action must also appear, not be swallowed by annotation error recovery
+    let sym = get_symbol(index, "MyView::a");
+    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
 }
 
 // =============================================================================

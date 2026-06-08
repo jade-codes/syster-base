@@ -204,6 +204,7 @@ pub(super) fn extract_definition_from_ast(
         is_public: false,
         view_data,
         metadata_annotations,
+        is_composite: None,
         is_abstract: def.is_abstract(),
         is_variation: def.is_variation(),
         is_readonly: false,

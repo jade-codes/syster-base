@@ -695,6 +695,59 @@ fn test_constraint_with_doc_and_expression() {
 }
 
 // ============================================================================
+// Constraint Invocation Body Tests (Name { bindings })
+// ============================================================================
+
+#[test]
+fn test_require_constraint_with_if_then_invocation_body() {
+    let input = r#"package T {
+        requirement def R {
+            require constraint {
+                if (x == 1)
+                then MyConstraint {
+                    actual = x;
+                    required = y;
+                }
+                else true;
+            }
+        }
+    }"#;
+    assert_parses_sysml(input, "require constraint with if/then invocation body and trailing semicolon");
+}
+
+#[test]
+fn test_require_constraint_invocation_body_no_trailing_semicolon() {
+    let input = r#"package T {
+        requirement def R {
+            require constraint {
+                if (a == b)
+                then C { x = a; y = b; }
+                else true
+            }
+        }
+    }"#;
+    assert_parses_sysml(input, "require constraint if/then with invocation body, no trailing semicolon");
+}
+
+#[test]
+fn test_constraint_body_with_trailing_semicolon() {
+    let input = "package T { assert constraint { x >= 0; } }";
+    assert_parses_sysml(input, "constraint body with trailing semicolon");
+}
+
+#[test]
+fn test_invocation_body_single_expression() {
+    let input = "package T { assert constraint { if cond then Sub { x >= 0 } else true } }";
+    assert_parses_sysml(input, "invocation body with single expression");
+}
+
+#[test]
+fn test_invocation_body_in_attribute_expression() {
+    let input = wrap_in_attribute("MyType { a = 1; b = 2; }");
+    assert_parses_sysml(&input, "invocation body in attribute expression context");
+}
+
+// ============================================================================
 // Classification Expression Tests
 // ============================================================================
 

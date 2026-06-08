@@ -210,8 +210,10 @@ fn build_signature(symbol: &HirSymbol) -> String {
         | SymbolKind::ConstraintDefinition
         | SymbolKind::StateDefinition
         | SymbolKind::CalculationDefinition
+        | SymbolKind::OccurrenceDefinition
         | SymbolKind::UseCaseDefinition
         | SymbolKind::AnalysisCaseDefinition
+        | SymbolKind::VerificationCaseDefinition
         | SymbolKind::ConcernDefinition
         | SymbolKind::ViewDefinition
         | SymbolKind::ViewpointDefinition
@@ -238,18 +240,26 @@ fn build_signature(symbol: &HirSymbol) -> String {
         SymbolKind::PartUsage
         | SymbolKind::ItemUsage
         | SymbolKind::ActionUsage
+        | SymbolKind::PerformActionUsage
         | SymbolKind::PortUsage
         | SymbolKind::AttributeUsage
         | SymbolKind::ConnectionUsage
         | SymbolKind::InterfaceUsage
         | SymbolKind::AllocationUsage
         | SymbolKind::RequirementUsage
+        | SymbolKind::SatisfyRequirementUsage
         | SymbolKind::ConstraintUsage
+        | SymbolKind::AssertConstraintUsage
         | SymbolKind::StateUsage
+        | SymbolKind::ExhibitStateUsage
         | SymbolKind::TransitionUsage
         | SymbolKind::CalculationUsage
         | SymbolKind::ReferenceUsage
         | SymbolKind::OccurrenceUsage
+        | SymbolKind::UseCaseUsage
+        | SymbolKind::IncludeUseCaseUsage
+        | SymbolKind::AnalysisCaseUsage
+        | SymbolKind::VerificationCaseUsage
         | SymbolKind::FlowConnectionUsage
         | SymbolKind::ViewUsage
         | SymbolKind::ViewpointUsage
@@ -281,7 +291,8 @@ fn build_signature(symbol: &HirSymbol) -> String {
         SymbolKind::Comment
         | SymbolKind::Other
         | SymbolKind::Dependency
-        | SymbolKind::ExposeRelationship => name_with_alias,
+        | SymbolKind::ExposeRelationship
+        | SymbolKind::SuccessionUsage => name_with_alias,
     }
 }
 
@@ -371,6 +382,7 @@ mod tests {
             is_public: false,
             view_data: None,
             metadata_annotations: Vec::new(),
+            is_composite: None,
             is_abstract: false,
             is_variation: false,
             is_readonly: false,

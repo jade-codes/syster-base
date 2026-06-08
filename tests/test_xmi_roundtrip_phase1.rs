@@ -26,7 +26,7 @@ fn test_xmi_to_symbols_preserves_element_ids() {
     let model2 = Xmi.read(&xmi_bytes).expect("Failed to read XMI");
 
     // 4. Convert to symbols
-    let symbols = symbols_from_model(&model2);
+    let symbols = symbols_from_model(&model2).expect("Failed to import symbols from model");
 
     // Verify symbols have the original element IDs
     assert_eq!(symbols.len(), 2, "Should have 2 symbols");

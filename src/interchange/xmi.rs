@@ -911,7 +911,14 @@ mod writer {
                 elem_start.push_attribute(("qualifiedName", qn.as_ref()));
             }
 
-            // Relationship attributes are now stored as properties and written below
+            if let Some(rel) = &element.relationship {
+                if let Some(source) = rel.source() {
+                    elem_start.push_attribute(("source", source.as_str()));
+                }
+                if let Some(target) = rel.target() {
+                    elem_start.push_attribute(("target", target.as_str()));
+                }
+            }
 
             // Boolean flags - write from properties (source of truth)
             // Order matters for byte-perfect roundtrip: isAbstract, isVariation, isDerived, isReadOnly, isParallel, isUnique, isOrdered, isComposite, isStandard
@@ -1035,6 +1042,9 @@ mod writer {
                     }
                     super::super::model::PropertyValue::Boolean(b) => {
                         elem_start.push_attribute((k, if *b { "true" } else { "false" }));
+                    }
+                    super::super::model::PropertyValue::Reference(id) => {
+                        elem_start.push_attribute((k, id.as_str()));
                     }
                     _ => {}
                 }

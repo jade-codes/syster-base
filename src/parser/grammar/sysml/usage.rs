@@ -233,8 +233,11 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
         if is_name_kind(p.peek_kind(lookahead)) {
             lookahead += 1;
         }
-        // Skip any whitespace/trivia in lookahead (simplified - just check next few)
-        p.peek_kind(lookahead) == SyntaxKind::DOT
+        // Detect feature-chain (.) or scope-qualified reference (::) after name
+        matches!(
+            p.peek_kind(lookahead),
+            SyntaxKind::DOT | SyntaxKind::COLON_COLON
+        )
     } else {
         false
     };
