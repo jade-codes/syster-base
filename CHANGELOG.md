@@ -23,6 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Unified short-form relationship edge shape** (#17): All eight SysML short-form keywords (`perform`, `satisfy`, `include`, `exhibit`, `assert`, `require`, `assume`, `verify`) now emit a single minimal `ReferenceSubsetting` edge (`source`, `target`, `owner`)
   - The `require`/`assume`/`verify` distinction is carried on the membership wrap (`RequirementConstraintMembership` with `kind`, or `Verification`) rather than on the edge itself
   - HIR ↔ interchange round-trip fidelity preserved
+  - **XMI writer keeps relationship endpoints structural**: flat `source`/`target` attributes are emitted only for relationships with no structural carrier (e.g. models built via `Model::add_rel`); relationships parsed from XMI retain their nested `ownedRelatedElement`/`href` representation. Emitting them unconditionally added attributes the source XMI never had, which were re-absorbed on each read→write pass — XMI round-trips are now byte-stable (convergence 100%, official-library fidelity restored). Endpoint-alias classification is shared between the reader and writer via `SOURCE_ALIAS_KEYS`/`TARGET_ALIAS_KEYS`.
 - **Symbol extraction module**: Replaced `hir/symbols.rs` with `hir/symbols/mod.rs` exporting the same public API; improved extraction across usages and special forms
 
 ### Fixed
