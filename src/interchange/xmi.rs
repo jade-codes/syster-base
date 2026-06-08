@@ -21,6 +21,41 @@ use std::sync::Arc;
 use super::model::{Element, ElementId, ElementKind, Model, RelationshipData};
 use super::{FormatCapability, InterchangeError, ModelFormat};
 
+/// XMI attribute names the reader folds into a relationship's `source` endpoint.
+///
+/// Shared between the reader (which classifies these attributes) and the writer
+/// (which uses them to detect when a relationship's endpoints are already
+/// encoded structurally, so flat `source`/`target` attributes must not be
+/// re-emitted). Keep this as the single source of truth for both halves.
+const SOURCE_ALIAS_KEYS: &[&str] = &[
+    "source",
+    "relatedElement",
+    "subclassifier",
+    "typedFeature",
+    "redefiningFeature",
+    "subsettingFeature",
+    "typeDisjoined",
+];
+
+/// XMI attribute names the reader folds into a relationship's `target` endpoint.
+/// See [`SOURCE_ALIAS_KEYS`] for the rationale behind sharing this list.
+const TARGET_ALIAS_KEYS: &[&str] = &[
+    "target",
+    "superclassifier",
+    "redefinedFeature",
+    "subsettedFeature",
+    "general",
+    "specific",
+    "type",
+    "chainingFeature",
+    "importedMembership",
+    "importedNamespace",
+    "disjoiningType",
+    "originalType",
+    "memberElement",
+    "referencedFeature",
+];
+
 /// XMI namespace URIs - using 2025 spec versions.
 pub mod namespace {
     /// XMI 2.0 namespace (used in xmi:version).
@@ -314,17 +349,14 @@ mod reader {
                     "isUnique" => is_unique = Some(value == "true"),
                     "body" => body = Some(value),
                     "href" => href = Some(value),
-                    // Relationship source references - store as property AND use for relationship
-                    "source" | "relatedElement" | "subclassifier" | "typedFeature"
-                    | "redefiningFeature" | "subsettingFeature" | "typeDisjoined" => {
+                    // Relationship endpoint references — classified via the shared
+                    // alias lists (SOURCE_ALIAS_KEYS / TARGET_ALIAS_KEYS). Stored as
+                    // a property AND used to build the relationship.
+                    _ if SOURCE_ALIAS_KEYS.contains(&key) => {
                         source_ref = Some(value.clone());
                         extra_attrs.push((key.to_string(), value));
                     }
-                    // Relationship target references - store as property AND use for relationship
-                    "target" | "superclassifier" | "redefinedFeature" | "subsettedFeature"
-                    | "general" | "specific" | "type" | "chainingFeature"
-                    | "importedMembership" | "importedNamespace" | "disjoiningType"
-                    | "originalType" | "memberElement" | "referencedFeature" => {
+                    _ if TARGET_ALIAS_KEYS.contains(&key) => {
                         target_ref = Some(value.clone());
                         extra_attrs.push((key.to_string(), value));
                     }
@@ -911,12 +943,28 @@ mod writer {
                 elem_start.push_attribute(("qualifiedName", qn.as_ref()));
             }
 
+            // Relationship endpoints.
+            //
+            // Official XMI encodes a relationship's endpoints structurally: the
+            // target as a nested `ownedRelatedElement`/`href` child and the source
+            // as the owning element — never as flat `source`/`target` attributes.
+            // We therefore emit flat endpoints ONLY for relationships that have no
+            // structural carrier, i.e. models built programmatically via
+            // `Model::add_rel` (e.g. the HIR→interchange export path), where the
+            // endpoints live solely in `element.relationship`.
+            //
+            // Emitting them unconditionally (as done previously) added attributes
+            // the source XMI never had; on re-read those became extra properties
+            // that the property loop re-emitted, growing the attribute set on each
+            // pass and breaking round-trip fidelity and convergence.
             if let Some(rel) = &element.relationship {
-                if let Some(source) = rel.source() {
-                    elem_start.push_attribute(("source", source.as_str()));
-                }
-                if let Some(target) = rel.target() {
-                    elem_start.push_attribute(("target", target.as_str()));
+                if !Self::endpoints_are_structural(element) {
+                    if let Some(source) = rel.source() {
+                        elem_start.push_attribute(("source", source.as_str()));
+                    }
+                    if let Some(target) = rel.target() {
+                        elem_start.push_attribute(("target", target.as_str()));
+                    }
                 }
             }
 
@@ -1083,6 +1131,30 @@ mod writer {
                 return orig.to_string();
             }
             element.kind.xmi_type().to_string()
+        }
+
+        /// Whether a relationship element already carries its endpoints
+        /// structurally — as nested owned children, an `href` child, or an
+        /// endpoint alias attribute — as is always the case for elements parsed
+        /// from XMI. Programmatically built relationships (`Model::add_rel`) have
+        /// none of these and need flat `source`/`target` attributes instead.
+        ///
+        /// The alias check reuses the same [`SOURCE_ALIAS_KEYS`]/[`TARGET_ALIAS_KEYS`]
+        /// lists the reader classifies endpoints with, so the two halves cannot
+        /// drift apart.
+        fn endpoints_are_structural(element: &Element) -> bool {
+            if !element.owned_elements.is_empty() {
+                return true;
+            }
+            element.properties.keys().any(|key| {
+                let k = key.as_ref();
+                // `_`-prefixed keys are internal roundtrip markers the reader
+                // attaches to every parsed element (e.g. `_xsi_type`, `_href_*`).
+                k == "href_target_name"
+                    || k.starts_with('_')
+                    || SOURCE_ALIAS_KEYS.contains(&k)
+                    || TARGET_ALIAS_KEYS.contains(&k)
+            })
         }
 
         /// Get the href child element name for a given element kind.
