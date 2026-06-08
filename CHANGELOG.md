@@ -5,6 +5,34 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.1-alpha] - 2026-06-08
+
+### Added
+
+- **Conditional Constraint Invocation** (#16): Support for parsing and analyzing conditional constraint invocations
+  - Grammar support in KerML expression atoms (`kerml_expressions/atoms.rs`) and SysML definitions
+  - Wired in the `normalized` syntax module (`src/syntax/normalized.rs`) and interchange integration
+- **View Definition Edges** (#22): Parser and symbol-extraction support for `view def` connector edges
+  - New connector grammar in `parser/grammar/sysml/connectors.rs`
+  - Augmented symbol extraction, hover, and semantic-token coverage
+- **Accept State** (#19): Parser/behavioral support for accept-state usages (resolves #18)
+- **JSON-LD `qualifiedName`**: Interchange JSON-LD export now emits the `qualifiedName` field
+
+### Changed
+
+- **Unified short-form relationship edge shape** (#17): All eight SysML short-form keywords (`perform`, `satisfy`, `include`, `exhibit`, `assert`, `require`, `assume`, `verify`) now emit a single minimal `ReferenceSubsetting` edge (`source`, `target`, `owner`)
+  - The `require`/`assume`/`verify` distinction is carried on the membership wrap (`RequirementConstraintMembership` with `kind`, or `Verification`) rather than on the edge itself
+  - HIR ↔ interchange round-trip fidelity preserved
+- **Symbol extraction module**: Replaced `hir/symbols.rs` with `hir/symbols/mod.rs` exporting the same public API; improved extraction across usages and special forms
+
+### Fixed
+
+- **Ref & composite semantics** (#17): Aligned reference and composite semantics across HIR and the interchange layer, fixing a `HirRelKind` → `ElementKind` mis-mapping for the short-form relationship kinds (`Performs`/`Satisfies` previously mapped to usage kinds instead of `ReferenceSubsetting`)
+
+### Removed
+
+- **Redundant interchange edge properties** (#17): Removed ~25 non-canonical pseudo-properties (e.g. `referencedConstraint`, `ownedConstraint`, `ownedMemberName`, `membershipOwningNamespace`, `owningType`, `relatedElement`) from `RequirementConstraintMembership`/short-form edges that had diverged from the minimal structural interchange shape
+
 ## [0.4.0-alpha] - 2026-02-18
 
 ### Changed
