@@ -947,13 +947,15 @@ impl NormalizedUsage {
                 Some(RowanUsageKind::Allocation) => NormalizedUsageKind::Allocation,
                 Some(RowanUsageKind::Flow) => NormalizedUsageKind::Flow,
                 Some(RowanUsageKind::Occurrence) => NormalizedUsageKind::Occurrence,
-                Some(RowanUsageKind::Ref) => NormalizedUsageKind::Reference,
                 // KerML mappings
                 Some(RowanUsageKind::Feature) => NormalizedUsageKind::Attribute, // feature -> attribute
                 Some(RowanUsageKind::Step) => NormalizedUsageKind::Action,       // step -> action
                 Some(RowanUsageKind::Expr) => NormalizedUsageKind::Calculation,  // expr -> calc
                 Some(RowanUsageKind::Connector) => NormalizedUsageKind::Connection, // connector -> connection
                 Some(RowanUsageKind::Case) => NormalizedUsageKind::Other,
+                Some(RowanUsageKind::UseCase) => NormalizedUsageKind::Other,
+                Some(RowanUsageKind::Analysis) => NormalizedUsageKind::Calculation,
+                Some(RowanUsageKind::Verification) => NormalizedUsageKind::Requirement,
                 None => NormalizedUsageKind::Part, // Default to Part for usages without keyword
             }
         };
