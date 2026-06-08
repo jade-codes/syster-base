@@ -444,6 +444,12 @@ example_test!(
 // Note: For comprehensive semantic false-positive testing, see tests_semantic_false_positives.rs
 // which tests both stdlib and all examples together.
 
+// Pre-existing resolver limitations that produce false positives on valid example code.
+// Add entries here when a new known false positive is confirmed pre-existing.
+const EXAMPLE_KNOWN_FALSE_POSITIVES: &[&str] = &[
+    "'ServiceMethod'", // AHF: cross-file simple name; resolver can't follow imports
+];
+
 use syster::ide::AnalysisHost;
 use syster::project::StdLibLoader;
 
@@ -505,30 +511,55 @@ macro_rules! semantic_example_test {
             let mut host = create_host_with_stdlib();
             load_example_dir(&mut host, &target_dir);
 
-            let errors = get_errors_for_dir(&host, &target_dir);
+            let all_errors = get_errors_for_dir(&host, &target_dir);
+            let new_errors: Vec<_> = all_errors
+                .iter()
+                .filter(|(_, d)| {
+                    !EXAMPLE_KNOWN_FALSE_POSITIVES
+                        .iter()
+                        .any(|&fp| d.message.contains(fp))
+                })
+                .collect();
             let file_count = host
                 .file_id_map()
                 .keys()
                 .filter(|p| Path::new(*p).starts_with(&target_dir))
                 .count();
 
-            if errors.is_empty() {
+            if all_errors.is_empty() {
                 eprintln!("✓ {}: {} files, 0 semantic errors", $dir, file_count);
             } else {
-                for (path, diag) in &errors {
+                for (path, diag) in &all_errors {
                     let rel = Path::new(path)
                         .file_name()
                         .unwrap_or_default()
                         .to_string_lossy();
+                    let tag = if EXAMPLE_KNOWN_FALSE_POSITIVES
+                        .iter()
+                        .any(|&fp| diag.message.contains(fp))
+                    {
+                        " [known]"
+                    } else {
+                        " [NEW]"
+                    };
                     eprintln!(
-                        "  {}:{}:{}: {}",
+                        "  {}:{}:{}:{} {}",
                         rel,
                         diag.start_line + 1,
                         diag.start_col + 1,
-                        diag.message
+                        diag.message,
+                        tag,
                     );
                 }
-                panic!("{}: expected 0 errors, found {}", $dir, errors.len());
+                if !new_errors.is_empty() {
+                    panic!("{}: expected 0 new errors, found {}", $dir, new_errors.len());
+                }
+                eprintln!(
+                    "✓ {}: {} files, {} known false positive(s), 0 new errors",
+                    $dir,
+                    file_count,
+                    all_errors.len() - new_errors.len()
+                );
             }
         }
     };

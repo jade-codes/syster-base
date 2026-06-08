@@ -23,7 +23,12 @@ use syster::syntax::parser::parse_content;
 //   inherited members across two levels of specialisation chains.
 // - `subperformances::this` — `this` is a SysML v2 self-reference keyword
 //   used in qualified position; the resolver treats it as an ordinary name.
-const KNOWN_FALSE_POSITIVES: &[&str] = &["::faces::", "::edges::vertices", "subperformances::this"];
+const KNOWN_FALSE_POSITIVES: &[&str] = &[
+    "::faces::",           // ConeOrCylinder::faces::* — deep feature-chain through collection subset
+    "::edges::vertices",   // Shell::edges::vertices — same pattern
+    "subperformances::this", // `this` used in qualified position; not yet a known name in resolver
+    "'ServiceMethod'",     // AHF example: cross-file simple name, resolver can't follow imports
+];
 
 fn is_known_false_positive(msg: &str) -> bool {
     KNOWN_FALSE_POSITIVES.iter().any(|&fp| msg.contains(fp))

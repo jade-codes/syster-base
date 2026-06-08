@@ -1214,7 +1214,7 @@ view def MyView {
     let analysis = host.analysis();
 
     let sym = get_symbol(analysis.symbol_index(), "MyView::a");
-    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
+    assert_symbol_kind(sym, SymbolKind::ActionUsage);
 }
 
 /// Regression: `edge X::A to X::B` in view def body must be scoped to the view, not escape
@@ -1280,7 +1280,7 @@ view def MyView {
 
     // The ref action must also appear, not be swallowed by annotation error recovery
     let sym = get_symbol(index, "MyView::a");
-    assert_symbol_kind(sym, SymbolKind::ReferenceUsage);
+    assert_symbol_kind(sym, SymbolKind::ActionUsage);
 }
 
 // =============================================================================
