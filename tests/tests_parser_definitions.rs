@@ -160,3 +160,40 @@ fn test_variation_modifier(#[case] input: &str, #[case] expected_variation: bool
     let def = parse_sysml_def(input).expect("Should parse");
     assert_eq!(def.is_variation(), expected_variation);
 }
+
+/// Reserved keyword 'to' used as attribute name should parse without errors.
+#[test]
+fn test_attribute_named_to() {
+    let parsed = parse_sysml("item def D { attribute to : String[0..1]; }");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}
+
+/// 'actor def' should be parsed as a definition, not trigger a usage error.
+#[test]
+fn test_actor_def() {
+    let parsed = parse_sysml("package P { actor def GapFourActor; }");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+    let file = syster::parser::SourceFile::cast(parsed.syntax()).expect("cast");
+    let pkg = file.members().find_map(|m| match m {
+        syster::parser::NamespaceMember::Package(p) => Some(p),
+        _ => None,
+    }).expect("package");
+    let def = pkg.body().expect("body").members().find_map(|m| match m {
+        syster::parser::NamespaceMember::Definition(d) => Some(d),
+        _ => None,
+    }).expect("definition");
+    assert_eq!(def.definition_kind(), Some(DefinitionKind::Actor));
+    assert_eq!(def.name().and_then(|n| n.text()), Some("GapFourActor".to_string()));
+}
+
+/// Prefix metadata with a body block (#Tag { ... }) should not swallow the following member.
+#[test]
+fn test_prefix_metadata_with_body() {
+    let parsed = parse_sysml(
+        r#"package P {
+            #AnyTag { :>> ref = "spec.adoc"; }
+            use case def <'UC-LOST'> LostCase { action step_a; }
+        }"#,
+    );
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}

@@ -300,14 +300,20 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
             }
         }
         SyntaxKind::ACTOR_KW => {
-            let (_, next) = peek_past_optional_name(p, 1);
-            if next == SyntaxKind::EQ
-                || next == SyntaxKind::COLON_GT_GT
-                || next == SyntaxKind::COLON_GT
-            {
-                p.parse_shorthand_feature_member();
+            let lookahead = skip_trivia_lookahead(p, 1);
+            if p.peek_kind(lookahead) == SyntaxKind::DEF_KW {
+                // actor def Name { ... }
+                p.parse_definition_or_usage();
             } else {
-                parse_actor_usage(p);
+                let (_, next) = peek_past_optional_name(p, 1);
+                if next == SyntaxKind::EQ
+                    || next == SyntaxKind::COLON_GT_GT
+                    || next == SyntaxKind::COLON_GT
+                {
+                    p.parse_shorthand_feature_member();
+                } else {
+                    parse_actor_usage(p);
+                }
             }
         }
         SyntaxKind::STAKEHOLDER_KW => {
@@ -428,13 +434,38 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
     }
 }
 
-/// Parse prefix metadata (#name)
-/// Per pest: Prefix metadata appears as #identifier before various declarations
+/// Parse prefix metadata (#name) or prefix metadata with body (#name { ... })
+/// Per pest: Prefix metadata appears as #identifier (with optional body) before various declarations
 pub(super) fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PREFIX_METADATA);
     expect_and_skip(p, SyntaxKind::HASH);
     if p.at_name_token() {
         p.bump();
+        p.skip_trivia();
+    }
+    // Consume optional body { ... } — brace-balanced skip
+    if p.at(SyntaxKind::L_BRACE) {
+        let mut depth = 1usize;
+        p.bump(); // {
+        while depth > 0 {
+            match p.current_kind() {
+                SyntaxKind::L_BRACE => {
+                    depth += 1;
+                    p.bump();
+                }
+                SyntaxKind::R_BRACE => {
+                    depth -= 1;
+                    if depth > 0 {
+                        p.bump();
+                    }
+                }
+                SyntaxKind::ERROR => break,
+                _ => {
+                    p.bump();
+                }
+            }
+        }
+        p.expect(SyntaxKind::R_BRACE);
     }
     p.finish_node();
 }

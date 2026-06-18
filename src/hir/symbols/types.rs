@@ -719,6 +719,7 @@ impl SymbolKind {
             Some(DefinitionKind::Flow) => Self::Other,
             Some(DefinitionKind::Metadata) => Self::Other,
             Some(DefinitionKind::Occurrence) => Self::OccurrenceDefinition,
+            Some(DefinitionKind::Actor) => Self::Other,
             // KerML mappings
             Some(DefinitionKind::Class) => Self::PartDefinition,
             Some(DefinitionKind::Struct) => Self::PartDefinition,

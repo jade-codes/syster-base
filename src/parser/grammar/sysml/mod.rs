@@ -82,6 +82,7 @@ pub const SYSML_DEFINITION_KEYWORDS: &[SyntaxKind] = &[
     SyntaxKind::CONCERN_KW,
     SyntaxKind::METADATA_KW,
     SyntaxKind::ENUM_KW,
+    SyntaxKind::ACTOR_KW,
 ];
 
 /// SysML usage keywords (used without 'def')

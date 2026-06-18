@@ -319,6 +319,7 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::MEMBER_KW
                 | SyntaxKind::VAR_KW
                 | SyntaxKind::STATE_KW
+                | SyntaxKind::TO_KW
         )
     }
 

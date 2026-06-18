@@ -360,7 +360,13 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
     // For connection/interface usage: binary endpoint syntax with 'to'
     // Pattern: interface source.port to target.port;
-    if (is_connection_kw || is_interface_kw) && p.at_name_token() && !p.at(SyntaxKind::CONNECT_KW) {
+    // Guard !p.at(TO_KW): 'to' can be used as a feature name (e.g. `attribute to : Type`),
+    // so we must not treat it as the start of a connector endpoint here.
+    if (is_connection_kw || is_interface_kw)
+        && p.at_name_token()
+        && !p.at(SyntaxKind::CONNECT_KW)
+        && !p.at(SyntaxKind::TO_KW)
+    {
         // Check if there's a 'to' keyword ahead
         let has_to = {
             let mut depth = 0;

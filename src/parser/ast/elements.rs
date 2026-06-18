@@ -148,6 +148,7 @@ impl Definition {
         VERIFICATION_KW => Verification,
         USE_KW => UseCase,
         CONCERN_KW => Concern,
+        ACTOR_KW => Actor,
         // KerML definition keywords
         CLASS_KW => Class,
         STRUCT_KW => Struct,
@@ -197,6 +198,7 @@ pub enum DefinitionKind {
     Verification,
     UseCase,
     Concern,
+    Actor,
     // KerML kinds
     Class,
     Struct,

@@ -794,6 +794,7 @@ impl NormalizedDefinition {
             Some(RowanDefinitionKind::Flow) => NormalizedDefKind::Other, // Map flow def to Other
             Some(RowanDefinitionKind::Metadata) => NormalizedDefKind::Other,
             Some(RowanDefinitionKind::Occurrence) => NormalizedDefKind::Other,
+            Some(RowanDefinitionKind::Actor) => NormalizedDefKind::Other,
             // KerML mappings to SysML equivalents
             Some(RowanDefinitionKind::Class) => NormalizedDefKind::Part, // class -> part def
             Some(RowanDefinitionKind::Struct) => NormalizedDefKind::Part, // struct -> part def
