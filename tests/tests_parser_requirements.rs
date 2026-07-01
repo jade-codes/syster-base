@@ -120,6 +120,28 @@ fn test_concern_def(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: `frame <qualifiedname>;` (ConcernReference) used
+// `parse_optional_identification` (a single name) instead of a qualified-name
+// parser, so multi-segment references like `frame Pkg::Concern1;` broke on
+// the `::`. The sibling form `frame concern c1;` (ConcernUsage with a `frame`
+// prefix) defines a *new* name and must keep using identification. See
+// docs/grammar-gaps.adoc.
+#[rstest]
+#[case("requirement def R { frame Pkg::Concern1; }")]
+#[case("requirement def R { frame Concern1; }")]
+#[case("requirement def R { frame Pkg::Sub::Concern1; }")]
+#[case("requirement def R { frame concern c1; }")]
+#[case("requirement def R { frame concern c1 { doc /* text */ } }")]
+fn test_frame_concern_reference_and_usage(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Satisfy and Verify
 // ============================================================================
