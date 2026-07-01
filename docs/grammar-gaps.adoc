@@ -53,16 +53,27 @@ Checkboxes are unchecked; check them off as items are fixed.
   `parse_requirement_verification` now consumes any of
   `assert`/`assume`/`require` as its leading modifier instead of only
   `assert`. As a side effect this also fixes the analogous
-  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. `not` is kept as
-  an unconditional trigger for the verification path (not narrowed to
-  `not satisfy`/`not verify`) specifically to avoid regressing
-  `assert not massLimitation {...}`-style constraint usages, which
-  `parse_requirement_constraint` cannot parse (see the `assert not
-  constraint c1 {...}` item below, still open). Regression tests added in
-  `tests/tests_parser_requirements.rs`
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. The dispatch
+  looks past an optional `not` to the following keyword to decide between
+  the two parsers, rather than treating `not` itself as an unconditional
+  verification trigger -- see the `assert not constraint c1 {...}` fix
+  below, which this dispatch change was updated alongside. Regression tests
+  added in `tests/tests_parser_requirements.rs`
   (`test_requirement_usage_prefix_dispatch`)._
-* [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
-  checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [x] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`). +
+  _Fixed: added `consume_if(p, SyntaxKind::NOT_KW)` right after the
+  `assert`/`assume`/`require` bump in `parse_requirement_constraint`. This
+  also required updating `entry.rs`'s dispatch (see the item above) to look
+  past `not` to the keyword that actually follows it (`satisfy`/`verify`/
+  `requirement` -> verification, anything else including `constraint` or a
+  bare name -> constraint) instead of routing every `not`-prefixed case to
+  the verification parser unconditionally, which is what let this bug hide
+  behind a working-by-accident `assert not massLimitation {...}` fixture.
+  That fixture now parses via the (correct) constraint path instead of the
+  verification path. Regression tests added in
+  `tests/tests_parser_requirements.rs`
+  (`test_constraint_usage_not_modifier`)._
 * [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
   `parse_optional_identification` (single name) instead of a qualified-name
   parser; multi-segment names likely break.

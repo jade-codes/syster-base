@@ -333,18 +333,19 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
             }
         }
         SyntaxKind::ASSERT_KW | SyntaxKind::ASSUME_KW | SyntaxKind::REQUIRE_KW => {
-            // Check if followed by 'not' (also covers 'not satisfy'/'not verify'
-            // shorthand), 'satisfy'/'verify' (shorthand), or the mandatory
-            // 'requirement' keyword of the RequirementUsage long form ->
-            // requirement verification (which also parses the 'not' modifier).
-            // Otherwise -> requirement constraint (ConstraintUsage/ConstraintReference).
-            let next = p.peek_kind(1);
+            // Look past an optional 'not' to find the disambiguating keyword:
+            // 'satisfy'/'verify' (shorthand) or the mandatory 'requirement' keyword
+            // of the RequirementUsage long form -> requirement verification (which
+            // also parses the 'not' modifier). Otherwise -> requirement constraint
+            // (ConstraintUsage/ConstraintReference, which also parses 'not' -- see
+            // e.g. `assert not massLimitation {...}`).
+            let mut next = p.peek_kind(1);
+            if next == SyntaxKind::NOT_KW {
+                next = p.peek_kind(2);
+            }
             if matches!(
                 next,
-                SyntaxKind::NOT_KW
-                    | SyntaxKind::SATISFY_KW
-                    | SyntaxKind::VERIFY_KW
-                    | SyntaxKind::REQUIREMENT_KW
+                SyntaxKind::SATISFY_KW | SyntaxKind::VERIFY_KW | SyntaxKind::REQUIREMENT_KW
             ) {
                 parse_requirement_verification(p);
             } else {

@@ -84,6 +84,27 @@ fn test_constraint_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: the `["not"]?` modifier in ConstraintUsage's assert/assume/require
+// prefix was never consumed by `parse_requirement_constraint`, so `assert not
+// constraint c1 {...}` failed with "expected ';', found 'not'". This also covers
+// the shorthand form where the 'constraint' keyword itself is omitted (e.g.
+// `assert not massLimitation {...}`, from Simple Tests/ConstraintTest.sysml).
+// See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("package P { assert not constraint c1 { true } }")]
+#[case("package P { assume not constraint c1; }")]
+#[case("package P { require not constraint c1 : C; }")]
+#[case("part def P { assert not massLimitation { :>> mass = vehicle3.mass; } }")]
+fn test_constraint_usage_not_modifier(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Verification Definitions
 // ============================================================================
