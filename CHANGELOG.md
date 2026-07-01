@@ -5,6 +5,16 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2-alpha] - 2026-06-30
+
+### Fixed
+
+- **Inherited member resolution through SemanticMetadata baseType**: A reference to a member inherited via a semantic-metadata implicit specialization (e.g. `action giveItems :> ServiceMethod` inside a `#systemdd`-annotated element, where `SysDDMetadata` declares `baseType` typed by `SysDD`) was reported as `undefined reference` (E0001). Scope-walking name resolution only consulted inherited members when the enclosing scope had explicit supertypes; it now also does so when the scope carries metadata annotations, so metadata-only specializations contribute their inherited members (`src/hir/resolve.rs`).
+- **Parser fixes** (#25): three parser bugs resolved
+  - `to` as a feature name (e.g. `attribute to : String[0..1]`) — `TO_KW` is now a contextual name token and is guarded against being consumed as a connector endpoint
+  - `actor def` definitions — `ACTOR_KW` is now recognized as a definition keyword with `def` lookahead, with a corresponding `Actor` `DefinitionKind`
+  - prefix metadata with a body before a member (e.g. `#AnyTag { :>> ref = "..."; }`) — `parse_prefix_metadata` now brace-balance-skips an optional `{ ... }` body, preventing premature closure of the enclosing package
+
 ## [0.4.1-alpha] - 2026-06-08
 
 ### Added

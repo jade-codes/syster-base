@@ -3001,8 +3001,13 @@ impl<'a> Resolver<'a> {
             if !current.is_empty() {
                 if let Some(scope_sym) = self.index.lookup_qualified(&current) {
                     // Check inherited members for both usages and definitions
-                    // (both can have supertypes that define members like start/done)
-                    if !scope_sym.supertypes.is_empty() {
+                    // (both can have supertypes that define members like start/done).
+                    // Metadata annotations also imply specialization via SemanticMetadata
+                    // baseType (e.g. `#systemdd APISProducer` implicitly specializes SysDD),
+                    // so consult inherited members when the scope has either.
+                    if !scope_sym.supertypes.is_empty()
+                        || !scope_sym.metadata_annotations.is_empty()
+                    {
                         if let Some(result) = self.resolve_inherited_member(scope_sym, name) {
                             return result;
                         }

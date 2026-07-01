@@ -446,9 +446,7 @@ example_test!(
 
 // Pre-existing resolver limitations that produce false positives on valid example code.
 // Add entries here when a new known false positive is confirmed pre-existing.
-const EXAMPLE_KNOWN_FALSE_POSITIVES: &[&str] = &[
-    "'ServiceMethod'", // AHF: cross-file simple name; resolver can't follow imports
-];
+const EXAMPLE_KNOWN_FALSE_POSITIVES: &[&str] = &[];
 
 use syster::ide::AnalysisHost;
 use syster::project::StdLibLoader;
