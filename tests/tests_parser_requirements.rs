@@ -38,6 +38,28 @@ fn test_requirement_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: 'assume'/'require' followed by the literal 'requirement' keyword
+// (the RequirementUsage long form) used to be mis-dispatched into the
+// constraint-usage parser, which has no handling for the 'requirement'
+// keyword and left it dangling. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("package P { assume requirement myReq; }")]
+#[case("package P { require requirement myReq; }")]
+#[case("package P { assert requirement myReq; }")]
+#[case("package P { assume requirement myReq { doc /* text */ } }")]
+#[case("package P { require verify requirement myReq; }")]
+#[case("package P { assume satisfy myReq; }")]
+#[case("package P { require satisfy myReq; }")]
+fn test_requirement_usage_prefix_dispatch(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Constraint Definitions
 // ============================================================================

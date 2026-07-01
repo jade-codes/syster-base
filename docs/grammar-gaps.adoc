@@ -45,9 +45,17 @@ Checkboxes are unchecked; check them off as items are fixed.
   -- `parse_state_subaction` uses `parse_identification` (single name)
   instead of `parse_qualified_name`. Confirmed syntax error on `.`. Same
   code path affects `DoAction` and `ExitAction`.
-* [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+* [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
   mis-dispatched into `parse_requirement_constraint`, which only checks for
-  `constraint`, not `requirement`; corrupts the tree.
+  `constraint`, not `requirement`; corrupts the tree. +
+  _Fixed: `entry.rs`'s `ASSERT_KW`/`ASSUME_KW`/`REQUIRE_KW` dispatch now also
+  checks for `verify`/`requirement` (not just `satisfy`/`not`), and
+  `parse_requirement_verification` now consumes any of
+  `assert`/`assume`/`require` as its leading modifier instead of only
+  `assert`. As a side effect this also fixes the analogous
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. Regression
+  tests added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
 * [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
   checked in `parse_requirement_constraint` (`requirements.rs:119`).
 * [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
