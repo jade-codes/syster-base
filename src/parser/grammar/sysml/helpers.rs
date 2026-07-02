@@ -39,6 +39,14 @@ pub(super) fn consume_if<P: SysMLParser>(p: &mut P, kind: SyntaxKind) -> bool {
     }
 }
 
+/// Parse zero or more `ordered`/`nonunique` cardinality modifiers
+/// (SysMLCardinality = Cardinality (["ordered"] | ["nonunique"])* | ...)
+pub(super) fn parse_ordering_modifiers<P: SysMLParser>(p: &mut P) {
+    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
+        bump_keyword(p);
+    }
+}
+
 /// Helper to skip trivia in lookahead
 pub(super) fn skip_trivia_lookahead<P: SysMLParser>(p: &P, mut lookahead: usize) -> usize {
     while matches!(

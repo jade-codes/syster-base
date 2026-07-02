@@ -61,10 +61,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
             p.skip_trivia();
 
             // Ordering modifiers
-            while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-                p.bump();
-                p.skip_trivia();
-            }
+            parse_ordering_modifiers(p);
 
             // Body
             p.parse_body();
@@ -82,9 +79,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
     // Ordering modifiers that may appear before the usage keyword in end features
     // Pattern: end [0..*] nonunique item selectedProduct: Product[1];
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_keyword(p);
-    }
+    parse_ordering_modifiers(p);
 
     let is_constraint = p.at(SyntaxKind::CONSTRAINT_KW);
     let is_action = p.at(SyntaxKind::ACTION_KW);
@@ -188,9 +183,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
         }
 
         // Ordering modifiers
-        while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-            bump_keyword(p);
-        }
+        parse_ordering_modifiers(p);
 
         // Default value
         parse_optional_default_value(p);
@@ -329,9 +322,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     }
 
     // Ordering modifiers
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_keyword(p);
-    }
+    parse_ordering_modifiers(p);
 
     // More specializations
     parse_specializations(p);

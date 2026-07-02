@@ -682,39 +682,7 @@ fn parse_target_transition<P: SysMLParser>(p: &mut P) {
     if p.at(SyntaxKind::ACCEPT_KW) {
         p.bump(); // accept
         p.skip_trivia();
-
-        // Payload name (but not if it's a trigger keyword)
-        if (p.at_name_token() || p.at(SyntaxKind::LT))
-            && !p.at(SyntaxKind::AT_KW)
-            && !p.at(SyntaxKind::AFTER_KW)
-            && !p.at(SyntaxKind::WHEN_KW)
-            && !p.at(SyntaxKind::VIA_KW)
-        {
-            p.parse_identification();
-            p.skip_trivia();
-        }
-
-        // Optional typing
-        if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::COLON_GT) {
-            p.parse_typing();
-            p.skip_trivia();
-        }
-
-        // Optional trigger expression (at/after/when)
-        if p.at(SyntaxKind::AT_KW) || p.at(SyntaxKind::AFTER_KW) || p.at(SyntaxKind::WHEN_KW) {
-            p.bump();
-            p.skip_trivia();
-            parse_expression(p);
-            p.skip_trivia();
-        }
-
-        // Optional via
-        if p.at(SyntaxKind::VIA_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
+        parse_accept_trigger(p);
     }
 
     // Optional guard: if <expression>

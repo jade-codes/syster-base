@@ -1,52 +1,32 @@
-= SysML v2 Grammar Coverage Punch List
+= De-Duplicate
 
-Gaps found by comparing MontiCore's official SysMLv2 grammar
-(`SysMLBasis.mc4`, `SysMLParts.mc4`, `SysMLActions.mc4`, `SysMLStates.mc4`,
-`SysMLConstraints.mc4`, `SysMLExpressions.mc4`, `SysMLv2.mc4`, release/7.8.x)
-against the Rust parser in `src/parser/grammar/`.
+Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
+three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
+shared function -- consistency risk for future changes.
 
-== Entirely missing (no token/keyword exists at all)
+Deduped:
+`helpers.rs`'s `parse_accept_trigger` was already the canonical
+implementation (used by `parse_accept_action`);
+the two inline copies in `states.rs`'s `parse_transition` and
+`actions.rs`'s `parse_target_transition` were byte-for-byte duplicates and
+are now calls to it.
+No behavior change (verified: full test suite passes unchanged).
 
-* [ ] `timing` keyword (`SysMLCausality`) -- Parts. No `TIMING_KW` anywhere.
-* [ ] `exists ... :` (`ExistsExpression`) -- Expressions. No `EXISTS` token.
-* [ ] `union` as a binary expression operator (`UnionExpression`) -- Expressions.
-  Only `UNIONS_KW` (the unrelated relationship keyword) exists.
-* [ ] `INF` / `-INF` literal (`Infinity`) -- Expressions. No infinity token/literal.
-* [ ] `nat` primitive type (`MCPrimitiveTypeWithNat`) -- Expressions. Not lexed.
-* [ ] LaTeX-style set operators: `\subseteq`, `\subset`, `\supseteq`, `\supset`,
-  `\sqsubseteq`, `\in` -- Expressions. None exist.
-* [ ] `static` modifier -- Basis. Not even lexed as a token; falls through as `IDENT`.
-* [ ] Symbolic visibility shorthand `+` / `-` / `#` for public/private/protected --
-  Basis. Tokens exist but are never checked as visibility markers.
-* [ ] `?` as a `readonly` alias -- Basis. `QUESTION` token exists (used for
-  ternary) but is never treated as readonly.
-* [ ] `refines` (`SysMLRefinement`) -- Basis. No dedicated keyword path found.
-* [ ] `AnonymousReference` production -- Basis. Not distinguished from
-  `AnonymousUsage`; no distinct implementation.
-* [ ] `StateDef` / `StateUsage` parameter list, e.g. `state def S (in x: Integer) { }`
-  -- States. Confirmed by test: real syntax error.
-* [ ] `first X if guard then Y` (guard attached to a `first` succession) --
-  Actions. `parse_first_action` has no guard branch.
+Bare `ordered` / `nonunique` cardinality-modifier parsing is
+copy-pasted across roughly six call sites rather than shared
+fragile for future usage kinds that forget to copy the snippet.
 
-== Partial / structural concerns (parses, but with gaps or duplication)
-
-* [ ] Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
-  three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
-  shared function -- consistency risk for future changes.
-* [ ] Control nodes `fork` / `join` / `merge` / `decide` only parse an
-  optional name, no typing (`: TypeName`).
-* [ ] `SysMLNullLiteral` / `SysMLEmptyExpression` (`()`) parse without error
-  but have no distinct AST node -- indistinguishable from a degenerate
-  parenthesized expression.
-* [ ] Dead `SyntaxKind` variants declared but never constructed:
-  `ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
-  `CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
-  `REQUIREMENT_USAGE` -- everything routes through generic `DEFINITION` /
-  `USAGE` nodes with boolean flags instead. Not a parse bug, but any
-  downstream HIR/AST code matching on these specific kinds will never see
-  them.
-* [ ] `FlowPayload` isn't a first-class production -- payload params are
-  parsed as generic typed parameters.
-* [ ] Bare `ordered` / `nonunique` cardinality-modifier parsing is
-  copy-pasted across roughly six call sites rather than shared -- fragile
-  for future usage kinds that forget to copy the snippet.
+Deduped:
+found 11 copies total, across both KerML and SysML.
+KerML already had two canonical helpers
+(`parse_multiplicity_modifiers` in `kerml/definitions.rs`,
+`parse_ordering_modifiers` in `kerml/usages.rs`)
+that most call sites bypassed with inline loops instead of calling.
+Those are now routed through them.
+SysML's `usage.rs` had four inline copies and no shared helper at all;
+added one (`parse_ordering_modifiers` in `sysml/helpers.rs`) and
+pointed all four call sites at it.
+The one non-consuming boolean peek
+(`kerml/definitions.rs`'s `is_modifier` check in `parse_multiplicity`) was
+left alone since it isn't the same pattern.
+No behavior change (verified: full test suite passes unchanged).
