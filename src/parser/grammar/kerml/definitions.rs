@@ -4,8 +4,9 @@ use super::*;
 // Definitions — types, classes, packages, imports, aliases
 // =============================================================================
 
+// tag::parse_typing[]
 /// Parse typing clause (:, typed by, of)
-/// Per pest: type_featuring = { typed_by | of_token }
+/// Grammar: see docs/grammar-mapping.adoc#parse_typing
 pub fn parse_typing<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::TYPING);
 
@@ -32,6 +33,7 @@ pub fn parse_typing<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_typing[]
 
 /// Parse single type with optional multiplicity and ordering modifiers
 fn parse_type_with_modifiers<P: KerMLParser>(p: &mut P) {
@@ -65,11 +67,9 @@ fn parse_multiplicity_modifiers<P: KerMLParser>(p: &mut P) {
     }
 }
 
+// tag::parse_multiplicity[]
 /// Multiplicity = '[' bounds ']'
-/// Per pest: multiplicity_bounds = { "[" ~ multiplicity_bounds_range ~ "]" }
-/// Per pest: multiplicity_bounds_range = { multiplicity_bound ~ (".." ~ multiplicity_bound)? }
-/// Per pest: multiplicity_bound = { inline_expression | number | "*" }
-/// Per pest: ordering_modifiers = { (ordered_token | nonunique_token)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_multiplicity
 pub fn parse_multiplicity<P: KerMLParser>(p: &mut P) {
     if !p.at(SyntaxKind::L_BRACKET) {
         return;
@@ -99,9 +99,11 @@ pub fn parse_multiplicity<P: KerMLParser>(p: &mut P) {
     p.expect(SyntaxKind::R_BRACKET);
     p.finish_node();
 }
+// end::parse_multiplicity[]
 
+// tag::parse_multiplicity_definition[]
 /// Multiplicity definition: multiplicity exactlyOne [1..1] { }
-/// Per pest: multiplicity = { multiplicity_token ~ identification? ~ multiplicity_bounds? ~ namespace_body }
+/// Grammar: see docs/grammar-mapping.adoc#parse_multiplicity_definition
 pub fn parse_multiplicity_definition<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -118,11 +120,12 @@ pub fn parse_multiplicity_definition<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_multiplicity_definition[]
 
+// tag::parse_single_specialization[]
 /// Parse a single specialization relationship
-/// Per pest: relationship = { visibility_kind? ~ element_reference ~ ...}
-/// Per pest: inheritance = { relationship }
 /// So many relationship clauses like :>, conjugates, chains, disjoint, etc. accept optional visibility
+/// Grammar: see docs/grammar-mapping.adoc#parse_single_specialization
 fn parse_single_specialization<P: KerMLParser>(p: &mut P, keyword: SyntaxKind) {
     p.start_node(SyntaxKind::SPECIALIZATION);
     bump_and_skip(p);
@@ -134,7 +137,6 @@ fn parse_single_specialization<P: KerMLParser>(p: &mut P, keyword: SyntaxKind) {
     }
 
     // Parse optional visibility before the qualified name
-    // Per pest: relationship = { visibility_kind? ~ element_reference }
     parse_optional_visibility(p);
 
     parse_qualified_name_and_skip(p);
@@ -155,12 +157,11 @@ fn parse_single_specialization<P: KerMLParser>(p: &mut P, keyword: SyntaxKind) {
         p.skip_trivia();
     }
 }
+// end::parse_single_specialization[]
 
+// tag::parse_specializations[]
 /// Specializations = (':>' | 'specializes' | etc.) QualifiedName
-/// Per pest: heritage = { specialization | reference_subsetting | subsetting | redefinition | cross_subsetting | conjugation }
-/// Per pest: specializes_operator = { ":>" | specializes_token }
-/// Per pest: redefines_operator = { ":>>" | redefines_token }
-/// Per pest: subsets_operator = { ":>" | subsets_token }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_specializations
 pub fn parse_specializations<P: KerMLParser>(p: &mut P) {
     while p.at_any(&[
         SyntaxKind::COLON,
@@ -196,9 +197,11 @@ pub fn parse_specializations<P: KerMLParser>(p: &mut P) {
         parse_single_specialization(p, keyword);
     }
 }
+// end::parse_specializations[]
 
+// tag::parse_package[]
 /// Package = 'package' | 'namespace' Identification? Body
-/// Per pest: package = { prefix_metadata? ~ (package_token | namespace_token) ~ identification? ~ namespace_body }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_package
 pub fn parse_package<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PACKAGE);
 
@@ -215,9 +218,11 @@ pub fn parse_package<P: KerMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_package[]
 
+// tag::parse_library_package[]
 /// LibraryPackage = 'standard'? 'library' 'package' ...
-/// Per pest: library_package = { prefix_metadata? ~ (library_token | standard_token) ~ library_token? ~ identification? ~ namespace_body }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_library_package
 pub fn parse_library_package<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::LIBRARY_PACKAGE);
 
@@ -231,10 +236,11 @@ pub fn parse_library_package<P: KerMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_library_package[]
 
+// tag::parse_import[]
 /// Import = 'import' 'all'? ImportedMembership ... relationship_body
-/// Per pest: import = { import_prefix ~ imported_reference ~ filter_package? ~ relationship_body }
-/// Per pest: relationship_body = { ";" | ("{" ~ relationship_owned_elements ~ "}") }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_import
 pub fn parse_import<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::IMPORT);
 
@@ -249,7 +255,7 @@ pub fn parse_import<P: KerMLParser>(p: &mut P) {
         parse_filter_package(p);
     }
 
-    // Per pest: relationship_body = ";" | ("{" ~ relationship_owned_elements ~ "}")
+    // Relationship body: ';' or '{' owned elements '}'
     p.skip_trivia();
     if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
@@ -260,6 +266,7 @@ pub fn parse_import<P: KerMLParser>(p: &mut P) {
     }
     p.finish_node();
 }
+// end::parse_import[]
 
 /// Parse import wildcards: ::* or ::** or ::*::**
 fn parse_import_wildcards<P: KerMLParser>(p: &mut P) {
@@ -308,7 +315,7 @@ pub fn parse_alias<P: KerMLParser>(p: &mut P) {
     expect_and_skip(p, SyntaxKind::FOR_KW);
     parse_qualified_name_and_skip(p);
 
-    // Per pest: relationship_body = ";" | ("{" ~ relationship_owned_elements ~ "}")
+    // Relationship body: ';' or '{' owned elements '}'
     if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
     } else if p.at(SyntaxKind::L_BRACE) {
@@ -320,12 +327,9 @@ pub fn parse_alias<P: KerMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_definition_impl[]
 /// KerML definition (class, struct, etc.)
-/// Per pest: class = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ class_token ~ all_token? ~ identification? ~ multiplicity_bounds? ~ classifier_relationships ~ namespace_body }
-/// Per pest: structure = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ struct_token ~ identification? ~ all_token? ~ multiplicity_bounds? ~ classifier_relationships ~ namespace_body }
-/// Per pest: datatype = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ datatype_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ namespace_body }
-/// Per pest: behavior = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ behavior_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ namespace_body }
-/// Per pest: function = { prefix_metadata? ~ visibility_kind? ~ abstract_marker? ~ function_token ~ identification? ~ all_token? ~ classifier_relationships ~ multiplicity? ~ result_expression_membership? ~ namespace_body }
+/// Grammar: see docs/grammar-mapping.adoc#parse_definition_impl
 pub fn parse_definition_impl<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::DEFINITION);
 
@@ -389,6 +393,7 @@ pub fn parse_definition_impl<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_definition_impl[]
 
 /// Parse a single element in a calc body (parameter, namespace element, or expression)
 fn parse_calc_body_element<P: KerMLParser>(p: &mut P) -> bool {
@@ -435,8 +440,9 @@ fn parse_calc_body_element<P: KerMLParser>(p: &mut P) -> bool {
     }
 }
 
-/// Per pest: Used for function/predicate result expression body
+// tag::parse_calc_body[]
 /// Similar to namespace_body but specialized for calculation results
+/// Grammar: see docs/grammar-mapping.adoc#parse_calc_body
 pub fn parse_calc_body<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAMESPACE_BODY);
 
@@ -469,3 +475,4 @@ pub fn parse_calc_body<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_calc_body[]

@@ -17,10 +17,6 @@ default = []
 interchange = ["dep:quick-xml", "dep:zip", "dep:serde", "dep:serde_json", "dep:serde_yaml"]
 
 [dependencies]
-pest = "2.7"
-pest_derive = "2.7"
-from-pest = "0.3"
-pest-ast = "0.3"
 rayon = "1.10"
 unicode-ident = "1.0"
 rowan = "0.16.1"

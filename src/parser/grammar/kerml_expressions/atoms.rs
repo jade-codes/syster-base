@@ -1,8 +1,9 @@
 use super::*;
 
+// tag::parse_literal[]
 /// BaseExpression = LiteralExpression | FeatureReferenceExpression | InvocationExpression | '(' SequenceExpression ')' | NewExpression | IfExpression
-/// Per pest: primary_expression defined in each grammar - this is the base/atomic expression parsing
 /// Handle literal values (integers, strings, booleans, null)
+/// Grammar: see docs/grammar-mapping.adoc#parse_literal
 fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
     if p.at_any(&[
         SyntaxKind::INTEGER,
@@ -18,6 +19,7 @@ fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
         false
     }
 }
+// end::parse_literal[]
 
 /// Handle instantiation: new Type() or new Type(args)
 fn parse_instantiation<P: ExpressionParser>(p: &mut P) {
@@ -247,9 +249,9 @@ pub fn parse_base_expression<P: ExpressionParser>(p: &mut P) {
     }
 }
 
+// tag::parse_argument_list[]
 /// ArgumentList = '(' (Argument (',' Argument)*)? ')'
-/// Per pest: Argument list parsing is grammar-specific
-/// Per pest: argument = { (name ~ "=")? ~ expression } for named arguments
+/// Grammar: see docs/grammar-mapping.adoc#parse_argument_list
 pub fn parse_argument_list<P: ExpressionParser>(p: &mut P) {
     p.start_node(SyntaxKind::ARGUMENT_LIST);
 
@@ -272,6 +274,7 @@ pub fn parse_argument_list<P: ExpressionParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_argument_list[]
 
 /// Argument = (Name '=')? Expression
 /// Delegates to the main parser via ExpressionParser trait for named argument handling

@@ -4,9 +4,9 @@ use super::*;
 // SysML File Entry Point
 // =============================================================================
 
+// tag::parse_sysml_file[]
 /// Parse a SysML source file
-/// Per Pest: file = { SOI ~ root_namespace ~ EOI }
-/// root_namespace = { package_body_element* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_sysml_file
 pub fn parse_sysml_file<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SOURCE_FILE);
 
@@ -35,15 +35,11 @@ pub fn parse_sysml_file<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_sysml_file[]
 
+// tag::parse_package_body_element[]
 /// Parse a SysML package body element
-/// Per Pest grammar:
-/// package_body_element = {
-///     package | library_package | import | alias_member_element
-///     | element_filter_member | visible_annotating_member
-///     | usage_member | definition_member_element
-///     | relationship_member_element | dependency
-/// }\n/// Per pest: package_body_item = { (metadata_usage | visibility_prefix? ~ (package_member | import_alias)) ~ \";\"? }\n/// Per pest: package_member = { definition | usage | alias_member | annotation_element | ... }\n/// Pattern: Dispatch to appropriate parser based on current token (package, import, def, usage keywords, annotations, etc.)
+/// Grammar: see docs/grammar-mapping.adoc#parse_package_body_element
 ///
 /// Pattern: Dispatch to appropriate parser based on current token (package, import, def, usage keywords, annotations, etc.)
 pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
@@ -360,7 +356,7 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         SyntaxKind::ASSIGN_KW => parse_assign_action(p),
 
         // Standalone relationships
-        // Per pest: Various standalone relationship keywords that create relationship elements
+        // Various standalone relationship keywords that create relationship elements
         SyntaxKind::SPECIALIZATION_KW
         | SyntaxKind::SUBCLASSIFIER_KW
         | SyntaxKind::REDEFINITION_KW
@@ -375,15 +371,12 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         }
 
         // Variant
-        // Per pest: variant_membership = { variant_token ~ variant_usage_element }
         SyntaxKind::VARIANT_KW => p.parse_variant_usage(),
 
         // Expose (import/expose statement in views)
-        // Per pest: expose = { expose_prefix ~ (namespace_expose | membership_expose) ~ filter_package? }
         SyntaxKind::EXPOSE_KW => parse_expose_statement(p),
 
-        // Textual representation
-        // Per pest: Textual representation with rep <name> language <string> pattern
+        // Textual representation: rep <name> language <string>
         SyntaxKind::REP_KW | SyntaxKind::LANGUAGE_KW => parse_textual_representation(p),
 
         // Shorthand feature operators
@@ -433,9 +426,11 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         }
     }
 }
+// end::parse_package_body_element[]
 
+// tag::parse_prefix_metadata[]
 /// Parse prefix metadata (#name) or prefix metadata with body (#name { ... })
-/// Per pest: Prefix metadata appears as #identifier (with optional body) before various declarations
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_prefix_metadata
 pub(super) fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PREFIX_METADATA);
     expect_and_skip(p, SyntaxKind::HASH);
@@ -469,3 +464,4 @@ pub(super) fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
     }
     p.finish_node();
 }
+// end::parse_prefix_metadata[]
