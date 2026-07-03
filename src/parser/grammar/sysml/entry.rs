@@ -77,6 +77,9 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
             parse_annotation(p);
         }
 
+        // Causality/timing element (SysML-specific, MontiCore SysMLCausality)
+        SyntaxKind::TIMING_KW => parse_timing(p),
+
         // Filter (SysML-specific)
         SyntaxKind::FILTER_KW => p.parse_filter(),
 

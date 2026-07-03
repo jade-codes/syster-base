@@ -107,6 +107,41 @@ fn test_comments_parse(#[case] input: &str) {
 }
 
 // ============================================================================
+// Causality/timing element (MontiCore SysMLCausality, not in official KEBNF)
+// ============================================================================
+
+#[rstest]
+#[case("part def P { timing; }")]
+#[case("part def P { timing instant; }")]
+#[case("part def P { timing delayed; }")]
+#[case("package P { part def Q { timing instant; } }")]
+fn test_timing_parses(#[case] input: &str) {
+    assert!(parses_successfully(input), "Failed to parse: {}", input);
+}
+
+#[test]
+fn test_timing_produces_dedicated_node() {
+    use syster::parser::SyntaxKind;
+
+    for input in [
+        "part def P { timing; }",
+        "part def P { timing instant; }",
+        "part def P { timing delayed; }",
+    ] {
+        let parsed = parse_sysml(input);
+        assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+        assert!(
+            parsed
+                .syntax()
+                .descendants()
+                .any(|n| n.kind() == SyntaxKind::CAUSALITY),
+            "expected a CAUSALITY node for: {}",
+            input
+        );
+    }
+}
+
+// ============================================================================
 // Dependency
 // ============================================================================
 

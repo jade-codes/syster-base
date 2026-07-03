@@ -138,6 +138,11 @@ pub enum SyntaxKind {
     FRAME_KW,
     EVENT_KW,
 
+    // Causality/timing keywords
+    TIMING_KW,
+    INSTANT_KW,
+    DELAYED_KW,
+
     // Control flow
     IF_KW,
     ELSE_KW,
@@ -330,6 +335,9 @@ pub enum SyntaxKind {
     DOCUMENTATION,
     TEXTUAL_REP,
     METADATA_USAGE,
+
+    // Causality/timing element: `timing instant;` / `timing delayed;`
+    CAUSALITY,
     PREFIX_METADATA,
 
     // Import
@@ -617,6 +625,9 @@ impl SyntaxKind {
             Self::TIMESLICE_KW => "'timeslice'",
             Self::FRAME_KW => "'frame'",
             Self::EVENT_KW => "'event'",
+            Self::TIMING_KW => "'timing'",
+            Self::INSTANT_KW => "'instant'",
+            Self::DELAYED_KW => "'delayed'",
             Self::IF_KW => "'if'",
             Self::ELSE_KW => "'else'",
             Self::THEN_KW => "'then'",

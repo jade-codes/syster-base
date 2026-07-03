@@ -501,6 +501,12 @@ pub enum LogosToken {
     ThisKw,
     #[token("timeslice")]
     TimesliceKw,
+    #[token("timing")]
+    TimingKw,
+    #[token("instant")]
+    InstantKw,
+    #[token("delayed")]
+    DelayedKw,
     #[token("to")]
     ToKw,
     #[token("transition")]
@@ -750,6 +756,9 @@ impl From<LogosToken> for SyntaxKind {
             ThenKw => SyntaxKind::THEN_KW,
             ThisKw => SyntaxKind::THIS_KW,
             TimesliceKw => SyntaxKind::TIMESLICE_KW,
+            TimingKw => SyntaxKind::TIMING_KW,
+            InstantKw => SyntaxKind::INSTANT_KW,
+            DelayedKw => SyntaxKind::DELAYED_KW,
             ToKw => SyntaxKind::TO_KW,
             TransitionKw => SyntaxKind::TRANSITION_KW,
             TrueKw => SyntaxKind::TRUE_KW,
