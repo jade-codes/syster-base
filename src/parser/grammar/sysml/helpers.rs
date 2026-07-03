@@ -87,6 +87,59 @@ pub(super) fn peek_past_name_for<P: SysMLParser>(p: &P, target: SyntaxKind) -> b
     p.peek_kind(lookahead) == target
 }
 
+/// Helper to peek past a name (possibly qualified with ::) and check if a
+/// feature-specialization operator (`:`, `typed by`, `:>`, `:>>`, `specializes`,
+/// `subsets`, `redefines`, `references`, `conjugates`, `~`) follows.
+///
+/// Used to distinguish a *named* payload feature from a *bare* payload type
+/// reference, since both start with a plain identifier:
+/// - `flow of payload : PayloadType from a to b` (payload is identification)
+/// - `flow of PayloadType from a to b` (PayloadType is the bare type, no name)
+pub(super) fn peek_past_name_for_specialization<P: SysMLParser>(p: &P) -> bool {
+    let mut lookahead = 0;
+    lookahead = skip_trivia_lookahead(p, lookahead);
+
+    if p.peek_kind(lookahead) == SyntaxKind::IDENT {
+        lookahead += 1;
+    } else {
+        return false;
+    }
+
+    // Handle qualified names (A::B::C) and dotted chains (a.b.c)
+    loop {
+        lookahead = skip_trivia_lookahead(p, lookahead);
+        let next = p.peek_kind(lookahead);
+
+        if next == SyntaxKind::COLON_COLON || next == SyntaxKind::DOT {
+            lookahead += 1;
+            lookahead = skip_trivia_lookahead(p, lookahead);
+            if p.peek_kind(lookahead) == SyntaxKind::IDENT {
+                lookahead += 1;
+            } else {
+                break;
+            }
+        } else {
+            break;
+        }
+    }
+
+    lookahead = skip_trivia_lookahead(p, lookahead);
+    matches!(
+        p.peek_kind(lookahead),
+        SyntaxKind::COLON
+            | SyntaxKind::TYPED_KW
+            | SyntaxKind::COLON_GT
+            | SyntaxKind::COLON_GT_GT
+            | SyntaxKind::COLON_COLON_GT
+            | SyntaxKind::SPECIALIZES_KW
+            | SyntaxKind::SUBSETS_KW
+            | SyntaxKind::REDEFINES_KW
+            | SyntaxKind::REFERENCES_KW
+            | SyntaxKind::CONJUGATES_KW
+            | SyntaxKind::TILDE
+    )
+}
+
 /// Helper to peek past optional identifier and get next significant token
 pub(super) fn peek_past_optional_name<P: SysMLParser>(
     p: &P,
@@ -234,6 +287,67 @@ pub(super) fn parse_optional_from_to<P: SysMLParser>(p: &mut P) {
         }
         p.finish_node(); // FROM_TO_CLAUSE
     }
+}
+
+/// Parse a flow/message payload feature: the `of <payload>` clause in
+/// `flow`/`message` declarations. Wraps the result in a dedicated
+/// PAYLOAD_FEATURE node so it's distinguishable from a generic typed
+/// parameter.
+///
+/// PayloadFeature = Identification? PayloadFeatureSpecializationPart ValuePart?
+///                | FeatureTyping Multiplicity?
+///                | Multiplicity FeatureTyping
+///
+/// Handles both:
+/// - `of PayloadType` (bare/anonymous payload -- just the type)
+/// - `of payload : PayloadType` (named payload with explicit typing/specialization)
+pub(super) fn parse_flow_payload<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::PAYLOAD_FEATURE);
+
+    if p.at(SyntaxKind::L_BRACKET) {
+        // Multiplicity FeatureTyping
+        p.parse_multiplicity();
+        p.skip_trivia();
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        }
+    } else if p.at(SyntaxKind::LT)
+        || (p.at_name_token() && peek_past_name_for_specialization(p))
+    {
+        // Identification PayloadFeatureSpecializationPart ValuePart?
+        p.parse_identification();
+        p.skip_trivia();
+
+        parse_specializations(p);
+        p.skip_trivia();
+
+        // Multiplicity can follow a non-typing specialization (e.g. `subsets`);
+        // the typing case already consumes it as part of TYPING.
+        if p.at(SyntaxKind::L_BRACKET) {
+            p.parse_multiplicity();
+            p.skip_trivia();
+        }
+
+        // Optional value part: `= expr` or `:= expr`
+        if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
+            p.bump();
+            p.skip_trivia();
+            parse_expression(p);
+            p.skip_trivia();
+        }
+    } else if p.at_name_token() {
+        // Bare FeatureTyping (anonymous payload -- just the type)
+        p.parse_qualified_name();
+        p.skip_trivia();
+
+        if p.at(SyntaxKind::L_BRACKET) {
+            p.parse_multiplicity();
+            p.skip_trivia();
+        }
+    }
+
+    p.finish_node();
 }
 
 /// Helper to parse comma-separated list with a parser function
