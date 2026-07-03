@@ -103,6 +103,38 @@ fn test_logical_expressions(#[case] input: &str) {
 }
 
 // ============================================================================
+// Union Expression (MontiCore extension, not in official OMG KEBNF)
+// "union" must remain usable as a plain function/feature name too, since the
+// real KerML standard library defines and invokes it that way (the
+// `union(a, b)` function-call form, not this infix operator, is what's
+// actually used throughout the library).
+// ============================================================================
+
+#[rstest]
+#[case("package T { attribute x = a union b; }")]
+#[case("package T { attribute x = a union b union c; }")]
+#[case("package T { attribute x = union(a, b); }")]
+#[case("package T { attribute x = a union union(b, c); }")]
+fn test_union_expressions(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_union_as_plain_function_name() {
+    use syster::parser::parse_kerml;
+
+    let parsed = parse_kerml("function union{ in seq1: Anything[0..*]; in seq2: Anything[0..*]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("package P { private import SequenceFunctions::union; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("classifier C { feature union: Occurrence[0..1]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+}
+
+// ============================================================================
 // Attribute Patterns
 // ============================================================================
 

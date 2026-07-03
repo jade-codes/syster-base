@@ -290,6 +290,9 @@ pub enum SyntaxKind {
     AS_KW,
     META_KW,
 
+    // Set operator (MontiCore extension, not in official OMG KEBNF)
+    UNION_KW,
+
     // =========================================================================
     // KEYWORDS - KerML (underlying language)
     // =========================================================================
@@ -735,6 +738,7 @@ impl SyntaxKind {
             Self::ISTYPE_KW => "'istype'",
             Self::AS_KW => "'as'",
             Self::META_KW => "'meta'",
+            Self::UNION_KW => "'union'",
 
             // Keywords - KerML
             Self::TYPE_KW => "'type'",
