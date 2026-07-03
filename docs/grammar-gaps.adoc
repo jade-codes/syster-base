@@ -1,29 +1,33 @@
-= SysML v2 Grammar Coverage Punch List
+= `exists ... :` (`ExistsExpression`)
 
-Gaps found by comparing MontiCore's official SysMLv2 grammar
-(`SysMLBasis.mc4`, `SysMLParts.mc4`, `SysMLActions.mc4`, `SysMLStates.mc4`,
-`SysMLConstraints.mc4`, `SysMLExpressions.mc4`, `SysMLv2.mc4`, release/7.8.x)
-against the Rust parser in `src/parser/grammar/`.
+Expressions. No `EXISTS` token.
 
-== Entirely missing (no token/keyword exists at all)
+Fixed:
+Added `EXISTS_KW` and `exists name (',' name)* ':' expr` parsing
+(`kerml_expressions/mod.rs::parse_exists_expression`),
+reachable from `parse_conditional_expression` the same way `if`-expressions are.
 
-* [ ] `timing` keyword (`SysMLCausality`) -- Parts. No `TIMING_KW` anywhere.
-* [ ] `exists ... :` (`ExistsExpression`) -- Expressions. No `EXISTS` token.
-* [ ] `union` as a binary expression operator (`UnionExpression`) -- Expressions.
-  Only `UNIONS_KW` (the unrelated relationship keyword) exists.
-* [ ] `INF` / `-INF` literal (`Infinity`) -- Expressions. No infinity token/literal.
-* [ ] `nat` primitive type (`MCPrimitiveTypeWithNat`) -- Expressions. Not lexed.
-* [ ] LaTeX-style set operators: `\subseteq`, `\subset`, `\supseteq`, `\supset`,
-  `\sqsubseteq`, `\in` -- Expressions. None exist.
-* [ ] `static` modifier -- Basis. Not even lexed as a token; falls through as `IDENT`.
-* [ ] Symbolic visibility shorthand `+` / `-` / `#` for public/private/protected --
-  Basis. Tokens exist but are never checked as visibility markers.
-* [ ] `?` as a `readonly` alias -- Basis. `QUESTION` token exists (used for
-  ternary) but is never treated as readonly.
-* [ ] `refines` (`SysMLRefinement`) -- Basis. No dedicated keyword path found.
-* [ ] `AnonymousReference` production -- Basis. Not distinguished from
-  `AnonymousUsage`; no distinct implementation.
-* [ ] `StateDef` / `StateUsage` parameter list, e.g. `state def S (in x: Integer) { }`
-  -- States. Confirmed by test: real syntax error.
-* [ ] `first X if guard then Y` (guard attached to a `first` succession) --
-  Actions. `parse_first_action` has no guard branch.
+Note:
+`ExistsExpression` is a MontiCore `SysMLExpressions.mc4` override of a
+third-party OCL grammar rule, not part of the official OMG KEBNF
+(verified absent from both textual-bnf files).
+Its own grammar comment says "exists is not a reserved keyword in SysML
+and used in the Systems Library"
+
+confirmed:
+The real KerML standard library defines
+`abstract function exists {...}` (`ControlFunctions.kerml`) and invokes it
+via `collection->exists {...}` throughout (`CollectionFunctions.kerml`,
+`SequenceFunctions.kerml`, `ShapeItems.sysml`).
+So `EXISTS_KW` was added to `at_name_token()`'s and `can_start_expression()`'s allowlists,
+and `handle_arrow_invocation()`'s method-name check was broadened from a bare
+`IDENT` check to `at_name_token()` so `->exists{...}` keeps working.
+Per-declaration typing (`exists a : Type : expr`) was deliberately left
+unsupported.
+It is genuinely ambiguous with the single terminal `:` before
+the predicate (e.g. `exists a : a == a`), `InDeclaration`'s exact grammar isn't available
+(inherited from a third-party grammar this project doesn't vendor),
+and the punch list's own `exists ... :`
+wording shows only one colon.
+
+Regression tests in `tests/tests_parser_expressions.rs`.

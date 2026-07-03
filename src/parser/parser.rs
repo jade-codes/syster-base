@@ -294,6 +294,8 @@ impl<'a> ExpressionParser for Parser<'a> {
         // Also "var" which is used as a feature name in Actions.sysml (assign var := ...)
         // Also "state" which is not a reserved keyword per KerML spec §8.2.2.6 and is valid
         // as a plain identifier in feature declarations (e.g. `out item state : T`).
+        // Also "exists" which is used as a plain function name in the standard
+        // library (ControlFunctions::exists, `collection->exists {...}`).
         matches!(
             self.current_kind(),
             SyntaxKind::IDENT
@@ -320,6 +322,7 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::VAR_KW
                 | SyntaxKind::STATE_KW
                 | SyntaxKind::TO_KW
+                | SyntaxKind::EXISTS_KW
         )
     }
 
@@ -468,6 +471,7 @@ impl<'a> SysMLParser for Parser<'a> {
             // Expression starters
             SyntaxKind::NEW_KW | SyntaxKind::L_BRACE | SyntaxKind::L_PAREN |
             SyntaxKind::IF_KW | SyntaxKind::IDENT | SyntaxKind::THIS_KW |
+            SyntaxKind::EXISTS_KW |
             // Unary prefix operators
             SyntaxKind::NOT_KW | SyntaxKind::MINUS | SyntaxKind::PLUS |
             SyntaxKind::TILDE | SyntaxKind::BANG |
