@@ -86,6 +86,23 @@ fn test_number_literals(#[case] input: &str) {
 }
 
 // ============================================================================
+// Infinity Literal (KerML LiteralInfinity, spelled INF/-INF per MontiCore;
+// the official OMG KEBNF instead spells this literal as bare '*')
+// ============================================================================
+
+#[rstest]
+#[case("package T { attribute x = INF; }")]
+#[case("package T { attribute x = -INF; }")]
+#[case("package T { attribute x = - INF; }")] // space: unary minus over a separate INF literal
+#[case("package T { attribute x = INF + 1; }")]
+#[case("package T { attribute x default -INF; }")]
+#[case("package T { attribute lower : Real = -INF; attribute upper : Real = INF; }")]
+fn test_infinity_literal(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+// ============================================================================
 // Boolean and Logical Expressions
 // ============================================================================
 

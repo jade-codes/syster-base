@@ -2,7 +2,7 @@ use super::*;
 
 // tag::parse_literal[]
 /// BaseExpression = LiteralExpression | FeatureReferenceExpression | InvocationExpression | '(' SequenceExpression ')' | NewExpression | IfExpression
-/// Handle literal values (integers, strings, booleans, null)
+/// Handle literal values (integers, strings, booleans, null, infinity)
 /// Grammar: see docs/grammar-mapping.adoc#parse_literal
 fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
     if p.at_any(&[
@@ -12,6 +12,7 @@ fn parse_literal<P: ExpressionParser>(p: &mut P) -> bool {
         SyntaxKind::TRUE_KW,
         SyntaxKind::FALSE_KW,
         SyntaxKind::NULL_KW,
+        SyntaxKind::INFINITY_KW,
     ]) {
         p.bump();
         true

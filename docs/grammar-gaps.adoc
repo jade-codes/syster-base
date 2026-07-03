@@ -1,29 +1,27 @@
-= SysML v2 Grammar Coverage Punch List
+= `INF` / `-INF` literal (`Infinity`)
 
-Gaps found by comparing MontiCore's official SysMLv2 grammar
-(`SysMLBasis.mc4`, `SysMLParts.mc4`, `SysMLActions.mc4`, `SysMLStates.mc4`,
-`SysMLConstraints.mc4`, `SysMLExpressions.mc4`, `SysMLv2.mc4`, release/7.8.x)
-against the Rust parser in `src/parser/grammar/`.
+Expressions. No infinity token/literal.
 
-== Entirely missing (no token/keyword exists at all)
+Fixed:
+Added an `INFINITY_KW` lexer token covering both spellings
+(`#[token("-INF")]` / `#[token("INF")]`, mapped to the same `SyntaxKind`)
+and wired it into `parse_literal`.
+"-INF" is a single atomic token only when there's no space between `-` and `INF`
+(matching logos's longest-match rule); `- INF` (with a space) still parses correctly,
+just via unary-minus applied to a separate `INF` literal operand,
+since `INFINITY_KW` was also added to `can_start_expression()`.
 
-* [ ] `timing` keyword (`SysMLCausality`) -- Parts. No `TIMING_KW` anywhere.
-* [ ] `exists ... :` (`ExistsExpression`) -- Expressions. No `EXISTS` token.
-* [ ] `union` as a binary expression operator (`UnionExpression`) -- Expressions.
-  Only `UNIONS_KW` (the unrelated relationship keyword) exists.
-* [ ] `INF` / `-INF` literal (`Infinity`) -- Expressions. No infinity token/literal.
-* [ ] `nat` primitive type (`MCPrimitiveTypeWithNat`) -- Expressions. Not lexed.
-* [ ] LaTeX-style set operators: `\subseteq`, `\subset`, `\supseteq`, `\supset`,
-  `\sqsubseteq`, `\in` -- Expressions. None exist.
-* [ ] `static` modifier -- Basis. Not even lexed as a token; falls through as `IDENT`.
-* [ ] Symbolic visibility shorthand `+` / `-` / `#` for public/private/protected --
-  Basis. Tokens exist but are never checked as visibility markers.
-* [ ] `?` as a `readonly` alias -- Basis. `QUESTION` token exists (used for
-  ternary) but is never treated as readonly.
-* [ ] `refines` (`SysMLRefinement`) -- Basis. No dedicated keyword path found.
-* [ ] `AnonymousReference` production -- Basis. Not distinguished from
-  `AnonymousUsage`; no distinct implementation.
-* [ ] `StateDef` / `StateUsage` parameter list, e.g. `state def S (in x: Integer) { }`
-  -- States. Confirmed by test: real syntax error.
-* [ ] `first X if guard then Y` (guard attached to a `first` succession) --
-  Actions. `parse_first_action` has no guard branch.
+Note:
+Unlike `timing`/`exists`/`union`,
+this construct actually *is* in the official OMG KEBNF grammar
+(`KerML-textual-bnf.kebnf`: `LiteralInfinity`).
+The official spec spells it as bare `'*'`, not textual `INF`/`-INF`.
+The punch list's own `INF`/`-INF` wording matches MontiCore's
+`SysMLExpressions.mc4` override instead, so that's what was implemented;
+the official `'*'` spelling is a separate, still-open gap
+(not attempted here, out of scope for this item).
+
+Verified no collisions:
+zero uses of bare `INF` anywhere in the standard library or example corpus.
+
+Regression tests in `tests/tests_parser_expressions.rs`.

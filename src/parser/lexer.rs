@@ -94,6 +94,16 @@ pub enum LogosToken {
     #[regex(r#""([^"\\]|\\.)*""#)]
     String,
 
+    // Infinity literal (KerML LiteralInfinity, spelled "INF"/"-INF" per
+    // MontiCore's SysMLExpressions.mc4; the official OMG KEBNF instead spells
+    // this literal as bare '*'). "-INF" must have no space between '-' and
+    // 'INF' to be a single literal; "- INF" (with a space) lexes as unary
+    // minus applied to a separate "INF" reference instead.
+    #[token("-INF")]
+    NegInfinity,
+    #[token("INF")]
+    Infinity,
+
     // =========================================================================
     // MULTI-CHARACTER PUNCTUATION (must come before single-char)
     // =========================================================================
@@ -555,6 +565,7 @@ impl From<LogosToken> for SyntaxKind {
             Integer => SyntaxKind::INTEGER,
             Decimal => SyntaxKind::DECIMAL,
             String => SyntaxKind::STRING,
+            NegInfinity | Infinity => SyntaxKind::INFINITY_KW,
 
             // Multi-char punctuation
             ColonColonGt => SyntaxKind::COLON_COLON_GT,
