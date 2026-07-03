@@ -27,26 +27,3 @@ against the Rust parser in `src/parser/grammar/`.
   -- States. Confirmed by test: real syntax error.
 * [ ] `first X if guard then Y` (guard attached to a `first` succession) --
   Actions. `parse_first_action` has no guard branch.
-
-== Partial / structural concerns (parses, but with gaps or duplication)
-
-* [ ] Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
-  three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
-  shared function -- consistency risk for future changes.
-* [ ] Control nodes `fork` / `join` / `merge` / `decide` only parse an
-  optional name, no typing (`: TypeName`).
-* [ ] `SysMLNullLiteral` / `SysMLEmptyExpression` (`()`) parse without error
-  but have no distinct AST node -- indistinguishable from a degenerate
-  parenthesized expression.
-* [ ] Dead `SyntaxKind` variants declared but never constructed:
-  `ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
-  `CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
-  `REQUIREMENT_USAGE` -- everything routes through generic `DEFINITION` /
-  `USAGE` nodes with boolean flags instead. Not a parse bug, but any
-  downstream HIR/AST code matching on these specific kinds will never see
-  them.
-* [ ] `FlowPayload` isn't a first-class production -- payload params are
-  parsed as generic typed parameters.
-* [ ] Bare `ordered` / `nonunique` cardinality-modifier parsing is
-  copy-pasted across roughly six call sites rather than shared -- fragile
-  for future usage kinds that forget to copy the snippet.
