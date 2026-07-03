@@ -500,8 +500,9 @@ fn extract_value_expression(expr: &crate::parser::Expression) -> ValueExpression
         .filter(|t| !t.kind().is_trivia());
 
     if let Some(token) = tokens.next() {
+        let second = tokens.next();
         // If there's only one non-trivia token, it's a simple literal
-        let is_single = tokens.next().is_none();
+        let is_single = second.is_none();
         if is_single {
             match token.kind() {
                 SyntaxKind::INTEGER => {
@@ -531,6 +532,14 @@ fn extract_value_expression(expr: &crate::parser::Expression) -> ValueExpression
                 SyntaxKind::NULL_KW => return ValueExpression::Null,
                 _ => {}
             }
+        } else if token.kind() == SyntaxKind::L_PAREN
+            && second.as_ref().map(|t| t.kind()) == Some(SyntaxKind::R_PAREN)
+            && tokens.next().is_none()
+        {
+            // NullExpression per spec: 'null' | '(' ')' -- the empty-parens form
+            // is a second concrete syntax for the same null value, not a
+            // degenerate parenthesized/sequence expression.
+            return ValueExpression::Null;
         }
     }
     // Fallback: store the full expression text

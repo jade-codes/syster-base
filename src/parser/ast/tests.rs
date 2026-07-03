@@ -117,3 +117,41 @@ fn test_message_usage_name() {
     }
     panic!("expected Usage for part p with message inside");
 }
+
+/// Find the first descendant `Expression` node under `root`.
+fn first_expression(root: &SyntaxNode) -> Expression {
+    root.descendants()
+        .find_map(Expression::cast)
+        .expect("expected an Expression node")
+}
+
+#[test]
+fn test_empty_parens_is_null_literal() {
+    // Per spec, NullExpression = 'null' | '(' ')' -- empty parens are a second
+    // concrete syntax for null, not a degenerate parenthesized expression.
+    let parsed = parse_sysml("package P { attribute x = (); }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let expr = first_expression(&parsed.syntax());
+    assert_eq!(extract_value_expression(&expr), ValueExpression::Null);
+}
+
+#[test]
+fn test_null_keyword_is_null_literal() {
+    let parsed = parse_sysml("package P { attribute x = null; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let expr = first_expression(&parsed.syntax());
+    assert_eq!(extract_value_expression(&expr), ValueExpression::Null);
+}
+
+#[test]
+fn test_parenthesized_literal_is_not_null() {
+    // (1) must remain distinct from () -- it's a parenthesized/sequence
+    // expression wrapping a real value, not the null literal.
+    let parsed = parse_sysml("package P { attribute x = (1); }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let expr = first_expression(&parsed.syntax());
+    assert_ne!(extract_value_expression(&expr), ValueExpression::Null);
+}
