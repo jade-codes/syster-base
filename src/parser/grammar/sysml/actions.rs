@@ -547,20 +547,72 @@ pub fn parse_else_succession<P: SysMLParser>(p: &mut P) {
 }
 
 /// Parse control node (fork, join, merge, decide)
-/// Per pest: control_node = { control_node_prefix? ~ (merge_node | decision_node | join_node | fork_node) }
-/// Per pest: merge_node = { merge_token ~ identification? ~ action_body }
-/// Per pest: decision_node = { decide_token ~ identification? ~ action_body }
-/// Per pest: join_node = { join_token ~ identification? ~ action_body }
-/// Per pest: fork_node = { fork_token ~ identification? ~ action_body }
-/// Pattern: ('fork' | 'join' | 'merge' | 'decide') Identification? Body
+///
+/// Per grammar, these control nodes extend ActionUsage:
+///  ControlNode = MergeNode | DecisionNode | JoinNode| ForkNode
+///  ControlNodePrefix : OccurrenceUsage =
+///    RefPrefix
+///    ( isIndividual ?= 'individual )?
+///    ( portionKind = PortionKind { isPortion = true } )?
+///    UsageExtensionKeyword*
+///  MergeNode =
+///    ControlNodePrefix
+///    isComposite ?= 'merge' UsageDeclaration
+///    ActionBody
+///  DecisionNode =
+///    ControlNodePrefix
+///    isComposite ?= 'decide' UsageDeclaration
+///    ActionBody
+///  JoinNode =
+///    ControlNodePrefix
+///    isComposite ?= 'join' UsageDeclaration
+///    ActionBody
+///  ForkNode =
+///    ControlNodePrefix isComposite ?= 'fork' UsageDeclaration
+///    ActionBody
+///
+/// ForkAction/DecideAction/JoinAction/MergeAction = Modifier UserDefinedKeyword*
+///   ('fork' | 'join' | 'merge' | 'decide')
+///   SysMLIdentifier? Name? SysMLCardinality?
+///   Specialization*
+///   DefaultValue?
+///   ('{' SysMLElement* '}' | ';')
+/// Pattern: ControlNodePrefix (ref/individual/snapshot/timeslice/etc.)
+///   ('fork' | 'join' | 'merge' | 'decide')
+///   Identification? Multiplicity?
+///   Typing? Specializations? Multiplicity?
+///   DefaultValue?
+///   Body
 pub fn parse_control_node<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONTROL_NODE);
+
+    // ControlNodePrefix: ref/individual/snapshot/timeslice/etc. -- the caller
+    // (parse_package_body_element) looks ahead past these before dispatching
+    // here, since fork/join/merge/decide aren't SysML usage/definition
+    // keywords and would otherwise be swallowed by parse_definition_or_usage.
+    parse_usage_prefix(p);
+    p.skip_trivia();
 
     // Control keyword
     bump_keyword(p);
 
     // Optional name
     parse_optional_identification(p);
+
+    // Multiplicity (can appear immediately after name, before typing)
+    parse_optional_multiplicity(p);
+
+    // Typing (e.g. `fork f : MyForkKind`)
+    parse_optional_typing(p);
+
+    // Specializations (redefines, subsets, etc.)
+    parse_specializations_with_skip(p);
+
+    // Multiplicity can also appear after specializations
+    parse_optional_multiplicity(p);
+
+    // Default value
+    parse_optional_default_value(p);
 
     p.parse_body();
 

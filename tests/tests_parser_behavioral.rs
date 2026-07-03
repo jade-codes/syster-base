@@ -33,6 +33,48 @@ fn test_control_nodes_parse(#[case] input: &str) {
     assert!(parses_successfully(input), "Failed to parse: {}", input);
 }
 
+// Regression: fork/join/merge/decide only parsed an optional name, no typing
+// (`: TypeName`), specializations (`:>`/`:>>`), multiplicity, or default
+// value, even though they all extend ActionUsage and share its full
+// declaration grammar. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("action def A { fork f : MyForkKind; }")]
+#[case("action def A { decide d : DecideKind { } }")]
+#[case("action def A { join j :> otherJoin; }")]
+#[case("action def A { merge m[1] : MergeKind; }")]
+#[case("action def A { merge m :>> otherMerge default foo; }")]
+fn test_control_nodes_declaration_tail(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
+// Regression: fork/join/merge/decide can be preceded by a ControlNodePrefix
+// (ref, individual, snapshot, timeslice, etc.), per grammar. Since these
+// control keywords aren't SysML usage/definition keywords, the top-level
+// dispatcher used to route any of these prefixes straight into
+// parse_definition_or_usage(), which chokes on the control keyword that
+// follows and produces a real syntax error. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("action def A { individual fork f { } }")]
+#[case("action def A { ref fork f { } }")]
+#[case("action def A { snapshot fork f { } }")]
+#[case("action def A { timeslice join j { } }")]
+#[case("action def A { ref individual decide d : DecideKind; }")]
+fn test_control_node_prefix(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // State Subactions
 // ============================================================================

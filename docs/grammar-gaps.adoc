@@ -1,52 +1,50 @@
-= SysML v2 Grammar Coverage Punch List
+= Control nodes `fork` / `join` / `merge` / `decide`
 
-Gaps found by comparing MontiCore's official SysMLv2 grammar
-(`SysMLBasis.mc4`, `SysMLParts.mc4`, `SysMLActions.mc4`, `SysMLStates.mc4`,
-`SysMLConstraints.mc4`, `SysMLExpressions.mc4`, `SysMLv2.mc4`, release/7.8.x)
-against the Rust parser in `src/parser/grammar/`.
+Only parse an optional name, no typing (`: TypeName`).
 
-== Entirely missing (no token/keyword exists at all)
+Fixed:
+`parse_control_node` (`sysml/actions.rs`) was a bare-bones `keyword Identification? Body` implementation,
+but per grammar these all extend `ActionUsage` and share its full declaration tail.
 
-* [ ] `timing` keyword (`SysMLCausality`) -- Parts. No `TIMING_KW` anywhere.
-* [ ] `exists ... :` (`ExistsExpression`) -- Expressions. No `EXISTS` token.
-* [ ] `union` as a binary expression operator (`UnionExpression`) -- Expressions.
-  Only `UNIONS_KW` (the unrelated relationship keyword) exists.
-* [ ] `INF` / `-INF` literal (`Infinity`) -- Expressions. No infinity token/literal.
-* [ ] `nat` primitive type (`MCPrimitiveTypeWithNat`) -- Expressions. Not lexed.
-* [ ] LaTeX-style set operators: `\subseteq`, `\subset`, `\supseteq`, `\supset`,
-  `\sqsubseteq`, `\in` -- Expressions. None exist.
-* [ ] `static` modifier -- Basis. Not even lexed as a token; falls through as `IDENT`.
-* [ ] Symbolic visibility shorthand `+` / `-` / `#` for public/private/protected --
-  Basis. Tokens exist but are never checked as visibility markers.
-* [ ] `?` as a `readonly` alias -- Basis. `QUESTION` token exists (used for
-  ternary) but is never treated as readonly.
-* [ ] `refines` (`SysMLRefinement`) -- Basis. No dedicated keyword path found.
-* [ ] `AnonymousReference` production -- Basis. Not distinguished from
-  `AnonymousUsage`; no distinct implementation.
-* [ ] `StateDef` / `StateUsage` parameter list, e.g. `state def S (in x: Integer) { }`
-  -- States. Confirmed by test: real syntax error.
-* [ ] `first X if guard then Y` (guard attached to a `first` succession) --
-  Actions. `parse_first_action` has no guard branch.
+Added multiplicity, typing, specializations,
+a second multiplicity slot (after specializations), and
+default value.
+Mirroring the exact identification/multiplicity/typing/specializations/multiplicity/default
+sequence already used by `parse_subject_usage` and friends in `requirements.rs`.
 
-== Partial / structural concerns (parses, but with gaps or duplication)
+Regression tests added in `tests/tests_parser_behavioral.rs`
+(`test_control_nodes_declaration_tail`)
 
-* [ ] Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
-  three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
-  shared function -- consistency risk for future changes.
-* [ ] Control nodes `fork` / `join` / `merge` / `decide` only parse an
-  optional name, no typing (`: TypeName`).
-* [ ] `SysMLNullLiteral` / `SysMLEmptyExpression` (`()`) parse without error
-  but have no distinct AST node -- indistinguishable from a degenerate
-  parenthesized expression.
-* [ ] Dead `SyntaxKind` variants declared but never constructed:
-  `ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
-  `CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
-  `REQUIREMENT_USAGE` -- everything routes through generic `DEFINITION` /
-  `USAGE` nodes with boolean flags instead. Not a parse bug, but any
-  downstream HIR/AST code matching on these specific kinds will never see
-  them.
-* [ ] `FlowPayload` isn't a first-class production -- payload params are
-  parsed as generic typed parameters.
-* [ ] Bare `ordered` / `nonunique` cardinality-modifier parsing is
-  copy-pasted across roughly six call sites rather than shared -- fragile
-  for future usage kinds that forget to copy the snippet.
+== Follow-up: ControlNodePrefix
+
+The comment above `parse_control_node` was later filled in with the fuller
+official grammar:
+
+----
+ControlNodePrefix : OccurrenceUsage =
+  RefPrefix
+  ( isIndividual ?= 'individual )?
+  ( portionKind = PortionKind { isPortion = true } )?
+  UsageExtensionKeyword*
+MergeNode/DecisionNode/JoinNode/ForkNode =
+  ControlNodePrefix isComposite ?= ('merge'|'decide'|'join'|'fork') UsageDeclaration
+  ActionBody
+----
+
+`parse_control_node`'s own body already matched `UsageDeclaration` (fixed
+above), but `ControlNodePrefix` -- `ref`/`individual`/`snapshot`/`timeslice`/
+etc. before the control keyword -- wasn't handled at all, and not just
+missing: `individual fork f { }` produced a real `SyntaxError`. Root cause:
+`parse_package_body_element`'s dispatcher (`entry.rs`) unconditionally routed
+those prefix keywords to `parse_definition_or_usage()`, but `fork`/`join`/
+`merge`/`decide` aren't SysML usage/definition keywords, so that function
+choked on them.
+
+Fixed: added a lookahead (`peek_past_usage_prefix_keywords` in `helpers.rs`)
+right before the dispatcher's big `match`, which looks past a run of
+`USAGE_PREFIX_KEYWORDS` to check whether a control-node keyword follows; if
+so, dispatches straight to `parse_control_node` instead. `parse_control_node`
+now consumes that prefix itself via `parse_usage_prefix` (bumped from
+private to `pub(super)` in `usage.rs` -- the exact same prefix set was
+already being parsed there, just not reusable). Regression tests added in
+`tests/tests_parser_behavioral.rs` (`test_control_node_prefix`).
