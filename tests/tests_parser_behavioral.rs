@@ -93,6 +93,51 @@ fn test_state_subactions_parse(#[case] input: &str) {
     assert!(parses_successfully(input), "Failed to parse: {}", input);
 }
 
+// Regression: entry/do bodies referencing a nested action via a dotted
+// qualified name (e.g. `entry Off.entry;`) used to hit a syntax error on the
+// '.', because `parse_state_subaction` only ever parsed a single bare name.
+// See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("state def S { entry Off.entry; }")]
+#[case("state def S { do Off.doThing; }")]
+#[case("state def S { entry On::entry; }")]
+// The plain single-name forms (declaration and reference) must keep working.
+#[case("state def S { do myAction : ActionType { } }")]
+#[case("state def S { exit myExitAction; }")]
+fn test_state_subaction_qualified_name_parses(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
+// Regression: a call-style effect in a transition's `do` clause (e.g.
+// `do action1()`) used to leave the trailing '(' ')' unconsumed, corrupting
+// the rest of the transition (the `then` target was dropped). See
+// docs/grammar-gaps.adoc.
+#[rstest]
+#[case("state def S { transition t first s1 do action1() then s2; }")]
+#[case("state def S { transition t first s1 do action1(1, 2) then s2; }")]
+#[case("state def S { transition t first s1 accept p do action1() then s2; }")]
+fn test_transition_do_effect_call_parses(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+    // The `then` target must survive -- this is exactly what the bug dropped.
+    let has_then_kw = parsed
+        .syntax()
+        .descendants_with_tokens()
+        .any(|n| n.kind() == syster::parser::SyntaxKind::THEN_KW);
+    assert!(has_then_kw, "expected THEN_KW to survive for: {}", input);
+}
+
 // ============================================================================
 // Transition Features
 // ============================================================================
