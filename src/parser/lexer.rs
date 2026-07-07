@@ -521,6 +521,8 @@ pub enum LogosToken {
     TypeKw,
     #[token("typed")]
     TypedKw,
+    #[token("union")]
+    UnionKw,
     #[token("unions")]
     UnionsKw,
     #[token("until")]
@@ -770,6 +772,7 @@ impl From<LogosToken> for SyntaxKind {
             TrueKw => SyntaxKind::TRUE_KW,
             TypeKw => SyntaxKind::TYPE_KW,
             TypedKw => SyntaxKind::TYPED_KW,
+            UnionKw => SyntaxKind::UNION_KW,
             UnionsKw => SyntaxKind::UNIONS_KW,
             UntilKw => SyntaxKind::UNTIL_KW,
             UseKw => SyntaxKind::USE_KW,

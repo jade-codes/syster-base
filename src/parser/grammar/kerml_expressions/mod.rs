@@ -261,13 +261,36 @@ pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
 // end::parse_xor_expression[]
 
 // tag::parse_and_expression[]
-/// AndExpression = EqualityExpression (('&' | 'and') EqualityExpression)*
+/// AndExpression = UnionExpression (('&' | 'and') UnionExpression)*
 /// Grammar: see docs/grammar-mapping.adoc#parse_and_expression
 pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
-    parse_equality_expression(p);
+    parse_union_expression(p);
     p.skip_trivia();
 
     while p.at(SyntaxKind::AMP) || p.at(SyntaxKind::AND_KW) {
+        p.bump();
+        p.skip_trivia();
+        parse_union_expression(p);
+        p.skip_trivia();
+    }
+}
+// end::parse_and_expression[]
+
+/// UnionExpression = EqualityExpression ('union' EqualityExpression)*
+///
+/// MontiCore `SysMLExpressions.mc4` extension of `de.monticore.ocl.SetExpressions`
+/// -- not part of the official OMG KEBNF grammar. "union" is a contextual
+/// keyword, not reserved: it's used as a plain function/feature name
+/// throughout the standard library (`SequenceFunctions::union`, the
+/// `union(a, b)` invocation form used everywhere instead of this infix
+/// operator, `feature union: Occurrence[0..1]`), so it stays in
+/// `at_name_token()`'s allowlist and this operator is only recognized
+/// between two already-parsed operands.
+pub fn parse_union_expression<P: ExpressionParser>(p: &mut P) {
+    parse_equality_expression(p);
+    p.skip_trivia();
+
+    while p.at(SyntaxKind::UNION_KW) {
         p.bump();
         p.skip_trivia();
         parse_equality_expression(p);

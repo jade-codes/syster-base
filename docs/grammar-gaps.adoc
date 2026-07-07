@@ -1,3 +1,32 @@
+= `union` as a binary expression operator (`UnionExpression`)
+
+Only `UNIONS_KW` (the unrelated relationship keyword) exists.
+
+Fixed:
+Added `UNION_KW` and `parse_union_expression`
+(`kerml_expressions/mod.rs`), a new binary-operator precedence level
+between `and`/`xor`/`or` and `equality` (matching MontiCore's relative
+precedence numbers: `and`=120 < `union`=180 < `not`=190 in
+`SysMLExpressions.mc4`).
+
+Note:
+`UnionExpression` is a MontiCore override of
+a third-party `de.monticore.ocl.SetExpressions` rule,
+not part of the official OMG KEBNF (verified absent from both textual-bnf files).
+Its own grammar comment says "union is not a reserved keyword in SysML and used
+in the Systems Library".
+
+confirmed:
+The real KerML standard library defines `function union{...}` (`SequenceFunctions.kerml`)
+and invokes it everywhere via the `union(a, b)` *function-call* form
+(`Occurrences.kerml`, `Objects.kerml`, `StatePerformances.kerml`,
+`Items.sysml`), never this infix operator, plus `feature union: ...` as a
+plain feature name.
+So `UNION_KW` was added to `at_name_token()`'s and
+`can_start_expression()`'s allowlists, matching the pattern already
+established for `exists`/`instant`.
+
+Regression tests in `tests/tests_parser_expressions.rs`.
 = `exists ... :` (`ExistsExpression`)
 
 Expressions. No `EXISTS` token.
