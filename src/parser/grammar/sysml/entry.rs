@@ -164,7 +164,6 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         | SyntaxKind::VERIFICATION_KW
         | SyntaxKind::USE_KW
         | SyntaxKind::CONCERN_KW
-        | SyntaxKind::PARALLEL_KW
         | SyntaxKind::EVENT_KW
         | SyntaxKind::MESSAGE_KW
         | SyntaxKind::SNAPSHOT_KW

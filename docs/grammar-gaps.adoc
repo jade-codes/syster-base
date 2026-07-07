@@ -33,6 +33,21 @@ Checkboxes are unchecked; check them off as items are fixed.
 
 == Real bugs (should parse, doesn't -- or silently mis-parses)
 
+* [x] `state s parallel { ... }` -- confirmed empirically: `parallel` is
+  swallowed as the name of a *second, unrelated* usage instead of a modifier
+  on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
+  path never reaches it. +
+  _Fixed: the root cause was that `parallel` was never lexed as `PARALLEL_KW`
+  at all (`lexer.rs` had no `#[token("parallel")]`) -- it always came through
+  as a plain `IDENT`, so `usage.rs` had nothing to dispatch on. Added the
+  missing lexer token, then made `PARALLEL_KW` a contextual keyword (added
+  to `at_name_token()`, matching the existing `to`/`state` precedent) and
+  removed it from the two "starts a new definition/usage" keyword lists in
+  `entry.rs` and `definitions.rs`, since a bare `parallel` must remain a
+  valid identifier (e.g. an enum variant named `parallel`) everywhere except
+  immediately before a `StateUsage` body. Regression tests added in
+  `tests/tests_parser_behavioral.rs`
+  (`test_parallel_state_marker`, `test_parallel_as_identifier`)._
 * [ ] `state s parallel { ... }` -- confirmed empirically: `parallel` is
   swallowed as the name of a *second, unrelated* usage instead of a modifier
   on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
@@ -45,6 +60,9 @@ Checkboxes are unchecked; check them off as items are fixed.
   -- `parse_state_subaction` uses `parse_identification` (single name)
   instead of `parse_qualified_name`. Confirmed syntax error on `.`. Same
   code path affects `DoAction` and `ExitAction`.
+* [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree.
 * [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
   mis-dispatched into `parse_requirement_constraint`, which only checks for
   `constraint`, not `requirement`; corrupts the tree. +

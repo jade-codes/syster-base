@@ -34,6 +34,53 @@ fn test_control_nodes_parse(#[case] input: &str) {
 }
 
 // ============================================================================
+// Parallel state marker
+// Regression: `state s parallel { ... }` used to lex `parallel` as a plain
+// IDENT, so it was mis-parsed as the name of a second, unrelated usage
+// instead of a marker on the state. See docs/grammar-gaps.adoc.
+// ============================================================================
+
+#[rstest]
+#[case("part def P { state s parallel { entry; } }")]
+#[case("part def P { action def A { exhibit state s parallel { entry; } } }")]
+#[case("state def S parallel { entry; }")]
+fn test_parallel_state_marker(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+    // `parallel` must be recognized as the PARALLEL_KW marker token (proving
+    // it wasn't swallowed as the NAME of a second, unrelated usage).
+    let has_parallel_kw = parsed
+        .syntax()
+        .descendants_with_tokens()
+        .any(|n| n.kind() == syster::parser::SyntaxKind::PARALLEL_KW);
+    assert!(
+        has_parallel_kw,
+        "expected a PARALLEL_KW token for: {}",
+        input
+    );
+}
+
+// `parallel` must still work as a plain identifier outside the StateUsage
+// marker position (it is only a contextual keyword there).
+#[rstest]
+#[case("enum def NodeKind { branch; parallel; }")]
+#[case("part def P { attribute parallel : Boolean; }")]
+fn test_parallel_as_identifier(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "`parallel` should be valid as an identifier: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
+// ============================================================================
 // State Subactions
 // ============================================================================
 
