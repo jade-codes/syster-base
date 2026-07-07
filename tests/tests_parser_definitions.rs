@@ -197,3 +197,24 @@ fn test_prefix_metadata_with_body() {
     );
     assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
 }
+
+/// Regression: `UserDefinedKeyword = "#" MCQualifiedName` used to only consume
+/// the first segment, so `#Foo::Bar` left `::Bar` dangling. See docs/grammar-gaps.adoc.
+#[test]
+fn test_prefix_metadata_qualified_name_sysml() {
+    let parsed = parse_sysml("#Foo::Bar part def X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+
+    // Single-segment form must still work unchanged.
+    let parsed = parse_sysml("#Foo part def X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}
+
+#[test]
+fn test_prefix_metadata_qualified_name_kerml() {
+    let parsed = parse_kerml("#Foo::Bar class X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("#Foo class X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}
