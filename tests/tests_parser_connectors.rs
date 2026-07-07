@@ -110,6 +110,61 @@ fn test_flow_usage(#[case] input: &str) {
 }
 
 // ============================================================================
+// Flow Payload -- `of <payload>` clause (bare type or named+typed feature)
+// ============================================================================
+
+#[rstest]
+#[case("part def A; part def B; part def T; part a : A { } part b : B { } flow of T from a to b;")]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow myFlow of payload : T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload :> T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T[1] from a to b;"
+)]
+#[case("part def A; part def B; part def T; part a : A { } part b : B { } flow of T[1] from a to b;")]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T = 5 from a to b;"
+)]
+fn test_flow_payload_forms(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_flow_payload_produces_dedicated_node() {
+    use syster::parser::SyntaxKind;
+
+    let named = parse_sysml(
+        "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T from a to b;",
+    );
+    assert!(named.ok(), "errors: {:?}", named.errors);
+    assert!(
+        named
+            .syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::PAYLOAD_FEATURE),
+        "named payload should produce a PAYLOAD_FEATURE node"
+    );
+
+    let bare = parse_sysml(
+        "part def A; part def B; part def T; part a : A { } part b : B { } flow of T from a to b;",
+    );
+    assert!(bare.ok(), "errors: {:?}", bare.errors);
+    assert!(
+        bare.syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::PAYLOAD_FEATURE),
+        "bare payload type should also produce a PAYLOAD_FEATURE node"
+    );
+}
+
+// ============================================================================
 // Allocation Definitions
 // ============================================================================
 

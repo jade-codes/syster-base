@@ -1,3 +1,25 @@
+= `FlowPayload` isn't a first-class production
+
+Payload params are parsed as generic typed parameters.
+
+Fixed:
+Added `parse_flow_payload()` (`sysml/helpers.rs`)
+which wraps the `flow ... of <payload>` clause
+in a new dedicated `PAYLOAD_FEATURE` SyntaxKind,
+matching the spec's `PayloadFeature` production.
+This also fixed a real parse bug found while investigating:
+
+The named+typed form `flow of payload :
+PayloadType from a to b` previously produced syntax errors
+(only the bare `flow of PayloadType from a to b` anonymous form worked),
+because the old code unconditionally called `parse_qualified_name()`
+right after `of` with no lookahead, so it couldn't handle
+a name followed by a `:`/`:>`/etc. specialization clause.
+Added `peek_past_name_for_specialization()` lookahead helper to
+distinguish the named form from the bare-type form.
+`message`'s own, differently-structured `of` handling was left untouched.
+
+Regression tests in `tests/tests_parser_connectors.rs`.
 = SysMLNullLiteral` / `SysMLEmptyExpression` (`()`)
 
 Parse without error but have no distinct AST node
