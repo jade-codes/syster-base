@@ -1,3 +1,53 @@
+= Control nodes `fork` / `join` / `merge` / `decide`
+
+Only parse an optional name, no typing (`: TypeName`).
+
+Fixed:
+`parse_control_node` (`sysml/actions.rs`) was a bare-bones `keyword Identification? Body` implementation,
+but per grammar these all extend `ActionUsage` and share its full declaration tail.
+
+Added multiplicity, typing, specializations,
+a second multiplicity slot (after specializations), and
+default value.
+Mirroring the exact identification/multiplicity/typing/specializations/multiplicity/default
+sequence already used by `parse_subject_usage` and friends in `requirements.rs`.
+
+Regression tests added in `tests/tests_parser_behavioral.rs`
+(`test_control_nodes_declaration_tail`)
+
+== Follow-up: ControlNodePrefix
+
+The comment above `parse_control_node` was later filled in with the fuller
+official grammar:
+
+----
+ControlNodePrefix : OccurrenceUsage =
+  RefPrefix
+  ( isIndividual ?= 'individual )?
+  ( portionKind = PortionKind { isPortion = true } )?
+  UsageExtensionKeyword*
+MergeNode/DecisionNode/JoinNode/ForkNode =
+  ControlNodePrefix isComposite ?= ('merge'|'decide'|'join'|'fork') UsageDeclaration
+  ActionBody
+----
+
+`parse_control_node`'s own body already matched `UsageDeclaration` (fixed
+above), but `ControlNodePrefix` -- `ref`/`individual`/`snapshot`/`timeslice`/
+etc. before the control keyword -- wasn't handled at all, and not just
+missing: `individual fork f { }` produced a real `SyntaxError`. Root cause:
+`parse_package_body_element`'s dispatcher (`entry.rs`) unconditionally routed
+those prefix keywords to `parse_definition_or_usage()`, but `fork`/`join`/
+`merge`/`decide` aren't SysML usage/definition keywords, so that function
+choked on them.
+
+Fixed: added a lookahead (`peek_past_usage_prefix_keywords` in `helpers.rs`)
+right before the dispatcher's big `match`, which looks past a run of
+`USAGE_PREFIX_KEYWORDS` to check whether a control-node keyword follows; if
+so, dispatches straight to `parse_control_node` instead. `parse_control_node`
+now consumes that prefix itself via `parse_usage_prefix` (bumped from
+private to `pub(super)` in `usage.rs` -- the exact same prefix set was
+already being parsed there, just not reusable). Regression tests added in
+`tests/tests_parser_behavioral.rs` (`test_control_node_prefix`).
 = De-Duplicate
 
 Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented

@@ -95,6 +95,16 @@ pub(super) fn peek_past_name_for<P: SysMLParser>(p: &P, target: SyntaxKind) -> b
     p.peek_kind(lookahead) == target
 }
 
+/// Look past a run of usage-prefix keywords (ref, individual, snapshot,
+/// timeslice, etc.) and return the first token that isn't one of them.
+pub(super) fn peek_past_usage_prefix_keywords<P: SysMLParser>(p: &P) -> SyntaxKind {
+    let mut i = 0;
+    while USAGE_PREFIX_KEYWORDS.contains(&p.peek_kind(i)) {
+        i += 1;
+    }
+    p.peek_kind(i)
+}
+
 /// Helper to peek past optional identifier and get next significant token
 pub(super) fn peek_past_optional_name<P: SysMLParser>(
     p: &P,

@@ -599,7 +599,7 @@ fn parse_usage_keyword<P: SysMLParser>(p: &mut P) {
     }
 }
 
-fn parse_usage_prefix<P: SysMLParser>(p: &mut P) -> bool {
+pub(super) fn parse_usage_prefix<P: SysMLParser>(p: &mut P) -> bool {
     let mut saw_end = false;
     while p.at_any(USAGE_PREFIX_KEYWORDS) {
         if p.at(SyntaxKind::END_KW) {

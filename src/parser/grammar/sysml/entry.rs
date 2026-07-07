@@ -64,6 +64,24 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
     }
 
+    // Control nodes (fork/join/merge/decide) can be preceded by usage
+    // prefixes (ref, individual, snapshot, timeslice, etc.) per grammar's
+    // ControlNodePrefix. fork/join/merge/decide aren't SysML usage/definition
+    // keywords, so without this lookahead the prefix-keyword arms below would
+    // route straight to parse_definition_or_usage() and choke on them.
+    if p.at_any(USAGE_PREFIX_KEYWORDS)
+        && matches!(
+            peek_past_usage_prefix_keywords(p),
+            SyntaxKind::FORK_KW
+                | SyntaxKind::JOIN_KW
+                | SyntaxKind::MERGE_KW
+                | SyntaxKind::DECIDE_KW
+        )
+    {
+        parse_control_node(p);
+        return;
+    }
+
     match p.current_kind() {
         // Package
         SyntaxKind::PACKAGE_KW => parse_package(p),
