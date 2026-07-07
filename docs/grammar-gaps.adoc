@@ -91,6 +91,23 @@ Checkboxes are unchecked; check them off as items are fixed.
   `constraint`, not `requirement`; corrupts the tree.
 * [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
   checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break.
+* [x] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
+  `::Bar` remainder dangles unconsumed. +
+  _Fixed: both `parse_prefix_metadata` implementations (SysML's
+  `entry.rs` and KerML's `kerml/entry.rs` -- the same bug existed on both
+  sides) now call `parse_qualified_name` instead of a single `bump()`.
+  This nests the identifier inside a `QUALIFIED_NAME` node rather than
+  leaving a bare `IDENT` token as a direct child of `PREFIX_METADATA`,
+  which broke `PrefixMetadata::ident_token()` in `parser/ast/elements.rs`
+  (it only scanned direct children) -- updated it to scan descendants
+  instead, fixing a hover regression this surfaced
+  (`hover_metadata_prefix_on_definition`). Regression tests added in
+  `tests/tests_parser_definitions.rs`
+  (`test_prefix_metadata_qualified_name_sysml`,
+  `test_prefix_metadata_qualified_name_kerml`)._
 * [x] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
   `parse_optional_identification` (single name) instead of a qualified-name
   parser; multi-segment names likely break. +

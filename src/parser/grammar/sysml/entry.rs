@@ -446,7 +446,9 @@ pub(super) fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PREFIX_METADATA);
     expect_and_skip(p, SyntaxKind::HASH);
     if p.at_name_token() {
-        p.bump();
+        // UserDefinedKeyword = "#" MCQualifiedName -- consume the full chain,
+        // e.g. `#Foo::Bar`, not just the first segment.
+        p.parse_qualified_name();
         p.skip_trivia();
     }
     // Consume optional body { ... } — brace-balanced skip
