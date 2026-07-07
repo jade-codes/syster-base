@@ -1,3 +1,30 @@
+= `INF` / `-INF` literal (`Infinity`)
+
+Expressions. No infinity token/literal.
+
+Fixed:
+Added an `INFINITY_KW` lexer token covering both spellings
+(`#[token("-INF")]` / `#[token("INF")]`, mapped to the same `SyntaxKind`)
+and wired it into `parse_literal`.
+"-INF" is a single atomic token only when there's no space between `-` and `INF`
+(matching logos's longest-match rule); `- INF` (with a space) still parses correctly,
+just via unary-minus applied to a separate `INF` literal operand,
+since `INFINITY_KW` was also added to `can_start_expression()`.
+
+Note:
+Unlike `timing`/`exists`/`union`,
+this construct actually *is* in the official OMG KEBNF grammar
+(`KerML-textual-bnf.kebnf`: `LiteralInfinity`).
+The official spec spells it as bare `'*'`, not textual `INF`/`-INF`.
+The punch list's own `INF`/`-INF` wording matches MontiCore's
+`SysMLExpressions.mc4` override instead, so that's what was implemented;
+the official `'*'` spelling is a separate, still-open gap
+(not attempted here, out of scope for this item).
+
+Verified no collisions:
+zero uses of bare `INF` anywhere in the standard library or example corpus.
+
+Regression tests in `tests/tests_parser_expressions.rs`.
 = `union` as a binary expression operator (`UnionExpression`)
 
 Only `UNIONS_KW` (the unrelated relationship keyword) exists.

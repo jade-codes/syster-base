@@ -494,6 +494,7 @@ impl<'a> SysMLParser for Parser<'a> {
             // Literals
             SyntaxKind::INTEGER | SyntaxKind::DECIMAL | SyntaxKind::STRING |
             SyntaxKind::TRUE_KW | SyntaxKind::FALSE_KW | SyntaxKind::NULL_KW |
+            SyntaxKind::INFINITY_KW |
             // Expression starters
             SyntaxKind::NEW_KW | SyntaxKind::L_BRACE | SyntaxKind::L_PAREN |
             SyntaxKind::IF_KW | SyntaxKind::IDENT | SyntaxKind::THIS_KW |

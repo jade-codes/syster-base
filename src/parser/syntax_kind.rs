@@ -25,6 +25,7 @@ pub enum SyntaxKind {
     INTEGER, // 42
     DECIMAL, // 3.14
     STRING,  // "hello" or 'hello'
+    INFINITY_KW, // INF / -INF (KerML LiteralInfinity; MontiCore spelling -- official KEBNF uses bare '*')
 
     // =========================================================================
     // PUNCTUATION
@@ -536,6 +537,7 @@ impl SyntaxKind {
             Self::INTEGER => "integer",
             Self::DECIMAL => "number",
             Self::STRING => "string",
+            Self::INFINITY_KW => "'INF'",
             Self::ERROR => "error",
 
             // Punctuation
