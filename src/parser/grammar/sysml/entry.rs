@@ -164,7 +164,6 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
         | SyntaxKind::VERIFICATION_KW
         | SyntaxKind::USE_KW
         | SyntaxKind::CONCERN_KW
-        | SyntaxKind::PARALLEL_KW
         | SyntaxKind::EVENT_KW
         | SyntaxKind::MESSAGE_KW
         | SyntaxKind::SNAPSHOT_KW
@@ -332,18 +331,25 @@ pub fn parse_package_body_element<P: SysMLParser>(p: &mut P) {
                 parse_objective_usage(p);
             }
         }
-        SyntaxKind::ASSERT_KW => {
-            // Check if followed by 'not' or 'satisfy' -> requirement verification
-            // Otherwise -> requirement constraint
-            let next = p.peek_kind(1);
-            if next == SyntaxKind::NOT_KW || next == SyntaxKind::SATISFY_KW {
+        SyntaxKind::ASSERT_KW | SyntaxKind::ASSUME_KW | SyntaxKind::REQUIRE_KW => {
+            // Look past an optional 'not' to find the disambiguating keyword:
+            // 'satisfy'/'verify' (shorthand) or the mandatory 'requirement' keyword
+            // of the RequirementUsage long form -> requirement verification (which
+            // also parses the 'not' modifier). Otherwise -> requirement constraint
+            // (ConstraintUsage/ConstraintReference, which also parses 'not' -- see
+            // e.g. `assert not massLimitation {...}`).
+            let mut next = p.peek_kind(1);
+            if next == SyntaxKind::NOT_KW {
+                next = p.peek_kind(2);
+            }
+            if matches!(
+                next,
+                SyntaxKind::SATISFY_KW | SyntaxKind::VERIFY_KW | SyntaxKind::REQUIREMENT_KW
+            ) {
                 parse_requirement_verification(p);
             } else {
                 parse_requirement_constraint(p);
             }
-        }
-        SyntaxKind::ASSUME_KW | SyntaxKind::REQUIRE_KW => {
-            parse_requirement_constraint(p);
         }
         SyntaxKind::NOT_KW | SyntaxKind::SATISFY_KW | SyntaxKind::VERIFY_KW => {
             parse_requirement_verification(p)
@@ -440,7 +446,9 @@ pub(super) fn parse_prefix_metadata<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PREFIX_METADATA);
     expect_and_skip(p, SyntaxKind::HASH);
     if p.at_name_token() {
-        p.bump();
+        // UserDefinedKeyword = "#" MCQualifiedName -- consume the full chain,
+        // e.g. `#Foo::Bar`, not just the first segment.
+        p.parse_qualified_name();
         p.skip_trivia();
     }
     // Consume optional body { ... } — brace-balanced skip

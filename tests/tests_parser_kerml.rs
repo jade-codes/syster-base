@@ -90,6 +90,23 @@ fn test_connectors(#[case] input: &str) {
     assert!(parses_kerml(input), "Failed to parse: {}", input);
 }
 
+// Regression: KerML's binding/succession endpoint pairing had no specialization
+// support at all (only multiplicity + qualified name + '='/'then'). See
+// docs/grammar-gaps.adoc.
+#[rstest]
+#[case("class P { binding a :> b = c; }")]
+#[case("class P { binding a :>> b = c; }")]
+#[case("class P { binding a = c :> d; }")]
+fn test_binding_endpoint_specializations(#[case] input: &str) {
+    let parsed = syster::parser::parse_kerml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Steps
 // ============================================================================

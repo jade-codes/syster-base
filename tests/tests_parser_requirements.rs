@@ -38,6 +38,28 @@ fn test_requirement_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: 'assume'/'require' followed by the literal 'requirement' keyword
+// (the RequirementUsage long form) used to be mis-dispatched into the
+// constraint-usage parser, which has no handling for the 'requirement'
+// keyword and left it dangling. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("package P { assume requirement myReq; }")]
+#[case("package P { require requirement myReq; }")]
+#[case("package P { assert requirement myReq; }")]
+#[case("package P { assume requirement myReq { doc /* text */ } }")]
+#[case("package P { require verify requirement myReq; }")]
+#[case("package P { assume satisfy myReq; }")]
+#[case("package P { require satisfy myReq; }")]
+fn test_requirement_usage_prefix_dispatch(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Constraint Definitions
 // ============================================================================
@@ -60,6 +82,27 @@ fn test_constraint_def(#[case] input: &str) {
 #[case("package P { assert constraint c { true } }")]
 fn test_constraint_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
+}
+
+// Regression: the `["not"]?` modifier in ConstraintUsage's assert/assume/require
+// prefix was never consumed by `parse_requirement_constraint`, so `assert not
+// constraint c1 {...}` failed with "expected ';', found 'not'". This also covers
+// the shorthand form where the 'constraint' keyword itself is omitted (e.g.
+// `assert not massLimitation {...}`, from Simple Tests/ConstraintTest.sysml).
+// See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("package P { assert not constraint c1 { true } }")]
+#[case("package P { assume not constraint c1; }")]
+#[case("package P { require not constraint c1 : C; }")]
+#[case("part def P { assert not massLimitation { :>> mass = vehicle3.mass; } }")]
+fn test_constraint_usage_not_modifier(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
 }
 
 // ============================================================================
@@ -118,6 +161,28 @@ fn test_use_case_def(#[case] input: &str) {
 #[case("concern def MyConcern { stakeholder myStakeholder; }")]
 fn test_concern_def(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
+}
+
+// Regression: `frame <qualifiedname>;` (ConcernReference) used
+// `parse_optional_identification` (a single name) instead of a qualified-name
+// parser, so multi-segment references like `frame Pkg::Concern1;` broke on
+// the `::`. The sibling form `frame concern c1;` (ConcernUsage with a `frame`
+// prefix) defines a *new* name and must keep using identification. See
+// docs/grammar-gaps.adoc.
+#[rstest]
+#[case("requirement def R { frame Pkg::Concern1; }")]
+#[case("requirement def R { frame Concern1; }")]
+#[case("requirement def R { frame Pkg::Sub::Concern1; }")]
+#[case("requirement def R { frame concern c1; }")]
+#[case("requirement def R { frame concern c1 { doc /* text */ } }")]
+fn test_frame_concern_reference_and_usage(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
 }
 
 // ============================================================================

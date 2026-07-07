@@ -278,7 +278,6 @@ fn is_definition_or_usage_start<P: SysMLParser>(p: &P) -> bool {
         SyntaxKind::USE_KW,
         SyntaxKind::CONCERN_KW,
         SyntaxKind::FLOW_KW,
-        SyntaxKind::PARALLEL_KW,
         SyntaxKind::EVENT_KW,
         SyntaxKind::MESSAGE_KW,
         SyntaxKind::SNAPSHOT_KW,
