@@ -157,7 +157,7 @@ fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
 }
 
 /// Parse filter package: [@expression]
-fn parse_filter_package<P: SysMLParser>(p: &mut P) {
+pub(super) fn parse_filter_package<P: SysMLParser>(p: &mut P) {
     if !p.at(SyntaxKind::L_BRACKET) {
         return;
     }
