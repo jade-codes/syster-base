@@ -43,8 +43,9 @@ fn handle_arrow_invocation<P: ExpressionParser>(p: &mut P) {
     p.bump(); // ->
     p.skip_trivia();
 
-    // Method name
-    if p.at(SyntaxKind::IDENT) {
+    // Method name -- use at_name_token() (not just IDENT) so contextual
+    // keywords used as function names (e.g. `->exists{...}`) are accepted.
+    if p.at_name_token() {
         p.bump();
     }
     p.skip_trivia();

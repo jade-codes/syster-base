@@ -70,6 +70,55 @@ fn test_classification_expressions(#[case] input: &str) {
     assert!(parses_successfully(input), "Failed to parse: {}", input);
 }
 
+// Regression: `@ Type` (KerMLHasTypeSelfExpression's symbolic self-form, implicit
+// self operand) used to fall through to base-expression's metadata-access parsing
+// instead of being recognized as a classification-expression prefix, unlike its
+// keyword-form sibling `hastype Type`. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("constraint def C { @Integer }")]
+#[case("constraint def C { istype Integer }")]
+#[case("constraint def C { hastype Integer }")]
+// Infix forms and the metadata-reference-as-expression use of `@` (e.g. in a
+// filter condition) must keep working unchanged.
+#[case("constraint def C { x @ Integer }")]
+#[case("view def V { filter @Safety; }")]
+fn test_hastype_self_form(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
+// ============================================================================
+// Exists Expression (MontiCore extension, not in official OMG KEBNF)
+// "exists" must remain usable as a plain function name/reference too, since
+// the real KerML standard library defines and invokes it that way.
+// ============================================================================
+
+#[rstest]
+#[case("package T { attribute x = exists a : a == a; }")]
+#[case("package T { attribute x = exists a, b : a == b; }")]
+#[case("package T { attribute x = collection->exists {in x; x}; }")]
+#[case("package T { attribute x = seq2->forAll {in x; seq1->exists{in y; x == y}}; }")]
+fn test_exists_expressions(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_exists_as_plain_function_name() {
+    use syster::parser::parse_kerml;
+
+    let parsed = parse_kerml("function exists { in x; return : Boolean[1]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("package P { private import ControlFunctions::exists; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+}
+
 // ============================================================================
 // Number Literals
 // ============================================================================
@@ -117,6 +166,38 @@ fn test_infinity_literal(#[case] input: &str) {
 #[case("package T { constraint c { a xor b } }")]
 fn test_logical_expressions(#[case] input: &str) {
     assert!(parses_successfully(input), "Failed to parse: {}", input);
+}
+
+// ============================================================================
+// Union Expression (MontiCore extension, not in official OMG KEBNF)
+// "union" must remain usable as a plain function/feature name too, since the
+// real KerML standard library defines and invokes it that way (the
+// `union(a, b)` function-call form, not this infix operator, is what's
+// actually used throughout the library).
+// ============================================================================
+
+#[rstest]
+#[case("package T { attribute x = a union b; }")]
+#[case("package T { attribute x = a union b union c; }")]
+#[case("package T { attribute x = union(a, b); }")]
+#[case("package T { attribute x = a union union(b, c); }")]
+fn test_union_expressions(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_union_as_plain_function_name() {
+    use syster::parser::parse_kerml;
+
+    let parsed = parse_kerml("function union{ in seq1: Anything[0..*]; in seq2: Anything[0..*]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("package P { private import SequenceFunctions::union; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("classifier C { feature union: Occurrence[0..1]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
 }
 
 // ============================================================================

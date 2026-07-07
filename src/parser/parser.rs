@@ -261,6 +261,14 @@ impl<'a> Parser<'a> {
     fn finish_node(&mut self) {
         self.builder.finish_node();
     }
+
+    fn checkpoint(&self) -> rowan::Checkpoint {
+        self.builder.checkpoint()
+    }
+
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind) {
+        self.builder.start_node_at(checkpoint, kind.into());
+    }
 }
 
 // =============================================================================
@@ -294,6 +302,15 @@ impl<'a> ExpressionParser for Parser<'a> {
         // Also "var" which is used as a feature name in Actions.sysml (assign var := ...)
         // Also "state" which is not a reserved keyword per KerML spec §8.2.2.6 and is valid
         // as a plain identifier in feature declarations (e.g. `out item state : T`).
+        // Also "union" which is used as a plain function/feature name in the
+        // standard library (SequenceFunctions::union, `feature union: Occurrence[0..1]`).
+        // Also "exists" which is used as a plain function name in the standard
+        // library (ControlFunctions::exists, `collection->exists {...}`).
+        // Also "instant" which is used as a feature name in the standard library
+        // (Transfers.kerml: `private binding instant[instantNum] of ...`).
+        // Also "parallel", which is only a marker keyword immediately before a StateUsage
+        // body (`state s parallel { ... }`); elsewhere (e.g. an enum variant `parallel;`)
+        // it must parse as a plain name.
         matches!(
             self.current_kind(),
             SyntaxKind::IDENT
@@ -320,6 +337,10 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::VAR_KW
                 | SyntaxKind::STATE_KW
                 | SyntaxKind::TO_KW
+                | SyntaxKind::UNION_KW
+                | SyntaxKind::EXISTS_KW
+                | SyntaxKind::INSTANT_KW
+                | SyntaxKind::PARALLEL_KW
         )
     }
 
@@ -353,6 +374,14 @@ impl<'a> ExpressionParser for Parser<'a> {
 
     fn finish_node(&mut self) {
         Parser::finish_node(self)
+    }
+
+    fn checkpoint(&self) -> rowan::Checkpoint {
+        Parser::checkpoint(self)
+    }
+
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind) {
+        Parser::start_node_at(self, checkpoint, kind)
     }
 
     fn parse_qualified_name(&mut self) {
@@ -469,6 +498,8 @@ impl<'a> SysMLParser for Parser<'a> {
             // Expression starters
             SyntaxKind::NEW_KW | SyntaxKind::L_BRACE | SyntaxKind::L_PAREN |
             SyntaxKind::IF_KW | SyntaxKind::IDENT | SyntaxKind::THIS_KW |
+            SyntaxKind::UNION_KW |
+            SyntaxKind::EXISTS_KW |
             // Unary prefix operators
             SyntaxKind::NOT_KW | SyntaxKind::MINUS | SyntaxKind::PLUS |
             SyntaxKind::TILDE | SyntaxKind::BANG |

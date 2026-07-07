@@ -230,6 +230,25 @@ pub fn parse_annotation<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+/// Parse a causality/timing element: `timing;` / `timing instant;` / `timing delayed;`
+/// Per MontiCore SysMLParts.mc4: SysMLCausality = "timing" (["instant"] | ["delayed"]) ";"
+/// "instant" = weak causal, "delayed" = strong causal (default).
+/// Not part of the official OMG KEBNF grammar; MontiCore-specific.
+pub fn parse_timing<P: SysMLParser>(p: &mut P) {
+    p.start_node(SyntaxKind::CAUSALITY);
+
+    p.expect(SyntaxKind::TIMING_KW);
+    p.skip_trivia();
+
+    if p.at(SyntaxKind::INSTANT_KW) || p.at(SyntaxKind::DELAYED_KW) {
+        p.bump();
+        p.skip_trivia();
+    }
+
+    p.expect(SyntaxKind::SEMICOLON);
+    p.finish_node();
+}
+
 /// Parse annotation body
 fn parse_annotation_body<P: SysMLParser>(p: &mut P) {
     p.expect(SyntaxKind::L_BRACE);

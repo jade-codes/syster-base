@@ -139,6 +139,11 @@ pub enum SyntaxKind {
     FRAME_KW,
     EVENT_KW,
 
+    // Causality/timing keywords
+    TIMING_KW,
+    INSTANT_KW,
+    DELAYED_KW,
+
     // Control flow
     IF_KW,
     ELSE_KW,
@@ -291,6 +296,11 @@ pub enum SyntaxKind {
     AS_KW,
     META_KW,
 
+    // Set operator (MontiCore extension, not in official OMG KEBNF)
+    UNION_KW,
+    // Quantifier (MontiCore extension, not in official OMG KEBNF)
+    EXISTS_KW,
+
     // =========================================================================
     // KEYWORDS - KerML (underlying language)
     // =========================================================================
@@ -331,6 +341,9 @@ pub enum SyntaxKind {
     DOCUMENTATION,
     TEXTUAL_REP,
     METADATA_USAGE,
+
+    // Causality/timing element: `timing instant;` / `timing delayed;`
+    CAUSALITY,
     PREFIX_METADATA,
 
     // Import
@@ -472,6 +485,9 @@ pub enum SyntaxKind {
     FROM_TO_CLAUSE,
     FROM_TO_SOURCE,
     FROM_TO_TARGET,
+
+    // Message/flow payload feature: the `of <payload>` clause
+    PAYLOAD_FEATURE,
 
     // Special
     ERROR,
@@ -619,6 +635,9 @@ impl SyntaxKind {
             Self::TIMESLICE_KW => "'timeslice'",
             Self::FRAME_KW => "'frame'",
             Self::EVENT_KW => "'event'",
+            Self::TIMING_KW => "'timing'",
+            Self::INSTANT_KW => "'instant'",
+            Self::DELAYED_KW => "'delayed'",
             Self::IF_KW => "'if'",
             Self::ELSE_KW => "'else'",
             Self::THEN_KW => "'then'",
@@ -737,6 +756,8 @@ impl SyntaxKind {
             Self::ISTYPE_KW => "'istype'",
             Self::AS_KW => "'as'",
             Self::META_KW => "'meta'",
+            Self::UNION_KW => "'union'",
+            Self::EXISTS_KW => "'exists'",
 
             // Keywords - KerML
             Self::TYPE_KW => "'type'",

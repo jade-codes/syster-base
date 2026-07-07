@@ -50,7 +50,17 @@ fn extract_definition_rels_from_ast(def: &AstDefinition) -> Vec<ExtractedRel> {
             }
             if matches!(
                 node.kind(),
-                SyntaxKind::NAMESPACE_BODY | SyntaxKind::USAGE | SyntaxKind::DEFINITION
+                SyntaxKind::NAMESPACE_BODY
+                    | SyntaxKind::USAGE
+                    | SyntaxKind::DEFINITION
+                    | SyntaxKind::ACTION_DEFINITION
+                    | SyntaxKind::CALC_DEFINITION
+                    | SyntaxKind::CONSTRAINT_DEFINITION
+                    | SyntaxKind::REQUIREMENT_DEFINITION
+                    | SyntaxKind::ACTION_USAGE
+                    | SyntaxKind::CALC_USAGE
+                    | SyntaxKind::CONSTRAINT_USAGE
+                    | SyntaxKind::REQUIREMENT_USAGE
             ) {
                 is_in_nested_scope = true;
                 break;

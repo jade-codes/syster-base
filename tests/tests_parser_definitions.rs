@@ -197,3 +197,114 @@ fn test_prefix_metadata_with_body() {
     );
     assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
 }
+
+// ============================================================================
+// Specific ACTION_DEFINITION / CALC_DEFINITION / CONSTRAINT_DEFINITION /
+// REQUIREMENT_DEFINITION / ACTION_USAGE / CALC_USAGE / CONSTRAINT_USAGE /
+// REQUIREMENT_USAGE node kinds.
+//
+// These were previously dead SyntaxKind variants: the parser always
+// constructed the generic DEFINITION/USAGE node with boolean flags instead,
+// so any code matching on the specific kinds would never see them. See
+// docs/grammar-gaps.adoc.
+// ============================================================================
+
+/// Find the first descendant node of `kind` and assert its presence.
+fn assert_has_kind(input: &str, kind: syster::parser::SyntaxKind, label: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse without errors: {}\nerrors: {:?}", input, parsed.errors);
+    let found = parsed.syntax().descendants().any(|n| n.kind() == kind);
+    assert!(found, "expected a {:?} node for {}: {}", kind, label, input);
+}
+
+#[test]
+fn test_specific_definition_kinds() {
+    use syster::parser::SyntaxKind;
+    assert_has_kind("action def A {}", SyntaxKind::ACTION_DEFINITION, "action def");
+    assert_has_kind("calc def C {}", SyntaxKind::CALC_DEFINITION, "calc def");
+    assert_has_kind(
+        "constraint def C {}",
+        SyntaxKind::CONSTRAINT_DEFINITION,
+        "constraint def",
+    );
+    assert_has_kind(
+        "requirement def R {}",
+        SyntaxKind::REQUIREMENT_DEFINITION,
+        "requirement def",
+    );
+    // Definitions without a dedicated kind must keep using the generic node.
+    assert_has_kind("part def P {}", SyntaxKind::DEFINITION, "part def");
+}
+
+#[test]
+fn test_specific_usage_kinds() {
+    use syster::parser::SyntaxKind;
+    assert_has_kind("part def P { action a; }", SyntaxKind::ACTION_USAGE, "action usage");
+    assert_has_kind("part def P { calc c; }", SyntaxKind::CALC_USAGE, "calc usage");
+    assert_has_kind(
+        "part def P { constraint c; }",
+        SyntaxKind::CONSTRAINT_USAGE,
+        "constraint usage",
+    );
+    assert_has_kind(
+        "package P { requirement r; }",
+        SyntaxKind::REQUIREMENT_USAGE,
+        "requirement usage",
+    );
+    // A defining `assert constraint c {...}` (via parse_requirement_constraint)
+    // must also get CONSTRAINT_USAGE, not just the bare `constraint` form.
+    assert_has_kind(
+        "package P { assert constraint c { true } }",
+        SyntaxKind::CONSTRAINT_USAGE,
+        "assert constraint usage",
+    );
+    // Usages without a dedicated kind must keep using the generic node.
+    assert_has_kind("part def P { port p; }", SyntaxKind::USAGE, "port usage");
+}
+
+#[test]
+fn test_constraint_and_requirement_references_stay_generic_usage() {
+    use syster::parser::SyntaxKind;
+    // A bare reference (no 'constraint'/'requirement' keyword) is not a
+    // defining usage, so it should not claim CONSTRAINT_USAGE/REQUIREMENT_USAGE.
+    let parsed = parse_sysml("package P { assert c; }");
+    assert!(parsed.ok(), "unexpected errors: {:?}", parsed.errors);
+    assert!(
+        !parsed
+            .syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::CONSTRAINT_USAGE),
+        "bare constraint reference should not be CONSTRAINT_USAGE"
+    );
+
+    let parsed = parse_sysml("part def P { satisfy r1; }");
+    assert!(parsed.ok(), "unexpected errors: {:?}", parsed.errors);
+    assert!(
+        !parsed
+            .syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::REQUIREMENT_USAGE),
+        "bare satisfy shorthand should not be REQUIREMENT_USAGE"
+    );
+}
+
+/// Regression: `UserDefinedKeyword = "#" MCQualifiedName` used to only consume
+/// the first segment, so `#Foo::Bar` left `::Bar` dangling. See docs/grammar-gaps.adoc.
+#[test]
+fn test_prefix_metadata_qualified_name_sysml() {
+    let parsed = parse_sysml("#Foo::Bar part def X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+
+    // Single-segment form must still work unchanged.
+    let parsed = parse_sysml("#Foo part def X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}
+
+#[test]
+fn test_prefix_metadata_qualified_name_kerml() {
+    let parsed = parse_kerml("#Foo::Bar class X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("#Foo class X;");
+    assert!(parsed.errors.is_empty(), "unexpected errors: {:?}", parsed.errors);
+}

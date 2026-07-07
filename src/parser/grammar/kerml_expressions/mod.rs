@@ -62,6 +62,16 @@ pub trait ExpressionParser {
     fn start_node(&mut self, kind: SyntaxKind);
     fn finish_node(&mut self);
 
+    /// Record a position to retroactively wrap in a node once its kind is
+    /// known (e.g. after parsing prefixes to determine whether a definition
+    /// is an `ActionDef`, `CalcDef`, etc.). Pairs with `start_node_at`.
+    fn checkpoint(&self) -> rowan::Checkpoint;
+
+    /// Start a node at a previously recorded `checkpoint`, wrapping
+    /// everything parsed since that checkpoint. Must be paired with a
+    /// regular `finish_node` call once the wrapped content is complete.
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind);
+
     // Shared parsing utilities
     fn parse_qualified_name(&mut self);
 
@@ -127,6 +137,8 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
         } else if p.at(SyntaxKind::THEN_KW) {
             parse_keyword_conditional(p);
         }
+    } else if p.at(SyntaxKind::EXISTS_KW) {
+        parse_exists_expression(p);
     } else {
         // Standard ternary: cond ? then : else
         parse_null_coalescing_expression(p);
@@ -145,6 +157,47 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
     }
 
     p.finish_node();
+}
+
+/// ExistsExpression = 'exists' Name (',' Name)* ':' Expression
+///
+/// MontiCore `SysMLExpressions.mc4` extension of `OCLExpressions` -- not part
+/// of the official OMG KEBNF grammar. "exists" is a contextual keyword, not
+/// reserved: it's used as a plain function name in the standard library
+/// (`ControlFunctions::exists`, `collection->exists {...}`), so it stays in
+/// `at_name_token()`'s allowlist and this form is only recognized when
+/// `exists` starts a new expression.
+///
+/// The bound names are untyped (no `Name : Type` form): MontiCore's own
+/// grammar declares this as `key("exists") (InDeclaration || ",")+ ":" Expression`,
+/// but `InDeclaration`'s exact structure isn't available (it's inherited from
+/// a third-party OCL grammar this project doesn't vendor), and a per-name
+/// `: Type` clause would be genuinely ambiguous with the single terminal `:`
+/// before the predicate (e.g. `exists a : a == a` -- is the second `a` a type
+/// or the start of the predicate?). This matches the single-colon form the
+/// punch list itself shows (`exists ... :`).
+fn parse_exists_expression<P: ExpressionParser>(p: &mut P) {
+    p.bump(); // exists
+    p.skip_trivia();
+
+    if p.at_name_token() {
+        p.bump();
+        p.skip_trivia();
+    }
+    while p.at(SyntaxKind::COMMA) {
+        p.bump();
+        p.skip_trivia();
+        if p.at_name_token() {
+            p.bump();
+            p.skip_trivia();
+        }
+    }
+
+    if p.at(SyntaxKind::COLON) {
+        p.bump();
+        p.skip_trivia();
+        parse_expression(p);
+    }
 }
 
 // tag::parse_null_coalescing_expression[]
@@ -208,13 +261,36 @@ pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
 // end::parse_xor_expression[]
 
 // tag::parse_and_expression[]
-/// AndExpression = EqualityExpression (('&' | 'and') EqualityExpression)*
+/// AndExpression = UnionExpression (('&' | 'and') UnionExpression)*
 /// Grammar: see docs/grammar-mapping.adoc#parse_and_expression
 pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
-    parse_equality_expression(p);
+    parse_union_expression(p);
     p.skip_trivia();
 
     while p.at(SyntaxKind::AMP) || p.at(SyntaxKind::AND_KW) {
+        p.bump();
+        p.skip_trivia();
+        parse_union_expression(p);
+        p.skip_trivia();
+    }
+}
+// end::parse_and_expression[]
+
+/// UnionExpression = EqualityExpression ('union' EqualityExpression)*
+///
+/// MontiCore `SysMLExpressions.mc4` extension of `de.monticore.ocl.SetExpressions`
+/// -- not part of the official OMG KEBNF grammar. "union" is a contextual
+/// keyword, not reserved: it's used as a plain function/feature name
+/// throughout the standard library (`SequenceFunctions::union`, the
+/// `union(a, b)` invocation form used everywhere instead of this infix
+/// operator, `feature union: Occurrence[0..1]`), so it stays in
+/// `at_name_token()`'s allowlist and this operator is only recognized
+/// between two already-parsed operands.
+pub fn parse_union_expression<P: ExpressionParser>(p: &mut P) {
+    parse_equality_expression(p);
+    p.skip_trivia();
+
+    while p.at(SyntaxKind::UNION_KW) {
         p.bump();
         p.skip_trivia();
         parse_equality_expression(p);
@@ -247,11 +323,16 @@ pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
 // tag::parse_classification_expression[]
 /// ClassificationExpression = RelationalExpression (('hastype' | 'istype' | 'as' | 'meta' | '@' | '@@') TypeReference)?
 /// KerML/SysML define their own classification operators
-/// Also handles prefix forms: 'hastype T' and 'istype T' (implicit self operand)
+/// Also handles prefix forms: 'hastype T', 'istype T', and '@ T' (implicit self operand,
+/// per KerMLHasTypeSelfExpression = ("hastype" | "@") MCType). Without this, a leading '@'
+/// falls through to the base-expression level's metadata-access parsing instead, which
+/// happens to consume the same tokens but doesn't short-circuit the way a bare MCType should
+/// (unlike the keyword form, it would otherwise allow further postfix/binary continuation
+/// onto the type reference).
 /// Grammar: see docs/grammar-mapping.adoc#parse_classification_expression
 pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
-    // Handle prefix hastype/istype with implicit self operand
-    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW]) {
+    // Handle prefix hastype/istype/@ with implicit self operand
+    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW, SyntaxKind::AT]) {
         p.bump();
         p.skip_trivia();
         p.parse_qualified_name();
