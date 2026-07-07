@@ -1,3 +1,19 @@
+= SysMLNullLiteral` / `SysMLEmptyExpression` (`()`)
+
+Parse without error but have no distinct AST node
+
+Indistinguishable from a degenerate parenthesized expression.
+
+Fixed:
+The CST-level flat token stream was left as-is
+(no expression sub-kinds are constructed anywhere in the grammar yet -- a much larger, out-of-scope change), but `extract_value_expression()` in both
+`src/parser/ast/expressions.rs` and `src/syntax/normalized.rs` special-cases
+the exact two-token `(` `)` sequence and returns `ValueExpression::Null`,
+matching the spec's `NullExpression = 'null' | '(' ')'`. `(1)` and other
+non-empty parenthesized/sequence expressions are unaffected and remain
+`ValueExpression::Expression(...)`.
+
+Regression tests added in `src/parser/ast/tests.rs`.
 = SysML v2 Grammar Coverage Punch List
 = Control nodes `fork` / `join` / `merge` / `decide`
 
