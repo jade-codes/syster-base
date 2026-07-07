@@ -33,10 +33,51 @@ Checkboxes are unchecked; check them off as items are fixed.
 
 == Real bugs (should parse, doesn't -- or silently mis-parses)
 
+* [x] `state s parallel { ... }` -- confirmed empirically: `parallel` is
+  swallowed as the name of a *second, unrelated* usage instead of a modifier
+  on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
+  path never reaches it. +
+  _Fixed: the root cause was that `parallel` was never lexed as `PARALLEL_KW`
+  at all (`lexer.rs` had no `#[token("parallel")]`) -- it always came through
+  as a plain `IDENT`, so `usage.rs` had nothing to dispatch on. Added the
+  missing lexer token, then made `PARALLEL_KW` a contextual keyword (added
+  to `at_name_token()`, matching the existing `to`/`state` precedent) and
+  removed it from the two "starts a new definition/usage" keyword lists in
+  `entry.rs` and `definitions.rs`, since a bare `parallel` must remain a
+  valid identifier (e.g. an enum variant named `parallel`) everywhere except
+  immediately before a `StateUsage` body. Regression tests added in
+  `tests/tests_parser_behavioral.rs`
+  (`test_parallel_state_marker`, `test_parallel_as_identifier`)._
 * [ ] `state s parallel { ... }` -- confirmed empirically: `parallel` is
   swallowed as the name of a *second, unrelated* usage instead of a modifier
   on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
   path never reaches it.
+* [x] `do action1()` inside a transition -- call-style effects break parsing
+  and corrupt the rest of the transition (the `then` target is dropped into
+  an `ERROR` node). Only bare-name / `send` / `accept` / `assign` / inline
+  `action` effects work (`states.rs:196-214`). +
+  _Fixed: the bare-name branch in `parse_transition`'s `do` effect now checks
+  for a trailing `(` after the qualified name and, if present, parses it as
+  an `ARGUMENT_LIST` (reusing `parse_argument_list` from
+  `kerml_expressions::atoms`, re-exported through `sysml::mod`). Regression
+  tests added in `tests/tests_parser_behavioral.rs`
+  (`test_transition_do_effect_call_parses`)._
+* [x] `entry Off.entry;` and other dotted qualified-name state-action bodies
+  -- `parse_state_subaction` uses `parse_identification` (single name)
+  instead of `parse_qualified_name`. Confirmed syntax error on `.`. Same
+  code path affects `DoAction` and `ExitAction`. +
+  _Fixed: `parse_state_subaction` now peeks one token past the name; if it's
+  `.` or `::`, it parses a full qualified name (feature chain) instead of a
+  single identifier, then goes straight to body-or-semicolon per the
+  `MCQualifiedName ("{" ... "}" | ";")` grammar rule. The plain single-name
+  forms (both the bare reference and the `do myAction : ActionType { ... }`
+  inline-declaration extension) are left on the original `parse_identification`
+  path, unchanged, to avoid altering their AST shape. Regression tests added
+  in `tests/tests_parser_behavioral.rs`
+  (`test_state_subaction_qualified_name_parses`)._
+* [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree.
 * [ ] `do action1()` inside a transition -- call-style effects break parsing
   and corrupt the rest of the transition (the `then` target is dropped into
   an `ERROR` node). Only bare-name / `send` / `accept` / `assign` / inline
@@ -61,6 +102,43 @@ Checkboxes are unchecked; check them off as items are fixed.
   `frame Pkg::Concern1;` (and deeper chains like `Pkg::Sub::Concern1`) parse
   correctly. Regression tests added in `tests/tests_parser_requirements.rs`
   (`test_frame_concern_reference_and_usage`)._
+* [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree. +
+  _Fixed: `entry.rs`'s `ASSERT_KW`/`ASSUME_KW`/`REQUIRE_KW` dispatch now also
+  checks for `verify`/`requirement` (not just `satisfy`/`not`), and
+  `parse_requirement_verification` now consumes any of
+  `assert`/`assume`/`require` as its leading modifier instead of only
+  `assert`. As a side effect this also fixes the analogous
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. The dispatch
+  looks past an optional `not` to the following keyword to decide between
+  the two parsers, rather than treating `not` itself as an unconditional
+  verification trigger -- see the `assert not constraint c1 {...}` fix
+  below, which this dispatch change was updated alongside. Regression tests
+  added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
+* [x] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`). +
+  _Fixed: added `consume_if(p, SyntaxKind::NOT_KW)` right after the
+  `assert`/`assume`/`require` bump in `parse_requirement_constraint`. This
+  also required updating `entry.rs`'s dispatch (see the item above) to look
+  past `not` to the keyword that actually follows it (`satisfy`/`verify`/
+  `requirement` -> verification, anything else including `constraint` or a
+  bare name -> constraint) instead of routing every `not`-prefixed case to
+  the verification parser unconditionally, which is what let this bug hide
+  behind a working-by-accident `assert not massLimitation {...}` fixture.
+  That fixture now parses via the (correct) constraint path instead of the
+  verification path. Regression tests added in
+  `tests/tests_parser_requirements.rs`
+  (`test_constraint_usage_not_modifier`)._
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. Regression
+  tests added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
+* [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break.
 * [ ] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
   `::Bar` remainder dangles unconsumed.
 * [ ] `expose Pkg::* [@Filter]` -- the filter-bracket clause has no parser
