@@ -183,19 +183,23 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
     p.finish_node(); // USAGE
 }
 
-/// RequirementVerification = ('assert'? 'not'? 'satisfy' | 'verify') 'requirement'? Identification? ('by' QualifiedName)? ';'
+/// RequirementVerification = ('assert'|'assume'|'require')? 'not'? ('satisfy' | 'verify') 'requirement'? Identification? ('by' QualifiedName)? ';'
+/// Also covers the RequirementUsage long form, where 'verify'? 'not'? 'satisfy'? are all
+/// optional and 'requirement' is the mandatory usage keyword, e.g. "assume requirement r1 {...}".
 /// Per pest: requirement_verification_member = { satisfy_requirement_usage | verify_requirement_usage }
 /// Per pest: satisfy_requirement_usage = { "assert"? ~ "not"? ~ "satisfy" ~ "requirement"? ~ usage_declaration? ~ value_part? ~ (";"|requirement_body) }
 /// Per pest: verify_requirement_usage = { "verify" ~ "requirement"? ~ usage_declaration? ~ ("by" ~ qualified_name)? ~ (";"|requirement_body) }
-/// Pattern: [assert] [not] satisfy|verify [requirement] <name|typing>? [by <verifier>]? <body|semicolon>
+/// Pattern: [assert|assume|require] [not] [verify] [satisfy] [requirement] <name|typing>? [by <verifier>]? <body|semicolon>
 pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
     // Wrap in USAGE node so it gets extracted by NamespaceMember::cast
     p.start_node(SyntaxKind::USAGE);
 
     p.start_node(SyntaxKind::REQUIREMENT_VERIFICATION);
 
-    // Optional 'assert' modifier
-    consume_if(p, SyntaxKind::ASSERT_KW);
+    // Optional 'assert'/'assume'/'require' modifier
+    if p.at_any(&[SyntaxKind::ASSERT_KW, SyntaxKind::ASSUME_KW, SyntaxKind::REQUIRE_KW]) {
+        bump_keyword(p);
+    }
 
     // Optional 'not' modifier
     consume_if(p, SyntaxKind::NOT_KW);
