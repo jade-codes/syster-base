@@ -5,7 +5,10 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     // Per pest: usage_element = { keyword ~ usage_declaration ~ value_part? ~ (body | ";") }
     // Per pest: owned_crossing_feature = { "end" ~ (identifier ~ multiplicity?)? ~ keyword ~ usage_declaration }
     // Pattern: [prefixes] [#metadata] [event] <keyword> [<name>] [<mult>] [<typing>] [<specializations>] [<default>] <body>
-    p.start_node(SyntaxKind::USAGE);
+    // Checkpoint instead of an upfront start_node: the specific node kind (e.g.
+    // ACTION_USAGE vs generic USAGE) isn't known until the usage keyword itself
+    // is reached, past a variable-length run of prefixes/metadata.
+    let checkpoint = p.checkpoint();
 
     // Prefixes - returns true if END_KW was seen
     let saw_end = parse_usage_prefix(p);
@@ -37,6 +40,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
         // Now we expect a usage keyword
         if p.at_any(SYSML_USAGE_KEYWORDS) {
+            p.start_node_at(checkpoint, SyntaxKind::USAGE);
             parse_usage_keyword(p);
             p.skip_trivia();
 
@@ -90,6 +94,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     let is_action = p.at(SyntaxKind::ACTION_KW);
     let is_calc = p.at(SyntaxKind::CALC_KW);
     let is_state = p.at(SyntaxKind::STATE_KW);
+    let is_requirement = p.at(SyntaxKind::REQUIREMENT_KW);
     let is_analysis = p.at(SyntaxKind::ANALYSIS_KW);
     let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
@@ -97,6 +102,22 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     let is_usecase = p.at(SyntaxKind::USE_KW); // use case usage
     let is_connection_kw = p.at(SyntaxKind::CONNECTION_KW);
     let is_interface_kw = p.at(SyntaxKind::INTERFACE_KW);
+
+    // Now that the usage keyword is known, retroactively wrap everything parsed
+    // since `checkpoint` (prefixes, prefix metadata, etc.) in the specific node
+    // kind instead of the generic USAGE.
+    let node_kind = if is_constraint {
+        SyntaxKind::CONSTRAINT_USAGE
+    } else if is_calc {
+        SyntaxKind::CALC_USAGE
+    } else if is_action {
+        SyntaxKind::ACTION_USAGE
+    } else if is_requirement {
+        SyntaxKind::REQUIREMENT_USAGE
+    } else {
+        SyntaxKind::USAGE
+    };
+    p.start_node_at(checkpoint, node_kind);
 
     // Usage keyword
     parse_usage_keyword(p);

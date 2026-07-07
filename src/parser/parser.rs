@@ -261,6 +261,14 @@ impl<'a> Parser<'a> {
     fn finish_node(&mut self) {
         self.builder.finish_node();
     }
+
+    fn checkpoint(&self) -> rowan::Checkpoint {
+        self.builder.checkpoint()
+    }
+
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind) {
+        self.builder.start_node_at(checkpoint, kind.into());
+    }
 }
 
 // =============================================================================
@@ -357,6 +365,14 @@ impl<'a> ExpressionParser for Parser<'a> {
 
     fn finish_node(&mut self) {
         Parser::finish_node(self)
+    }
+
+    fn checkpoint(&self) -> rowan::Checkpoint {
+        Parser::checkpoint(self)
+    }
+
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind) {
+        Parser::start_node_at(self, checkpoint, kind)
     }
 
     fn parse_qualified_name(&mut self) {

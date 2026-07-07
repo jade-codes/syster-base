@@ -54,6 +54,16 @@ pub trait ExpressionParser {
     fn start_node(&mut self, kind: SyntaxKind);
     fn finish_node(&mut self);
 
+    /// Record a position to retroactively wrap in a node once its kind is
+    /// known (e.g. after parsing prefixes to determine whether a definition
+    /// is an `ActionDef`, `CalcDef`, etc.). Pairs with `start_node_at`.
+    fn checkpoint(&self) -> rowan::Checkpoint;
+
+    /// Start a node at a previously recorded `checkpoint`, wrapping
+    /// everything parsed since that checkpoint. Must be paired with a
+    /// regular `finish_node` call once the wrapped content is complete.
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind);
+
     // Shared parsing utilities
     fn parse_qualified_name(&mut self);
 

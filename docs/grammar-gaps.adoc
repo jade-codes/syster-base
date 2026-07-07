@@ -1,3 +1,66 @@
+= Dead `SyntaxKind` variants declared but never constructed
+
+`ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
+`CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
+`REQUIREMENT_USAGE`
+
+Everything routes through generic `DEFINITION` / `USAGE` nodes with boolean flags instead.
+Not a parse bug, but
+any downstream HIR/AST code matching on these specific kinds will never see them.
+
+Implemented:
+
+Added `checkpoint()`/`start_node_at()` to the `ExpressionParser` trait
+(thin wrappers around rowan's `GreenNodeBuilder` checkpoint API),
+implemented on `Parser` in `parser.rs`.
+This lets a node's kind be decided *after* parsing its prefix tokens
+(abstract/variation/individual, `#metadata`, etc.)
+instead of requiring it upfront,
+without changing what those prefixes' tokens are children of.
+
+`parse_definition` and `parse_usage`
+(`sysml/definitions.rs`, `sysml/usage.rs`)
+now take a checkpoint instead of an upfront
+`start_node(DEFINITION/USAGE)`,
+and retroactively wrap in
+`ACTION_DEFINITION`/`CALC_DEFINITION`/`CONSTRAINT_DEFINITION`/ `REQUIREMENT_DEFINITION`
+or the matching `_USAGE` kind once the element keyword is known.
+Kinds without a dedicated variant (`part`, `port`, `state`, etc.)
+keep using the generic `DEFINITION`/`USAGE`.
+
+`parse_requirement_constraint` and `parse_requirement_verification`
+(`sysml/requirements.rs` -- the `assert`/`assume`/`require`-prefixed forms, a separate code path from `parse_usage`)
+got the same treatment:
+`CONSTRAINT_USAGE`/`REQUIREMENT_USAGE`
+when actually defining a new constraint/requirement
+(the `constraint`/`requirement` keyword is present),
+generic `USAGE` for the bare reference/shorthand forms
+(e.g. `assert c1;`, `satisfy r1;`),
+which aren't defining anything.
+
+Widened `Definition`/`Usage`/`NamespaceMember`'s `AstNode::can_cast`
+(in `parser/ast/elements.rs` and `parser/ast/namespace.rs`)
+to accept the new kinds alongside the generic ones.
+`Definition` converted from the single-kind `ast_node!` macro to a manual multi-kind impl,
+matching the pattern `Usage` already used for `SUBJECT_USAGE`/`ACTOR_USAGE`/etc.
+
+Updated the nested-scope-boundary ancestor checks in
+`hir/symbols/extract_definition.rs`, `extract_usage.rs`,
+and the two duplicate copies in `syntax/normalized.rs`
+to also treat the new kinds as scope boundaries
+(they previously only checked for generic `USAGE`/`DEFINITION`,
+which would have let expression extraction
+incorrectly reach into a nested action/calc/constraint/requirement body).
+
+The formatter's independent, simplified tree-builder
+(`syntax/formatter/mod.rs`, `parse_definition_or_usage`)
+got a matching `definition_or_usage_kind` helper
+so its output stays consistent with the main parser.
+
+
+Regression tests added in `tests/tests_parser_definitions.rs`
+  (`test_specific_definition_kinds`, `test_specific_usage_kinds`,
+  `test_constraint_and_requirement_references_stay_generic_usage`).
 =  `@ Type` (`KerMLHasTypeSelfExpression`, symbolic self-form)
 
 The keyword self-form (`hastype Type`) works,

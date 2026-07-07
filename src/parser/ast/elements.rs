@@ -119,7 +119,33 @@ impl PrefixMetadata {
 // Definition
 // ============================================================================
 
-ast_node!(Definition, DEFINITION);
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Definition(pub(crate) SyntaxNode);
+
+impl AstNode for Definition {
+    fn can_cast(kind: SyntaxKind) -> bool {
+        matches!(
+            kind,
+            SyntaxKind::DEFINITION
+                | SyntaxKind::ACTION_DEFINITION
+                | SyntaxKind::CALC_DEFINITION
+                | SyntaxKind::CONSTRAINT_DEFINITION
+                | SyntaxKind::REQUIREMENT_DEFINITION
+        )
+    }
+
+    fn cast(node: SyntaxNode) -> Option<Self> {
+        if Self::can_cast(node.kind()) {
+            Some(Self(node))
+        } else {
+            None
+        }
+    }
+
+    fn syntax(&self) -> &SyntaxNode {
+        &self.0
+    }
+}
 
 impl Definition {
     has_token_method!(is_abstract, ABSTRACT_KW, "abstract part def P {}");
@@ -233,6 +259,10 @@ impl AstNode for Usage {
                 | SyntaxKind::ACTOR_USAGE
                 | SyntaxKind::STAKEHOLDER_USAGE
                 | SyntaxKind::OBJECTIVE_USAGE
+                | SyntaxKind::ACTION_USAGE
+                | SyntaxKind::CALC_USAGE
+                | SyntaxKind::CONSTRAINT_USAGE
+                | SyntaxKind::REQUIREMENT_USAGE
         )
     }
 
