@@ -94,6 +94,16 @@ Checkboxes are unchecked; check them off as items are fixed.
 * [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
   `parse_optional_identification` (single name) instead of a qualified-name
   parser; multi-segment names likely break.
+* [ ] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
+  `::Bar` remainder dangles unconsumed.
+* [x] `expose Pkg::* [@Filter]` -- the filter-bracket clause has no parser
+  support, unlike the equivalent `import` path. +
+  _Fixed: `parse_filter_package` (`namespace.rs`) was `import`-private
+  (module-private `fn`); bumped to `pub(super)` so `requirements.rs` can
+  reach it via the existing `sysml::mod` glob re-export, and
+  `parse_expose_statement` now calls it when an `L_BRACKET` follows the
+  qualified name / wildcard, mirroring `parse_import`. Regression tests
+  added in `tests/tests_parser_views.rs` (`test_expose_with_filter`)._
 * [x] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
   `::Bar` remainder dangles unconsumed. +
   _Fixed: both `parse_prefix_metadata` implementations (SysML's

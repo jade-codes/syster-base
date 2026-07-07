@@ -425,7 +425,7 @@ pub fn parse_include_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-/// Expose statement: expose QualifiedName ('::' ('*' | '**'))? ';'
+/// Expose statement: expose QualifiedName ('::' ('*' | '**'))? ('[' filter ']')? ';'
 pub fn parse_expose_statement<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::IMPORT);
 
@@ -446,6 +446,12 @@ pub fn parse_expose_statement<P: SysMLParser>(p: &mut P) {
             p.bump();
             p.skip_trivia();
         }
+    }
+
+    // Optional filter package: [@filter], matching the equivalent `import` path
+    if p.at(SyntaxKind::L_BRACKET) {
+        parse_filter_package(p);
+        p.skip_trivia();
     }
 
     p.expect(SyntaxKind::SEMICOLON);
