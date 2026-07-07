@@ -6,14 +6,15 @@
 //! - Requirement body elements (subject, actor, stakeholder, objective, constraints)
 //!
 //! # Grammar Sources
-//! - **Primary**: `src/parser/sysml.pest` - SysML v2 specific grammar rules
-//! - **Shared**: `src/parser/kerml_expressions.pest` - Expression grammar shared between KerML and SysML
+//! - **Primary**: `docs/grammar/SysML-textual-bnf.kebnf` - the official OMG SysML v2 KEBNF grammar
+//! - **Shared**: `docs/grammar/KerML-textual-bnf.kebnf` - the official OMG KerML KEBNF grammar
+//! - **Mapping**: `docs/grammar-mapping.adoc` maps individual parse functions to their KEBNF rules
 //! - **Interop**: KerML constructs (class, struct, behavior) are parsed for standard library compatibility
 //!
 //! # Expression Parsing
-//! Expression parsing uses `parse_expression()` from kerml_expressions module.
-//! This is correct: expressions are defined in kerml_expressions.pest and shared by both grammars.
-//! SysML extends KerML expressions but uses the same precedence and base operators.
+//! Expression parsing uses `parse_expression()` from the `kerml_expressions` module.
+//! This is correct: expressions are defined once in the KerML grammar and shared by both
+//! grammars. SysML extends KerML expressions but uses the same precedence and base operators.
 
 // Submodules
 mod actions;
@@ -31,7 +32,7 @@ mod usage;
 // Shared imports — pub(super) so submodules get them via `use super::*;`
 pub(super) use super::BaseParser;
 pub(super) use super::kerml::is_name_kind;
-pub(super) use super::kerml_expressions::parse_expression;
+pub(super) use super::kerml_expressions::{parse_argument_list, parse_expression};
 pub(super) use super::{RELATIONSHIP_OPERATORS, STANDALONE_RELATIONSHIP_KEYWORDS};
 pub(super) use crate::parser::syntax_kind::SyntaxKind;
 

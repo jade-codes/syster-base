@@ -4,8 +4,9 @@ use super::*;
 // KerML File Entry Point
 // =============================================================================
 
+// tag::parse_kerml_file[]
 /// Parse a KerML source file
-/// Per Pest: file = { SOI ~ namespace_element* ~ EOI }
+/// Grammar: see docs/grammar-mapping.adoc#parse_kerml_file
 pub fn parse_kerml_file<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SOURCE_FILE);
 
@@ -34,21 +35,15 @@ pub fn parse_kerml_file<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_kerml_file[]
 
 // =============================================================================
 // Namespace Element Dispatch
 // =============================================================================
 
+// tag::parse_namespace_element[]
 /// Parse a KerML namespace element
-/// Per Pest grammar:
-/// namespace_element = {
-///     package | library_package | import | alias_member
-///     | annotating_member | namespace_feature_member
-///     | non_feature_member | relationship_member
-/// }
-/// Per pest: namespace_body_element = { visibility_kind? ~ prefix_metadata? ~ (non_feature_member | namespace_feature_member | type_feature_member | relationship_member | annotating_member | alias_member | import) }
-/// Per pest: non_feature_element = { namespace | package | library_package | multiplicity | type_def | classifier | class | structure | metaclass | data_type | association | association_structure | interaction | behavior | function | predicate }
-/// Per pest: feature_element = { end_feature | feature | step | expression | boolean_expression | invariant | connector | binding_connector | succession | item_flow | succession_item_flow }
+/// Grammar: see docs/grammar-mapping.adoc#parse_namespace_element
 pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
     p.skip_trivia();
 
@@ -185,22 +180,26 @@ pub fn parse_namespace_element<P: KerMLParser>(p: &mut P) {
         }
     }
 }
+// end::parse_namespace_element[]
 
 // =============================================================================
 // Prefix Metadata
 // =============================================================================
 
+// tag::parse_prefix_metadata[]
 /// Parse prefix metadata (#name)
-/// Per pest: prefix_metadata = { user_defined_keyword+ }
-/// Per pest: user_defined_keyword = { "#" ~ (identifier ~ ("::" ~ identifier)*) }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_prefix_metadata
 pub fn parse_prefix_metadata<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PREFIX_METADATA);
     expect_and_skip(p, SyntaxKind::HASH);
     if p.at_name_token() {
-        p.bump();
+        // user_defined_keyword = "#" ~ (identifier ~ ("::" ~ identifier)*)
+        // -- consume the full chain, e.g. `#Foo::Bar`, not just the first segment.
+        p.parse_qualified_name();
     }
     p.finish_node();
 }
+// end::parse_prefix_metadata[]
 
 // =============================================================================
 // Prefix Dispatch Handlers

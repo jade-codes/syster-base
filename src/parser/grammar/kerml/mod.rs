@@ -7,7 +7,8 @@
 //! - Annotations (comment, doc, locale)
 //! - Core parsing utilities (qualified names, identification, typing, etc.)
 //!
-//! Based on kerml.pest grammar.
+//! Grammar source: `docs/grammar/KerML-textual-bnf.kebnf`, the official OMG KerML
+//! KEBNF grammar. See `docs/grammar-mapping.adoc` for the per-function mapping.
 
 // Submodules
 mod annotations;
@@ -66,8 +67,8 @@ pub const KERML_USAGE_KEYWORDS: &[SyntaxKind] = &[
     SyntaxKind::EXPR_KW,
 ];
 
-/// Feature prefix modifiers per Pest grammar:
-/// feature_prefix_modifiers = { (abstract | composite | portion | member | const | derived | end | var)* }
+/// Feature prefix modifiers:
+/// feature_prefix_modifiers = (abstract | composite | portion | member | const | derived | end | var)*
 pub const FEATURE_PREFIX_MODIFIERS: &[SyntaxKind] = &[
     SyntaxKind::VAR_KW,
     SyntaxKind::COMPOSITE_KW,
@@ -248,8 +249,9 @@ pub(super) fn parse_optional_qualified_name<P: KerMLParser>(p: &mut P) {
     }
 }
 
+// tag::parse_optional_visibility[]
 /// Parse optional visibility (public, private, protected)
-/// Per pest: visibility_kind = { public | private | protected }
+/// Grammar: see docs/grammar-mapping.adoc#parse_optional_visibility
 #[inline]
 pub(super) fn parse_optional_visibility<P: KerMLParser>(p: &mut P) {
     if p.at_any(&[
@@ -260,6 +262,7 @@ pub(super) fn parse_optional_visibility<P: KerMLParser>(p: &mut P) {
         bump_and_skip(p);
     }
 }
+// end::parse_optional_visibility[]
 
 /// Parse optional multiplicity [expression]
 pub(super) fn parse_optional_multiplicity<P: KerMLParser>(p: &mut P) {
@@ -447,11 +450,9 @@ pub fn is_name_kind(kind: SyntaxKind) -> bool {
     )
 }
 
+// tag::parse_identification[]
 /// Identification = '<' ShortName '>' Name? | Name
-/// Per pest: identification = { (short_name ~ regular_name?) | regular_name }
-/// Per pest: short_name = { "<" ~ name ~ ">" }
-/// Per pest: regular_name = { name }
-/// Per pest: name_identifier allows keywords as identifiers (for short names like `<var>`)
+/// Grammar: see docs/grammar-mapping.adoc#parse_identification
 pub fn parse_identification<P: KerMLParser>(p: &mut P) {
     // Skip trivia BEFORE starting the NAME node so the node's range
     // doesn't include leading whitespace
@@ -459,7 +460,7 @@ pub fn parse_identification<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAME);
 
     // Short name: <shortname>
-    // Per pest grammar, short names can contain keywords as identifiers
+    // Short names can contain keywords as identifiers
     if p.at(SyntaxKind::LT) {
         p.start_node(SyntaxKind::SHORT_NAME);
         bump_and_skip(p); // <
@@ -481,6 +482,7 @@ pub fn parse_identification<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_identification[]
 
 /// QualifiedName = Name ('::' Name | '.' Name)*
 /// Also supports global qualification: $:: prefix
@@ -503,9 +505,10 @@ fn should_consume_dot<P: KerMLParser>(p: &P) -> bool {
     }
 }
 
-/// Per pest: qualified_name = { ("$" ~ "::")? ~ name ~ (("::" | ".") ~ name)* }
+// tag::parse_qualified_name[]
 /// Supports global qualification ($::), namespace paths (::), and feature chains (.)
 /// Wildcards (::*, ::**) are excluded and handled separately by import rules
+/// Grammar: see docs/grammar-mapping.adoc#parse_qualified_name
 pub fn parse_qualified_name<P: KerMLParser>(p: &mut P, _tokens: &[(SyntaxKind, usize)]) {
     p.start_node(SyntaxKind::QUALIFIED_NAME);
 
@@ -541,6 +544,7 @@ pub fn parse_qualified_name<P: KerMLParser>(p: &mut P, _tokens: &[(SyntaxKind, u
 
     p.finish_node();
 }
+// end::parse_qualified_name[]
 
 /// Body = ';' | '{' BodyMember* '}'
 /// Heuristic: check if current token looks like start of expression
@@ -583,8 +587,8 @@ fn recover_body_element<P: KerMLParser>(p: &mut P) {
     }
 }
 
-/// Per pest: namespace_body = { ";" | ("{" ~ namespace_body_elements ~ "}") }
-/// Per pest: type_body = { namespace_body | ";" }
+// tag::parse_body[]
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_body
 pub fn parse_body<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAMESPACE_BODY);
 
@@ -626,6 +630,7 @@ pub fn parse_body<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_body[]
 
 // =============================================================================
 // Feature Relationships — used by both usages and connectors

@@ -1,6 +1,6 @@
 //! Rule-based parser for testing individual grammar rules
 //!
-//! This module provides a Pest-like API for parsing individual grammar constructs
+//! This module provides an API for parsing individual grammar constructs by name,
 //! without requiring full file context. Useful for testing specific rules in isolation.
 //!
 //! # Example
@@ -18,8 +18,8 @@ use super::grammar::{kerml, sysml};
 
 /// Grammar rules that can be parsed individually
 ///
-/// These map to the Pest grammar rules from the original parser.
-/// Each rule corresponds to a specific parsing function in the grammar modules.
+/// Each rule corresponds to a specific parsing function in the grammar modules
+/// (see docs/grammar-mapping.adoc for the KEBNF-to-parser mapping).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Rule {
     // === KerML Namespace Elements ===
@@ -277,8 +277,8 @@ impl RuleParseResult {
 
 /// Parse a specific grammar rule
 ///
-/// This provides a Pest-like API where you can parse just a specific construct
-/// without wrapping it in a full file context.
+/// This lets you parse just a specific construct without wrapping it in a
+/// full file context.
 ///
 /// # Arguments
 ///
