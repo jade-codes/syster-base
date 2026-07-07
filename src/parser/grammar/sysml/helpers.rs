@@ -39,6 +39,14 @@ pub(super) fn consume_if<P: SysMLParser>(p: &mut P, kind: SyntaxKind) -> bool {
     }
 }
 
+/// Parse zero or more `ordered`/`nonunique` cardinality modifiers
+/// (SysMLCardinality = Cardinality (["ordered"] | ["nonunique"])* | ...)
+pub(super) fn parse_ordering_modifiers<P: SysMLParser>(p: &mut P) {
+    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
+        bump_keyword(p);
+    }
+}
+
 /// Helper to skip trivia in lookahead
 pub(super) fn skip_trivia_lookahead<P: SysMLParser>(p: &P, mut lookahead: usize) -> usize {
     while matches!(
@@ -85,6 +93,16 @@ pub(super) fn peek_past_name_for<P: SysMLParser>(p: &P, target: SyntaxKind) -> b
 
     lookahead = skip_trivia_lookahead(p, lookahead);
     p.peek_kind(lookahead) == target
+}
+
+/// Look past a run of usage-prefix keywords (ref, individual, snapshot,
+/// timeslice, etc.) and return the first token that isn't one of them.
+pub(super) fn peek_past_usage_prefix_keywords<P: SysMLParser>(p: &P) -> SyntaxKind {
+    let mut i = 0;
+    while USAGE_PREFIX_KEYWORDS.contains(&p.peek_kind(i)) {
+        i += 1;
+    }
+    p.peek_kind(i)
 }
 
 /// Helper to peek past optional identifier and get next significant token
