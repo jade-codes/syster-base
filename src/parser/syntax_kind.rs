@@ -295,6 +295,9 @@ pub enum SyntaxKind {
     AS_KW,
     META_KW,
 
+    // Quantifier (MontiCore extension, not in official OMG KEBNF)
+    EXISTS_KW,
+
     // =========================================================================
     // KEYWORDS - KerML (underlying language)
     // =========================================================================
@@ -749,6 +752,7 @@ impl SyntaxKind {
             Self::ISTYPE_KW => "'istype'",
             Self::AS_KW => "'as'",
             Self::META_KW => "'meta'",
+            Self::EXISTS_KW => "'exists'",
 
             // Keywords - KerML
             Self::TYPE_KW => "'type'",

@@ -137,6 +137,8 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
         } else if p.at(SyntaxKind::THEN_KW) {
             parse_keyword_conditional(p);
         }
+    } else if p.at(SyntaxKind::EXISTS_KW) {
+        parse_exists_expression(p);
     } else {
         // Standard ternary: cond ? then : else
         parse_null_coalescing_expression(p);
@@ -155,6 +157,47 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
     }
 
     p.finish_node();
+}
+
+/// ExistsExpression = 'exists' Name (',' Name)* ':' Expression
+///
+/// MontiCore `SysMLExpressions.mc4` extension of `OCLExpressions` -- not part
+/// of the official OMG KEBNF grammar. "exists" is a contextual keyword, not
+/// reserved: it's used as a plain function name in the standard library
+/// (`ControlFunctions::exists`, `collection->exists {...}`), so it stays in
+/// `at_name_token()`'s allowlist and this form is only recognized when
+/// `exists` starts a new expression.
+///
+/// The bound names are untyped (no `Name : Type` form): MontiCore's own
+/// grammar declares this as `key("exists") (InDeclaration || ",")+ ":" Expression`,
+/// but `InDeclaration`'s exact structure isn't available (it's inherited from
+/// a third-party OCL grammar this project doesn't vendor), and a per-name
+/// `: Type` clause would be genuinely ambiguous with the single terminal `:`
+/// before the predicate (e.g. `exists a : a == a` -- is the second `a` a type
+/// or the start of the predicate?). This matches the single-colon form the
+/// punch list itself shows (`exists ... :`).
+fn parse_exists_expression<P: ExpressionParser>(p: &mut P) {
+    p.bump(); // exists
+    p.skip_trivia();
+
+    if p.at_name_token() {
+        p.bump();
+        p.skip_trivia();
+    }
+    while p.at(SyntaxKind::COMMA) {
+        p.bump();
+        p.skip_trivia();
+        if p.at_name_token() {
+            p.bump();
+            p.skip_trivia();
+        }
+    }
+
+    if p.at(SyntaxKind::COLON) {
+        p.bump();
+        p.skip_trivia();
+        parse_expression(p);
+    }
 }
 
 // tag::parse_null_coalescing_expression[]

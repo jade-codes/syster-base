@@ -331,6 +331,8 @@ pub enum LogosToken {
     ExitKw,
     #[token("expose")]
     ExposeKw,
+    #[token("exists")]
+    ExistsKw,
     #[token("event")]
     EventKw,
     #[token("expr")]
@@ -674,6 +676,7 @@ impl From<LogosToken> for SyntaxKind {
             ExitKw => SyntaxKind::EXIT_KW,
             ExposeKw => SyntaxKind::EXPOSE_KW,
             EventKw => SyntaxKind::EVENT_KW,
+            ExistsKw => SyntaxKind::EXISTS_KW,
             ExprKw => SyntaxKind::EXPR_KW,
             FalseKw => SyntaxKind::FALSE_KW,
             FeatureKw => SyntaxKind::FEATURE_KW,

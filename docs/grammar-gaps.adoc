@@ -1,3 +1,36 @@
+= `exists ... :` (`ExistsExpression`)
+
+Expressions. No `EXISTS` token.
+
+Fixed:
+Added `EXISTS_KW` and `exists name (',' name)* ':' expr` parsing
+(`kerml_expressions/mod.rs::parse_exists_expression`),
+reachable from `parse_conditional_expression` the same way `if`-expressions are.
+
+Note:
+`ExistsExpression` is a MontiCore `SysMLExpressions.mc4` override of a
+third-party OCL grammar rule, not part of the official OMG KEBNF
+(verified absent from both textual-bnf files).
+Its own grammar comment says "exists is not a reserved keyword in SysML
+and used in the Systems Library"
+
+confirmed:
+The real KerML standard library defines
+`abstract function exists {...}` (`ControlFunctions.kerml`) and invokes it
+via `collection->exists {...}` throughout (`CollectionFunctions.kerml`,
+`SequenceFunctions.kerml`, `ShapeItems.sysml`).
+So `EXISTS_KW` was added to `at_name_token()`'s and `can_start_expression()`'s allowlists,
+and `handle_arrow_invocation()`'s method-name check was broadened from a bare
+`IDENT` check to `at_name_token()` so `->exists{...}` keeps working.
+Per-declaration typing (`exists a : Type : expr`) was deliberately left
+unsupported.
+It is genuinely ambiguous with the single terminal `:` before
+the predicate (e.g. `exists a : a == a`), `InDeclaration`'s exact grammar isn't available
+(inherited from a third-party grammar this project doesn't vendor),
+and the punch list's own `exists ... :`
+wording shows only one colon.
+
+Regression tests in `tests/tests_parser_expressions.rs`.
 = `timing` keyword (`SysMLCausality`)
 
 Parts No `TIMING_KW` anywhere.

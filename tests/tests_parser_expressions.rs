@@ -93,6 +93,33 @@ fn test_hastype_self_form(#[case] input: &str) {
 }
 
 // ============================================================================
+// Exists Expression (MontiCore extension, not in official OMG KEBNF)
+// "exists" must remain usable as a plain function name/reference too, since
+// the real KerML standard library defines and invokes it that way.
+// ============================================================================
+
+#[rstest]
+#[case("package T { attribute x = exists a : a == a; }")]
+#[case("package T { attribute x = exists a, b : a == b; }")]
+#[case("package T { attribute x = collection->exists {in x; x}; }")]
+#[case("package T { attribute x = seq2->forAll {in x; seq1->exists{in y; x == y}}; }")]
+fn test_exists_expressions(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_exists_as_plain_function_name() {
+    use syster::parser::parse_kerml;
+
+    let parsed = parse_kerml("function exists { in x; return : Boolean[1]; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+
+    let parsed = parse_kerml("package P { private import ControlFunctions::exists; }");
+    assert!(parsed.ok(), "errors: {:?}", parsed.errors);
+}
+
+// ============================================================================
 // Number Literals
 // ============================================================================
 
