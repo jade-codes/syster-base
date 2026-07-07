@@ -112,10 +112,10 @@ pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-/// RequirementConstraint = ('assert' | 'assume' | 'require') 'constraint'? Identification? ConstraintBody
+/// RequirementConstraint = ('assert' | 'assume' | 'require') 'not'? 'constraint'? Identification? ConstraintBody
 /// Per pest: requirement_constraint_member = { constraint_prefix? ~ metadata_prefix* ~ "constraint" ~ usage_declaration? ~ value_part? ~ constraint_body }
 /// Per pest: constraint_prefix = { ("assert"|"assume"|"require") }
-/// Pattern: assert|assume|require [#metadata] [constraint] <name>? <typing|specializations>? <body|semicolon>
+/// Pattern: assert|assume|require [not] [#metadata] [constraint] <name>? <typing|specializations>? <body|semicolon>
 pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
     // Wrap in USAGE node so it gets extracted by NamespaceMember::cast
     p.start_node(SyntaxKind::USAGE);
@@ -126,6 +126,9 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
     // assert/assume/require
     p.bump();
     p.skip_trivia();
+
+    // Optional 'not' modifier (e.g., assert not constraint c1 {...})
+    consume_if(p, SyntaxKind::NOT_KW);
 
     // Prefix metadata (e.g., assume #goal constraint)
     while p.at(SyntaxKind::HASH) {
