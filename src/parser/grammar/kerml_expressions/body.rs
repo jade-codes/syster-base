@@ -1,10 +1,11 @@
 use super::*;
 
+// tag::looks_like_typed_parameter[]
 /// ArrowBody = '{' (Parameter* Expression)? '}'
 /// Used for arrow invocation bodies like: ->collect { in x; x + 1 }
-/// Per Pest body_expression_body: only 'in' parameters are allowed (not out/inout)
-/// Per pest: Arrow operation bodies are grammar-specific implementations
+/// Only 'in' parameters are allowed (not out/inout)
 /// Check if current position looks like a typed parameter (name : Type;)
+/// Grammar: see docs/grammar-mapping.adoc#looks_like_typed_parameter
 fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
     let mut lookahead = 1;
     // Skip trivia
@@ -67,6 +68,7 @@ fn looks_like_typed_parameter<P: ExpressionParser>(p: &P) -> bool {
     }
     p.peek_kind(lookahead) == SyntaxKind::SEMICOLON
 }
+// end::looks_like_typed_parameter[]
 
 /// Handle visibility keyword in arrow body
 fn handle_visibility_prefix<P: ExpressionParser>(p: &mut P) {

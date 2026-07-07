@@ -1,8 +1,9 @@
 use super::*;
 
+// tag::handle_feature_chain[]
 /// PrimaryExpression = BaseExpression (FeatureChain | ArrowInvocation)*
-/// Per pest: primary_expression defined in each grammar - handles feature chains, arrow ops, indexing
 /// Handle .name feature chain
+/// Grammar: see docs/grammar-mapping.adoc#handle_feature_chain
 fn handle_feature_chain<P: ExpressionParser>(p: &mut P) {
     p.bump(); // .
     p.skip_trivia();
@@ -17,6 +18,7 @@ fn handle_feature_chain<P: ExpressionParser>(p: &mut P) {
         }
     }
 }
+// end::handle_feature_chain[]
 
 /// Handle .?{...} shorthand select
 fn handle_shorthand_select<P: ExpressionParser>(p: &mut P) {

@@ -53,7 +53,7 @@ pub fn parse_case_body<P: SysMLParser>(p: &mut P) {
                     | SyntaxKind::EQ_EQ
                     | SyntaxKind::BANG_EQ
             ) {
-                // Parse as expression (shared expression grammar from kerml_expressions.pest)
+                // Parse as expression (shared expression grammar module)
                 parse_expression(p);
             } else {
                 // Parse as package body element (feature member)
@@ -215,9 +215,9 @@ fn parse_metadata_body_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_sysml_calc_body[]
 /// Parse calc body for SysML (extends KerML calc body with behavior usages)
-/// Per pest: calculation_body_item includes behavior_usage_member (perform, send, etc.)
-/// and result_expression_member (final expression without semicolon)
+/// Grammar: see docs/grammar-mapping.adoc#parse_sysml_calc_body
 pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAMESPACE_BODY);
 
@@ -293,7 +293,6 @@ pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
                 parse_package_body_element(p);
             }
             // Result expression (identifier, new, literal, or any expression start)
-            // Per sysml.pest: calculation_body_item includes result_expression_member
             else if p.can_start_expression() {
                 parse_expression(p);
                 p.skip_trivia();
@@ -325,13 +324,15 @@ pub fn parse_sysml_calc_body<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_sysml_calc_body[]
 
 // =============================================================================
 // Generic Body
 // =============================================================================
 
+// tag::parse_body[]
 /// Parse a SysML body (semicolon or braced block with SysML members)
-/// Per pest: package_body = { semi_colon | ( "{" ~ package_body_items ~ "}" ) }
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_body
 pub fn parse_body<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::NAMESPACE_BODY);
 
@@ -379,3 +380,4 @@ pub fn parse_body<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_body[]

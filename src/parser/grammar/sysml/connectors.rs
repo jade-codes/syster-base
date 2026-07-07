@@ -42,10 +42,11 @@ pub fn parse_bind_usage<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_assign_action[]
 /// AssignAction = 'assign' target ':=' expr ';'
 /// e.g., assign x := value;
-/// Per pest: assignment_node = { "assign" ~ feature_reference ~ ":=" ~ owned_expression ~ (";"|action_body) }
 /// Pattern: assign <feature> := <expression> <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_assign_action
 pub fn parse_assign_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -71,15 +72,19 @@ pub fn parse_assign_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_assign_action[]
 
-/// ConnectUsage = 'connect' ...\n/// Per pest: binary_connection_usage = { \"connect\" ~ connector_part ~ (\";\"|connector_body) }\n/// Per pest: connector_part = { nary_connector_part | binary_connector_part }\n/// Per pest: binary_connector_part = { connector_end ~ \"to\" ~ connector_end }\n/// Per pest: nary_connector_part = { \"(\" ~ connector_end ~ (\",\" ~ connector_end)+ ~ \")\" }\n/// Pattern: connect (<end>, <end>) | connect <end> to <end> <body|semicolon>
+// tag::parse_connect_usage[]
+/// ConnectUsage = 'connect' ...
+/// Pattern: connect (<end>, <end>) | connect <end> to <end> <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_connect_usage
 pub fn parse_connect_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONNECT_USAGE);
 
     p.expect(SyntaxKind::CONNECT_KW);
     p.skip_trivia();
 
-    // Per pest grammar: connect has connector_part which is either:
+    // The connector part is either:
     // - binary: end to end
     // - nary: ( end, end, ... )
 
@@ -128,10 +133,11 @@ pub fn parse_connect_usage<P: SysMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_connect_usage[]
 
+// tag::parse_connector_end[]
 /// Parse a connector end
-/// Per pest: connector_end = multiplicity? connector_end_reference
-/// connector_end_reference = feature_chain | (identifier|quoted_name) ::> (feature_chain|reference) | reference
+/// Grammar: see docs/grammar-mapping.adoc#parse_connector_end
 pub fn parse_connector_end<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONNECTOR_END);
 
@@ -143,9 +149,14 @@ pub fn parse_connector_end<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_connector_end[]
 
 /// Parse connector end reference
-/// identifier ::> reference | identifier references reference | qualified_name
+/// identifier ::> reference | identifier references reference | qualified_name Specialization*
+/// Per grammar: Endpoint = MCQualifiedName SysMLCardinality? Specialization* -- besides the
+/// reference-subsetting form (`::>` / `references`) handled specially below (to preserve its
+/// AST shape for `ConnectorEnd::target()`), an endpoint can also carry a plain `:` typing or
+/// `:>` / `:>>` specialization/redefinition, e.g. `end : Type`, `end :> super`.
 fn parse_connector_end_reference<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONNECTOR_END_REFERENCE);
 
@@ -159,6 +170,10 @@ fn parse_connector_end_reference<P: SysMLParser>(p: &mut P) {
 
             // Parse target (qualified name or feature chain)
             parse_qualified_name_and_skip(p);
+        } else {
+            // General Specialization* on the endpoint (`:`, `:>`, `:>>`).
+            parse_specializations(p);
+            p.skip_trivia();
         }
     }
 
@@ -503,7 +518,7 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
         parse_specializations(p);
         p.skip_trivia();
 
-        // Default value assignment (per sysml.pest: value_part in flow declarations)
+        // Default value assignment
         if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::COLON_EQ) {
             p.bump();
             p.skip_trivia();

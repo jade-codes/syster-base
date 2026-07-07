@@ -147,9 +147,9 @@ pub fn parse_connector_usage<P: KerMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_connection_end[]
 /// Parse connector endpoint
-/// Per pest: connector_endpoint = { multiplicity_bounds? ~ (name ~ references_operator)? ~ feature_or_chain }
-/// references_operator = @{ "::>" | "references" }
+/// Grammar: see docs/grammar-mapping.adoc#parse_connection_end
 fn parse_connection_end<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONNECTION_END);
 
@@ -179,6 +179,7 @@ fn parse_connection_end<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_connection_end[]
 
 /// Parse binding/succession identification or specialization prefix
 /// Helper to parse common prefix for binding/succession (identification, typing, etc.)
@@ -222,9 +223,9 @@ fn parse_succession_modifiers<P: KerMLParser>(p: &mut P) {
     }
 }
 
+// tag::parse_succession_first_pattern[]
 /// Parse FIRST keyword pattern for successions
-/// Per pest: Succession can use 'first' keyword for initial endpoint
-/// succession = { ... (first_token ~ multiplicity_bounds? ~ feature_or_chain)? ~ (then_token ~ multiplicity_bounds? ~ feature_or_chain)? ... }
+/// Grammar: see docs/grammar-mapping.adoc#parse_succession_first_pattern
 fn parse_succession_first_pattern<P: KerMLParser>(p: &mut P) {
     p.bump(); // FIRST
     p.skip_trivia();
@@ -249,10 +250,11 @@ fn parse_succession_first_pattern<P: KerMLParser>(p: &mut P) {
         p.parse_qualified_name();
     }
 }
+// end::parse_succession_first_pattern[]
 
+// tag::parse_endpoint_references[]
 /// Parse endpoint references (= or then keywords)
-/// Per pest: binding patterns include multiplicity_bounds? before endpoints
-/// Per pest: succession patterns include multiplicity_bounds? before endpoints
+/// Grammar: see docs/grammar-mapping.adoc#parse_endpoint_references
 fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
     // Parse optional multiplicity before first endpoint
     if p.at(SyntaxKind::L_BRACKET) {
@@ -262,6 +264,10 @@ fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
 
     if !parsed_name && p.at_name_token() {
         p.parse_qualified_name();
+        p.skip_trivia();
+
+        // Endpoint = MCQualifiedName SysMLCardinality? Specialization*
+        parse_specializations(p);
         p.skip_trivia();
     }
 
@@ -277,13 +283,19 @@ fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
 
         if p.at_name_token() {
             p.parse_qualified_name();
+            p.skip_trivia();
+
+            parse_specializations(p);
+            p.skip_trivia();
         }
     }
 }
+// end::parse_endpoint_references[]
 
+// tag::parse_binding_of_clause[]
 /// Parse 'of' clause for binding connectors
-/// Per pest: (of_token ~ multiplicity_bounds? ~ owned_feature_chain)
 /// Extended pattern: of [mult] X = [mult] Y
+/// Grammar: see docs/grammar-mapping.adoc#parse_binding_of_clause
 fn parse_binding_of_clause<P: KerMLParser>(p: &mut P) {
     if p.at(SyntaxKind::OF_KW) {
         p.bump();
@@ -320,14 +332,15 @@ fn parse_binding_of_clause<P: KerMLParser>(p: &mut P) {
         }
     }
 }
+// end::parse_binding_of_clause[]
 
 /// Check if should parse succession FIRST pattern
 fn should_parse_first_pattern<P: KerMLParser>(p: &P, is_succession: bool) -> bool {
     is_succession && p.at(SyntaxKind::FIRST_KW)
 }
 
-/// Per pest: binding_connector = { prefix_metadata? ~ feature_direction_kind? ~ connector_feature_modifiers ~ binding_token ~ (...patterns...) }
-/// Per pest: succession = { prefix_metadata? ~ feature_direction_kind? ~ connector_feature_modifiers ~ succession_token ~ (...patterns...) }
+// tag::parse_binding_or_succession_impl[]
+/// Grammar: see docs/grammar-mapping.adoc#parse_binding_or_succession_impl
 fn parse_binding_or_succession_impl<P: KerMLParser>(p: &mut P) {
     let is_succession = p.at(SyntaxKind::SUCCESSION_KW) || p.at(SyntaxKind::FIRST_KW);
     let is_shorthand_first = p.at(SyntaxKind::FIRST_KW);
@@ -391,11 +404,13 @@ fn parse_binding_or_succession_impl<P: KerMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_binding_or_succession_impl[]
 
+// tag::parse_flow_usage[]
 /// Parse flow usage (KerML item_flow and succession_item_flow)
 /// Pattern: [abstract] [succession] flow [declaration] [of Type] [from X to Y] body
-/// Per pest: item_flow = { flow_token ~ identification? ~ feature_specialization_part? ~ (...direct or declaration patterns...) }
 /// ItemFlow can be: 'flow' X.y 'to' Z.w or 'flow' name ':' Type 'of' X 'from' Y 'to' Z
+/// Grammar: see docs/grammar-mapping.adoc#parse_flow_usage
 pub fn parse_flow_usage<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -425,6 +440,7 @@ pub fn parse_flow_usage<P: KerMLParser>(p: &mut P) {
     parse_body(p);
     p.finish_node();
 }
+// end::parse_flow_usage[]
 
 /// Parse direct endpoint flow pattern: X.y to Z.w
 fn parse_flow_direct_pattern<P: KerMLParser>(p: &mut P) {

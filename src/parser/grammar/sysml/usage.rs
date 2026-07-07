@@ -1,11 +1,14 @@
 use super::*;
 
+// tag::parse_usage[]
+/// Pattern: [prefixes] [#metadata] [event] <keyword> [<name>] [<mult>] [<typing>] [<specializations>] [<default>] <body>
+/// Grammar: see docs/grammar-mapping.adoc#parse_usage
 pub fn parse_usage<P: SysMLParser>(p: &mut P) {
-    // Per pest: usage = { (usage_prefix* ~ metadata_prefix* ~ event_prefix? ~ usage_element) | owned_crossing_feature }
-    // Per pest: usage_element = { keyword ~ usage_declaration ~ value_part? ~ (body | ";") }
-    // Per pest: owned_crossing_feature = { "end" ~ (identifier ~ multiplicity?)? ~ keyword ~ usage_declaration }
     // Pattern: [prefixes] [#metadata] [event] <keyword> [<name>] [<mult>] [<typing>] [<specializations>] [<default>] <body>
-    p.start_node(SyntaxKind::USAGE);
+    // Checkpoint instead of an upfront start_node: the specific node kind (e.g.
+    // ACTION_USAGE vs generic USAGE) isn't known until the usage keyword itself
+    // is reached, past a variable-length run of prefixes/metadata.
+    let checkpoint = p.checkpoint();
 
     // Prefixes - returns true if END_KW was seen
     let saw_end = parse_usage_prefix(p);
@@ -37,6 +40,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
         // Now we expect a usage keyword
         if p.at_any(SYSML_USAGE_KEYWORDS) {
+            p.start_node_at(checkpoint, SyntaxKind::USAGE);
             parse_usage_keyword(p);
             p.skip_trivia();
 
@@ -61,10 +65,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
             p.skip_trivia();
 
             // Ordering modifiers
-            while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-                p.bump();
-                p.skip_trivia();
-            }
+            parse_ordering_modifiers(p);
 
             // Body
             p.parse_body();
@@ -82,14 +83,13 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
     // Ordering modifiers that may appear before the usage keyword in end features
     // Pattern: end [0..*] nonunique item selectedProduct: Product[1];
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_keyword(p);
-    }
+    parse_ordering_modifiers(p);
 
     let is_constraint = p.at(SyntaxKind::CONSTRAINT_KW);
     let is_action = p.at(SyntaxKind::ACTION_KW);
     let is_calc = p.at(SyntaxKind::CALC_KW);
     let is_state = p.at(SyntaxKind::STATE_KW);
+    let is_requirement = p.at(SyntaxKind::REQUIREMENT_KW);
     let is_analysis = p.at(SyntaxKind::ANALYSIS_KW);
     let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
@@ -98,12 +98,28 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     let is_connection_kw = p.at(SyntaxKind::CONNECTION_KW);
     let is_interface_kw = p.at(SyntaxKind::INTERFACE_KW);
 
+    // Now that the usage keyword is known, retroactively wrap everything parsed
+    // since `checkpoint` (prefixes, prefix metadata, etc.) in the specific node
+    // kind instead of the generic USAGE.
+    let node_kind = if is_constraint {
+        SyntaxKind::CONSTRAINT_USAGE
+    } else if is_calc {
+        SyntaxKind::CALC_USAGE
+    } else if is_action {
+        SyntaxKind::ACTION_USAGE
+    } else if is_requirement {
+        SyntaxKind::REQUIREMENT_USAGE
+    } else {
+        SyntaxKind::USAGE
+    };
+    p.start_node_at(checkpoint, node_kind);
+
     // Usage keyword
     parse_usage_keyword(p);
     p.skip_trivia();
 
-    // Per pest: constraint_usage_declaration is optional (usage_declaration? ~ value_part?)
-    // So we can have just "requirement;" or "constraint;" with no name/typing/body content
+    // The declaration part is optional, so we can have just "requirement;" or
+    // "constraint;" with no name/typing/body content.
     // Check if we're at body start immediately after keyword
     if p.at(SyntaxKind::SEMICOLON) || p.at(SyntaxKind::L_BRACE) {
         // Minimal usage: just keyword + body
@@ -188,9 +204,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
         }
 
         // Ordering modifiers
-        while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-            bump_keyword(p);
-        }
+        parse_ordering_modifiers(p);
 
         // Default value
         parse_optional_default_value(p);
@@ -329,9 +343,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     }
 
     // Ordering modifiers
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_keyword(p);
-    }
+    parse_ordering_modifiers(p);
 
     // More specializations
     parse_specializations(p);
@@ -513,6 +525,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_usage[]
 
 /// Parse allocate end member: [name ::>] qualified_name
 fn parse_allocate_end_member<P: SysMLParser>(p: &mut P) {
@@ -587,7 +600,7 @@ fn parse_usage_keyword<P: SysMLParser>(p: &mut P) {
     }
 }
 
-fn parse_usage_prefix<P: SysMLParser>(p: &mut P) -> bool {
+pub(super) fn parse_usage_prefix<P: SysMLParser>(p: &mut P) -> bool {
     let mut saw_end = false;
     while p.at_any(USAGE_PREFIX_KEYWORDS) {
         if p.at(SyntaxKind::END_KW) {

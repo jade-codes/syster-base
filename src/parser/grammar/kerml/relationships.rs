@@ -4,8 +4,9 @@ use super::*;
 // Standalone Relationship Parsing
 // =============================================================================
 
+// tag::parse_featuring_relationship[]
 /// Parse featuring relationship: featuring [id? of]? feature by type
-/// Per pest: type_featuring = { featuring_token ~ (identification ~ of_token)? ~ qualified_reference_chain ~ by_token ~ qualified_reference_chain }
+/// Grammar: see docs/grammar-mapping.adoc#parse_featuring_relationship
 fn parse_featuring_relationship<P: KerMLParser>(p: &mut P) {
     bump_and_skip(p);
 
@@ -25,10 +26,11 @@ fn parse_featuring_relationship<P: KerMLParser>(p: &mut P) {
         parse_optional_qualified_name(p);
     }
 }
+// end::parse_featuring_relationship[]
 
+// tag::parse_typing_relationship[]
 /// Parse typing relationship: typing feature (':' | 'typed by') type
-/// Per pest: standalone_feature_typing = { typing_token ~ qualified_reference_chain ~ feature_typing }
-/// Per pest: feature_typing = { typed_by_operator ~ qualified_reference_chain ~ multiplicity_bounds? ~ ordering_modifiers }
+/// Grammar: see docs/grammar-mapping.adoc#parse_typing_relationship
 fn parse_typing_relationship<P: KerMLParser>(p: &mut P) {
     bump_and_skip(p);
 
@@ -38,11 +40,12 @@ fn parse_typing_relationship<P: KerMLParser>(p: &mut P) {
         parse_typing(p);
     }
 }
+// end::parse_typing_relationship[]
 
+// tag::parse_conjugation_relationship[]
 /// Parse conjugation relationship: conjugate type1 ('~' | 'conjugates') type2
-/// Per pest: standalone_conjugation = { conjugation_token ~ identification? ~ conjugate_token? ~ qualified_reference_chain ~ conjugates_operator ~ qualified_reference_chain ~ relationship_body }
-/// Per pest: conjugates_operator = { "~" | conjugates_token }
 /// Also handles shorthand: conjugate A ~ B;
+/// Grammar: see docs/grammar-mapping.adoc#parse_conjugation_relationship
 fn parse_conjugation_relationship<P: KerMLParser>(p: &mut P) {
     // Check if we start with 'conjugation' (full form) or 'conjugate' (shorthand)
     let is_shorthand = p.at(SyntaxKind::CONJUGATE_KW);
@@ -76,6 +79,7 @@ fn parse_conjugation_relationship<P: KerMLParser>(p: &mut P) {
         parse_optional_qualified_name(p);
     }
 }
+// end::parse_conjugation_relationship[]
 
 /// Parse generic relationship: keyword source operator target
 /// Handles relationships that don't fit other specific patterns
@@ -93,13 +97,12 @@ fn parse_generic_relationship<P: KerMLParser>(p: &mut P) {
     parse_optional_qualified_name(p);
 }
 
+// tag::parse_standalone_relationship[]
 /// Parse KerML standalone relationship declarations
 /// E.g., `specialization Super subclassifier A specializes B;`
 /// E.g., `subclassifier C specializes A;`
 /// E.g., `redefinition MyRedef redefines x :>> y;`
-/// Per Pest grammar: specialization_prefix ~ relationship_keyword ~ from ~ operator ~ to ~ relationship_body
-/// Per pest: standalone_specialization | standalone_conjugation | standalone_feature_typing | subclassification | disjoining | feature_inverting | standalone_subsetting | standalone_redefinition | type_featuring
-/// Per pest: specialization_prefix = { (specialization_token ~ identification?)? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_standalone_relationship
 pub fn parse_standalone_relationship<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::RELATIONSHIP);
 
@@ -134,10 +137,12 @@ pub fn parse_standalone_relationship<P: KerMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_standalone_relationship[]
 
+// tag::parse_dependency[]
 /// Parse dependency relationship
 /// Syntax: dependency [identification from]? source (',' source)* to target (',' target)* body
-/// Per pest: dependency = { dependency_token ~ (identification ~ from_token)? ~ qualified_reference_chain ~ ("," ~ qualified_reference_chain)* ~ to_token ~ qualified_reference_chain ~ ("," ~ qualified_reference_chain)* ~ relationship_body }
+/// Grammar: see docs/grammar-mapping.adoc#kerml_parse_dependency
 pub fn parse_dependency<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::DEPENDENCY);
 
@@ -181,10 +186,12 @@ pub fn parse_dependency<P: KerMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_dependency[]
 
+// tag::parse_textual_representation[]
 /// Parse textual representation
 /// Syntax: [rep id?]? language "string" [comment]? ;?
-/// Per pest: textual_representation = { (rep_token ~ identification?)? ~ language_token ~ string_value ~ block_comment? ~ ";"? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_textual_representation
 pub fn parse_textual_representation<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::TEXTUAL_REP);
 
@@ -210,11 +217,13 @@ pub fn parse_textual_representation<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_textual_representation[]
 
+// tag::parse_disjoint[]
 /// Parse disjoint statement
 /// Syntax: disjoint source [from target] ;
-/// Per pest: disjoining = { disjoint_token ~ (element_reference ~ from_token ~ element_reference | from_token ~ relationship | visibility_kind? ~ element_reference) }
 /// Source and target can be qualified names (::) or feature chains (.)
+/// Grammar: see docs/grammar-mapping.adoc#parse_disjoint
 pub fn parse_disjoint<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::RELATIONSHIP);
 
@@ -240,6 +249,7 @@ pub fn parse_disjoint<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_disjoint[]
 
 /// Parse a name that could be a qualified name (A::B::C) or feature chain (a.b.c)
 pub fn parse_feature_chain_or_qualified_name<P: KerMLParser>(p: &mut P) {
@@ -264,9 +274,10 @@ pub fn parse_feature_chain_or_qualified_name<P: KerMLParser>(p: &mut P) {
     p.skip_trivia();
 }
 
+// tag::parse_filter[]
 /// Parse filter statement
 /// Syntax: filter <expression> ;
-/// Per pest: filter_package = { filter_token ~ inline_expression ~ ";" }
+/// Grammar: see docs/grammar-mapping.adoc#parse_filter
 pub fn parse_filter<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::ELEMENT_FILTER_MEMBER);
 
@@ -281,10 +292,12 @@ pub fn parse_filter<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_filter[]
 
+// tag::parse_inverting_relationship[]
 /// Parse inverting/inverse relationship
 /// Syntax: [inverting identification?] inverse source of target body
-/// Per pest: feature_inverting = { (inverting_token ~ identification?)? ~ inverse_token ~ qualified_reference_chain ~ of_token ~ qualified_reference_chain ~ relationship_body }
+/// Grammar: see docs/grammar-mapping.adoc#parse_inverting_relationship
 pub fn parse_inverting_relationship<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::RELATIONSHIP);
 
@@ -315,3 +328,4 @@ pub fn parse_inverting_relationship<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_inverting_relationship[]

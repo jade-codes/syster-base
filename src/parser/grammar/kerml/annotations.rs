@@ -4,8 +4,9 @@ use super::*;
 // Annotation Parsing
 // =============================================================================
 
+// tag::parse_metadata_annotation[]
 /// Parse metadata annotation (@ or @@ or metadata keyword)
-/// Per pest: metadata_feature = { prefix_metadata? ~ (at_symbol | metadata_token) ~ (identification ~ (":" | typed_token ~ by_token))? ~ qualified_reference_chain ~ (about_token ~ annotation ~ ("," ~ annotation)*)? ~ metadata_body }
+/// Grammar: see docs/grammar-mapping.adoc#parse_metadata_annotation
 fn parse_metadata_annotation<P: KerMLParser>(p: &mut P) {
     bump_and_skip(p); // METADATA_KW, @, or @@
 
@@ -34,9 +35,11 @@ fn parse_metadata_annotation<P: KerMLParser>(p: &mut P) {
         p.bump();
     }
 }
+// end::parse_metadata_annotation[]
 
+// tag::parse_locale_annotation[]
 /// Parse locale annotation: locale "string" /* comment */
-/// Per pest: Note - locale is typically part of comment_annotation and documentation
+/// Grammar: see docs/grammar-mapping.adoc#parse_locale_annotation
 fn parse_locale_annotation<P: KerMLParser>(p: &mut P) {
     p.bump(); // locale
     p.skip_trivia_except_block_comments();
@@ -50,6 +53,7 @@ fn parse_locale_annotation<P: KerMLParser>(p: &mut P) {
         p.bump();
     }
 }
+// end::parse_locale_annotation[]
 
 /// Parse comment/doc annotation with optional identification, locale, about
 /// Check for block comment and return true if found
@@ -85,8 +89,9 @@ fn parse_about_clause<P: KerMLParser>(p: &mut P) {
     }
 }
 
-/// Per pest: comment_annotation = { (comment_token ~ identification? ~ (about_token ~ element_reference ~ ("," ~ element_reference)*)?)? ~ (locale_token ~ string_value)? ~ block_comment }
-/// Per pest: documentation = { doc_token ~ identification? ~ (locale_token ~ string_value)? ~ (block_comment | ";")? }
+// tag::parse_comment_doc_annotation[]
+/// Parse the shared body of a `comment` or `doc` annotation (keyword already consumed)
+/// Grammar: see docs/grammar-mapping.adoc#parse_comment_doc_annotation
 fn parse_comment_doc_annotation<P: KerMLParser>(p: &mut P) {
     // comment or doc keyword already consumed
     p.skip_trivia_except_block_comments();
@@ -125,12 +130,11 @@ fn parse_comment_doc_annotation<P: KerMLParser>(p: &mut P) {
         p.bump();
     }
 }
+// end::parse_comment_doc_annotation[]
 
+// tag::parse_annotation[]
 /// Parse annotation (comment, doc, locale)
-/// Per Pest grammar:
-/// - locale_annotation = { locale_token ~ string_value ~ block_comment? }
-/// - comment_annotation = { comment_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (about_token ~ element_reference)* ~ (block_comment | semi_colon)? }
-/// - documentation = { doc_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (block_comment | semi_colon)? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_annotation
 pub fn parse_annotation<P: KerMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::COMMENT_ELEMENT);
 
@@ -148,10 +152,11 @@ pub fn parse_annotation<P: KerMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_annotation[]
 
+// tag::parse_annotation_body[]
 /// Parse annotation body
-/// Per pest: metadata_body = { ";" | "{" ~ metadata_body_element* ~ "}" }
-/// Per pest: metadata_body_element = { non_feature_member | metadata_body_feature_member | alias_member | import }
+/// Grammar: see docs/grammar-mapping.adoc#parse_annotation_body
 fn parse_annotation_body<P: KerMLParser>(p: &mut P) {
     p.expect(SyntaxKind::L_BRACE);
     p.skip_trivia();
@@ -176,3 +181,4 @@ fn parse_annotation_body<P: KerMLParser>(p: &mut P) {
 
     p.expect(SyntaxKind::R_BRACE);
 }
+// end::parse_annotation_body[]

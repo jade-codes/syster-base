@@ -5,14 +5,10 @@ use super::*;
 // These are SysML-native implementations that don't depend on kerml.rs
 // =============================================================================
 
+// tag::parse_specializations[]
 /// Parse feature specializations (SysML-specific)
-/// Per SysML Pest grammar:
-/// feature_specialization_part = feature_specialization+ ~ multiplicity_part ~ feature_specialization*
-///                              | feature_specialization+
-///                              | multiplicity_part ~ feature_specialization*
-///                              | multiplicity_part
-/// feature_specialization = typings | subsettings | references | crosses | redefinitions
-/// Per pest: feature_specialization = { typing | subsetting | redefinition | reference_subsetting | featuring | conjugation | ... }\n/// Per pest: typing = { \":\" ~ qualified_name ~ (\",\" ~ qualified_name)* | \"typed\" ~ \"by\" ~ qualified_name }\n/// Pattern: Handles all specialization operators: :, :>, :>>, ::>, typed, subsets, redefines, etc.
+/// Pattern: Handles all specialization operators: :, :>, :>>, ::>, typed, subsets, redefines, etc.
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_specializations
 pub fn parse_specializations<P: SysMLParser>(p: &mut P) {
     while p.at_any(&[
         SyntaxKind::COLON,
@@ -71,12 +67,12 @@ pub fn parse_specializations<P: SysMLParser>(p: &mut P) {
         }
     }
 }
+// end::parse_specializations[]
 
 /// Parse annotation (comment, doc, locale) - SysML-specific
-/// Per SysML Pest grammar:
-/// - locale_annotation = { locale_token ~ string_value ~ block_comment? }
-/// - comment_annotation = { comment_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (about_token ~ element_reference)* ~ (block_comment | semi_colon)? }
-/// - documentation = { doc_token ~ identifier? ~ (locale_token ~ quoted_name)? ~ (block_comment | semi_colon)? }
+/// - locale_annotation = locale_token string_value block_comment?
+/// - comment_annotation = comment_token identifier? (locale_token quoted_name)? (about_token element_reference)* (block_comment | semi_colon)?
+/// - documentation = doc_token identifier? (locale_token quoted_name)? (block_comment | semi_colon)?
 pub fn parse_annotation<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::COMMENT_ELEMENT);
 
@@ -264,7 +260,7 @@ fn parse_annotation_body<P: SysMLParser>(p: &mut P) {
 /// E.g., `specialization Super subclassifier A specializes B;`
 /// E.g., `subclassifier C specializes A;`
 /// E.g., `redefinition MyRedef redefines x :>> y;`
-/// Per SysML Pest grammar: specialization_prefix ~ relationship_keyword ~ from ~ operator ~ to ~ relationship_body
+/// Pattern: specialization_prefix relationship_keyword from operator to relationship_body
 pub fn parse_standalone_relationship<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::RELATIONSHIP);
 
@@ -422,7 +418,11 @@ pub fn parse_standalone_relationship<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-/// Parse SysML parameter (return, in, out, inout)\n/// This extends KerML parameters with SysML-specific prefixes like REF_KW\n/// Per pest: feature_member = { direction? ~ (usage_prefix* ~ usage_element | owned_feature_declaration) }\n/// Per pest: direction = { \"in\" | \"out\" | \"inout\" }\n/// Per pest: usage_prefix = { ref_prefix | abstract_prefix | readonly_prefix | derived_prefix | end_prefix | ... }\n/// Pattern: in|out|inout|return [ref|readonly|...] [usage_keyword] [<name>|:>> <ref>] [mult] [typing] [specializations] [default] semicolon
+// tag::parse_sysml_parameter[]
+/// Parse SysML parameter (return, in, out, inout)
+/// This extends KerML parameters with SysML-specific prefixes like REF_KW
+/// Pattern: in|out|inout|return [ref|readonly|...] [usage_keyword] [<name>|:>> <ref>] [mult] [typing] [specializations] [default] semicolon
+/// Grammar: see docs/grammar-mapping.adoc#parse_sysml_parameter
 pub fn parse_sysml_parameter<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -520,6 +520,7 @@ pub fn parse_sysml_parameter<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_sysml_parameter[]
 
 /// Parse a return expression statement: return <expression>;
 /// This is different from return parameter declaration (return x : Type;)

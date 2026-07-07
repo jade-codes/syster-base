@@ -1,13 +1,12 @@
 use super::*;
 
 // =============================================================================
-// SysML Package/Import/Alias (Per sysml.pest)
+// SysML Package/Import/Alias
 // =============================================================================
 
+// tag::parse_package[]
 /// Parse a package
-/// Per pest: package = { prefix_metadata? ~ package_declaration ~ package_body }
-/// Per pest: package_declaration = { package_token ~ identification? }
-/// Per pest: package_body = { semi_colon | ( "{" ~ package_body_items ~ "}" ) }
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_package
 pub fn parse_package<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::PACKAGE);
 
@@ -25,9 +24,11 @@ pub fn parse_package<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_package[]
 
+// tag::parse_library_package[]
 /// Parse a library package
-/// Per pest: library_package = { standard_token? ~ library_token ~ prefix_metadata? ~ package_declaration ~ package_body }
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_library_package
 pub fn parse_library_package<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::LIBRARY_PACKAGE);
 
@@ -54,12 +55,11 @@ pub fn parse_library_package<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_library_package[]
 
+// tag::parse_import[]
 /// Parse an import
-/// Per pest: import = { (namespace_import | membership_import) ~ filter_package? ~ relationship_body }
-/// Per pest: import_prefix = { visibility? ~ import_token ~ all_token? }
-/// Per pest: imported_membership = { qualified_name }
-/// Per pest: imported_namespace = { qualified_name ~ "::" ~ "*" ~ ("::*"*")? }
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_import
 pub fn parse_import<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::IMPORT);
 
@@ -110,9 +110,11 @@ pub fn parse_import<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_import[]
 
+// tag::parse_alias[]
 /// Parse an alias
-/// Per pest: alias_member_element = { visibility? ~ alias_token ~ identification? ~ for_token ~ element_reference ~ relationship_body }
+/// Grammar: see docs/grammar-mapping.adoc#parse_alias
 pub fn parse_alias<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::ALIAS_MEMBER);
 
@@ -144,6 +146,7 @@ pub fn parse_alias<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_alias[]
 
 /// Parse a namespace body: ; or { members* }
 fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
@@ -157,7 +160,7 @@ fn parse_namespace_body<P: SysMLParser>(p: &mut P) {
 }
 
 /// Parse filter package: [@expression]
-fn parse_filter_package<P: SysMLParser>(p: &mut P) {
+pub(super) fn parse_filter_package<P: SysMLParser>(p: &mut P) {
     if !p.at(SyntaxKind::L_BRACKET) {
         return;
     }
