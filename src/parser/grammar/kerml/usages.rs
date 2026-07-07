@@ -285,10 +285,7 @@ fn parse_multiplicity_with_ordering<P: KerMLParser>(p: &mut P) {
     if p.at(SyntaxKind::L_BRACKET) {
         parse_multiplicity(p);
         p.skip_trivia();
-
-        while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-            bump_and_skip(p);
-        }
+        parse_ordering_modifiers(p);
     }
 }
 

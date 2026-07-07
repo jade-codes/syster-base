@@ -37,10 +37,7 @@ pub fn parse_typing<P: KerMLParser>(p: &mut P) {
 fn parse_type_with_modifiers<P: KerMLParser>(p: &mut P) {
     parse_qualified_name_and_skip(p);
     parse_optional_multiplicity(p);
-
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_and_skip(p);
-    }
+    parse_multiplicity_modifiers(p);
 }
 
 /// Parse a multiplicity bound (lower or upper)
@@ -367,9 +364,7 @@ pub fn parse_definition_impl<P: KerMLParser>(p: &mut P) {
     p.skip_trivia();
 
     // Parse ordering modifiers (ordered, nonunique)
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_and_skip(p);
-    }
+    parse_multiplicity_modifiers(p);
 
     parse_optional_multiplicity(p);
 
@@ -377,9 +372,7 @@ pub fn parse_definition_impl<P: KerMLParser>(p: &mut P) {
     p.skip_trivia();
 
     // Parse ordering modifiers again (can appear after relationships)
-    while p.at(SyntaxKind::ORDERED_KW) || p.at(SyntaxKind::NONUNIQUE_KW) {
-        bump_and_skip(p);
-    }
+    parse_multiplicity_modifiers(p);
 
     if is_predicate || is_function {
         parse_calc_body(p);
