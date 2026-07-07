@@ -92,6 +92,22 @@ fn test_expose(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: the filter-bracket clause (`[@Filter]`) on `expose` had no parser
+// support, unlike the equivalent `import` path. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("view def V { expose MyNamespace::* [@MyFilter]; }")]
+#[case("view def V { expose MyElement [@MyFilter]; }")]
+#[case("view def V { expose MyNamespace::** [@MyFilter]; }")]
+fn test_expose_with_filter(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Filter
 // ============================================================================

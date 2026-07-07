@@ -265,6 +265,10 @@ fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
     if !parsed_name && p.at_name_token() {
         p.parse_qualified_name();
         p.skip_trivia();
+
+        // Endpoint = MCQualifiedName SysMLCardinality? Specialization*
+        parse_specializations(p);
+        p.skip_trivia();
     }
 
     if p.at(SyntaxKind::EQ) || p.at(SyntaxKind::THEN_KW) {
@@ -279,6 +283,10 @@ fn parse_endpoint_references<P: KerMLParser>(p: &mut P, parsed_name: bool) {
 
         if p.at_name_token() {
             p.parse_qualified_name();
+            p.skip_trivia();
+
+            parse_specializations(p);
+            p.skip_trivia();
         }
     }
 }

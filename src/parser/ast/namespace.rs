@@ -63,11 +63,19 @@ impl AstNode for NamespaceMember {
                 | SyntaxKind::ALIAS_MEMBER
                 | SyntaxKind::DEPENDENCY
                 | SyntaxKind::DEFINITION
+                | SyntaxKind::ACTION_DEFINITION
+                | SyntaxKind::CALC_DEFINITION
+                | SyntaxKind::CONSTRAINT_DEFINITION
+                | SyntaxKind::REQUIREMENT_DEFINITION
                 | SyntaxKind::USAGE
                 | SyntaxKind::SUBJECT_USAGE
                 | SyntaxKind::ACTOR_USAGE
                 | SyntaxKind::STAKEHOLDER_USAGE
                 | SyntaxKind::OBJECTIVE_USAGE
+                | SyntaxKind::ACTION_USAGE
+                | SyntaxKind::CALC_USAGE
+                | SyntaxKind::CONSTRAINT_USAGE
+                | SyntaxKind::REQUIREMENT_USAGE
                 | SyntaxKind::ELEMENT_FILTER_MEMBER
                 | SyntaxKind::METADATA_USAGE
                 | SyntaxKind::COMMENT_ELEMENT
@@ -93,12 +101,20 @@ impl AstNode for NamespaceMember {
             SyntaxKind::IMPORT => Some(Self::Import(Import(node))),
             SyntaxKind::ALIAS_MEMBER => Some(Self::Alias(Alias(node))),
             SyntaxKind::DEPENDENCY => Some(Self::Dependency(Dependency(node))),
-            SyntaxKind::DEFINITION => Some(Self::Definition(Definition(node))),
+            SyntaxKind::DEFINITION
+            | SyntaxKind::ACTION_DEFINITION
+            | SyntaxKind::CALC_DEFINITION
+            | SyntaxKind::CONSTRAINT_DEFINITION
+            | SyntaxKind::REQUIREMENT_DEFINITION => Some(Self::Definition(Definition(node))),
             SyntaxKind::USAGE
             | SyntaxKind::SUBJECT_USAGE
             | SyntaxKind::ACTOR_USAGE
             | SyntaxKind::STAKEHOLDER_USAGE
-            | SyntaxKind::OBJECTIVE_USAGE => Some(Self::Usage(Usage(node))),
+            | SyntaxKind::OBJECTIVE_USAGE
+            | SyntaxKind::ACTION_USAGE
+            | SyntaxKind::CALC_USAGE
+            | SyntaxKind::CONSTRAINT_USAGE
+            | SyntaxKind::REQUIREMENT_USAGE => Some(Self::Usage(Usage(node))),
             SyntaxKind::ELEMENT_FILTER_MEMBER => Some(Self::Filter(ElementFilter(node))),
             SyntaxKind::METADATA_USAGE => Some(Self::Metadata(MetadataUsage(node))),
             SyntaxKind::COMMENT_ELEMENT => Some(Self::Comment(Comment(node))),

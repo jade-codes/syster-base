@@ -62,6 +62,16 @@ pub trait ExpressionParser {
     fn start_node(&mut self, kind: SyntaxKind);
     fn finish_node(&mut self);
 
+    /// Record a position to retroactively wrap in a node once its kind is
+    /// known (e.g. after parsing prefixes to determine whether a definition
+    /// is an `ActionDef`, `CalcDef`, etc.). Pairs with `start_node_at`.
+    fn checkpoint(&self) -> rowan::Checkpoint;
+
+    /// Start a node at a previously recorded `checkpoint`, wrapping
+    /// everything parsed since that checkpoint. Must be paired with a
+    /// regular `finish_node` call once the wrapped content is complete.
+    fn start_node_at(&mut self, checkpoint: rowan::Checkpoint, kind: SyntaxKind);
+
     // Shared parsing utilities
     fn parse_qualified_name(&mut self);
 
@@ -290,11 +300,16 @@ pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
 // tag::parse_classification_expression[]
 /// ClassificationExpression = RelationalExpression (('hastype' | 'istype' | 'as' | 'meta' | '@' | '@@') TypeReference)?
 /// KerML/SysML define their own classification operators
-/// Also handles prefix forms: 'hastype T' and 'istype T' (implicit self operand)
+/// Also handles prefix forms: 'hastype T', 'istype T', and '@ T' (implicit self operand,
+/// per KerMLHasTypeSelfExpression = ("hastype" | "@") MCType). Without this, a leading '@'
+/// falls through to the base-expression level's metadata-access parsing instead, which
+/// happens to consume the same tokens but doesn't short-circuit the way a bare MCType should
+/// (unlike the keyword form, it would otherwise allow further postfix/binary continuation
+/// onto the type reference).
 /// Grammar: see docs/grammar-mapping.adoc#parse_classification_expression
 pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
-    // Handle prefix hastype/istype with implicit self operand
-    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW]) {
+    // Handle prefix hastype/istype/@ with implicit self operand
+    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW, SyntaxKind::AT]) {
         p.bump();
         p.skip_trivia();
         p.parse_qualified_name();
