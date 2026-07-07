@@ -94,10 +94,12 @@ impl MetadataUsage {
 ast_node!(PrefixMetadata, PREFIX_METADATA);
 
 impl PrefixMetadata {
-    /// Find the IDENT token (the name after #)
+    /// Find the first IDENT token (the name after #). The identifier may be
+    /// wrapped in a nested QUALIFIED_NAME node (e.g. `#Foo::Bar`), so this
+    /// searches descendants rather than only direct children.
     fn ident_token(&self) -> Option<SyntaxToken> {
         self.0
-            .children_with_tokens()
+            .descendants_with_tokens()
             .filter_map(|e| e.into_token())
             .find(|t| t.kind() == SyntaxKind::IDENT)
     }
