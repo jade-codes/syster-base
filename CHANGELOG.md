@@ -5,6 +5,12 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1-alpha] - 2026-07-07
+
+### Fixed
+
+- **Flow payload type reference dropped** (regression from #44): `flow of <PayloadType> from a to b` no longer extracts a reference to the payload type. The first-class flow-payload grammar wraps the type in a `PAYLOAD_FEATURE` node, which `Usage::of_type()` did not reach into, so `of Exposure` produced no `Exposure` reference (breaking flow-statement hover/goto in the LSP). `of_type()` now resolves the payload type whether it is a direct child (messages) or nested in `PAYLOAD_FEATURE` (flows).
+
 ## [0.5.0-alpha] - 2026-07-07
 
 Large batch of language-feature PRs (#27–#48), plus parser-internals work.

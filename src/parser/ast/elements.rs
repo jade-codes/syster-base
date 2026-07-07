@@ -430,12 +430,36 @@ impl Usage {
 
     first_child_method!(typing, Typing);
 
-    child_after_keyword_method!(
-        of_type,
-        QualifiedName,
-        OF_KW,
-        "Get the 'of Type' qualified name for messages/items (e.g., `message sendCmd of SensedSpeed`)."
-    );
+    /// Get the 'of Type' qualified name for messages/items/flows
+    /// (e.g., `message sendCmd of SensedSpeed`, `flow of Exposure from a to b`).
+    ///
+    /// The payload type appears either as a direct `QualifiedName` child (messages)
+    /// or wrapped in a `PAYLOAD_FEATURE` node (flows, per the first-class flow
+    /// payload grammar). This reaches into that wrapper so the payload type is
+    /// extracted as a reference rather than dropped.
+    pub fn of_type(&self) -> Option<QualifiedName> {
+        let mut seen_of = false;
+        for child in self.0.children_with_tokens() {
+            match child {
+                rowan::NodeOrToken::Token(t) if t.kind() == SyntaxKind::OF_KW => {
+                    seen_of = true;
+                }
+                rowan::NodeOrToken::Node(n) if seen_of => {
+                    if let Some(qn) = QualifiedName::cast(n.clone()) {
+                        return Some(qn);
+                    }
+                    if n.kind() == SyntaxKind::PAYLOAD_FEATURE {
+                        return n
+                            .children()
+                            .find_map(QualifiedName::cast)
+                            .or_else(|| n.descendants().find_map(QualifiedName::cast));
+                    }
+                }
+                _ => {}
+            }
+        }
+        None
+    }
 
     children_method!(specializations, Specialization);
     first_child_method!(body, NamespaceBody);

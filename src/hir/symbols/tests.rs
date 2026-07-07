@@ -110,6 +110,36 @@ fn test_direction_and_multiplicity_extraction() {
     );
 }
 
+/// Regression: `flow of <PayloadType> from a to b` must extract a reference to
+/// the payload type. The first-class flow-payload grammar wraps the type in a
+/// `PAYLOAD_FEATURE` node, which the `of_type()` accessor previously did not
+/// reach into, dropping the payload reference (broke flow-statement hover).
+#[test]
+fn test_flow_of_payload_type_reference() {
+    use crate::syntax::parser::parse_content;
+    let source = r#"action takePicture {
+            action focus: Focus[1];
+            flow of Exposure from focus.xrsl to shoot.xsf;
+            action shoot: Shoot[1];
+        }"#;
+    let syntax = parse_content(source, std::path::Path::new("test.sysml")).unwrap();
+    let symbols = extract_symbols_unified(FileId::new(0), &syntax);
+
+    let flow = symbols
+        .iter()
+        .find(|s| matches!(s.kind, SymbolKind::FlowConnectionUsage))
+        .expect("flow usage should be extracted");
+    let has_payload_ref = flow.type_refs.iter().any(|tr| match tr {
+        crate::hir::symbols::TypeRefKind::Simple(t) => t.target.as_ref() == "Exposure",
+        _ => false,
+    });
+    assert!(
+        has_payload_ref,
+        "flow should reference its 'of' payload type 'Exposure'; type_refs={:?}",
+        flow.type_refs
+    );
+}
+
 #[cfg(test)]
 mod test_package_span {
     use super::super::*;
