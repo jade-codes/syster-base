@@ -31,7 +31,7 @@ mod usage;
 // Shared imports — pub(super) so submodules get them via `use super::*;`
 pub(super) use super::BaseParser;
 pub(super) use super::kerml::is_name_kind;
-pub(super) use super::kerml_expressions::parse_expression;
+pub(super) use super::kerml_expressions::{parse_argument_list, parse_expression};
 pub(super) use super::{RELATIONSHIP_OPERATORS, STANDALONE_RELATIONSHIP_KEYWORDS};
 pub(super) use crate::parser::syntax_kind::SyntaxKind;
 

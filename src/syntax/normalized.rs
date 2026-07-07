@@ -856,6 +856,14 @@ impl NormalizedDefinition {
                     crate::parser::SyntaxKind::NAMESPACE_BODY
                         | crate::parser::SyntaxKind::USAGE
                         | crate::parser::SyntaxKind::DEFINITION
+                        | crate::parser::SyntaxKind::ACTION_DEFINITION
+                        | crate::parser::SyntaxKind::CALC_DEFINITION
+                        | crate::parser::SyntaxKind::CONSTRAINT_DEFINITION
+                        | crate::parser::SyntaxKind::REQUIREMENT_DEFINITION
+                        | crate::parser::SyntaxKind::ACTION_USAGE
+                        | crate::parser::SyntaxKind::CALC_USAGE
+                        | crate::parser::SyntaxKind::CONSTRAINT_USAGE
+                        | crate::parser::SyntaxKind::REQUIREMENT_USAGE
                 );
                 if is_boundary {
                     is_in_nested_scope = true;
@@ -1064,6 +1072,14 @@ impl NormalizedUsage {
                     crate::parser::SyntaxKind::NAMESPACE_BODY
                         | crate::parser::SyntaxKind::USAGE
                         | crate::parser::SyntaxKind::DEFINITION
+                        | crate::parser::SyntaxKind::ACTION_DEFINITION
+                        | crate::parser::SyntaxKind::CALC_DEFINITION
+                        | crate::parser::SyntaxKind::CONSTRAINT_DEFINITION
+                        | crate::parser::SyntaxKind::REQUIREMENT_DEFINITION
+                        | crate::parser::SyntaxKind::ACTION_USAGE
+                        | crate::parser::SyntaxKind::CALC_USAGE
+                        | crate::parser::SyntaxKind::CONSTRAINT_USAGE
+                        | crate::parser::SyntaxKind::REQUIREMENT_USAGE
                 );
                 if is_boundary {
                     is_in_nested_scope = true;

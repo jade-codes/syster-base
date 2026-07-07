@@ -55,15 +55,27 @@ pub fn parse_frame_usage<P: SysMLParser>(p: &mut P) {
     expect_and_skip(p, SyntaxKind::FRAME_KW);
 
     // Check if followed by usage keyword (e.g., frame concern c1)
-    if p.at_any(SYSML_USAGE_KEYWORDS) {
+    let has_usage_kw = p.at_any(SYSML_USAGE_KEYWORDS);
+    if has_usage_kw {
         bump_keyword(p);
     }
 
-    // Parse identification
-    parse_optional_identification(p);
+    if has_usage_kw {
+        // ConcernUsage: "frame" "concern" Identification? Specialization* body
+        // Defines a new usage, so the name is an identification.
+        parse_optional_identification(p);
 
-    // Specializations
-    parse_specializations_with_skip(p);
+        // Specializations
+        parse_specializations_with_skip(p);
+    } else {
+        // ConcernReference: "frame" MCQualifiedName body
+        // References an existing concern, so allow a full (multi-segment)
+        // qualified name, e.g. `frame Pkg::Concern1;`.
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        }
+    }
 
     p.parse_body();
 
