@@ -1,3 +1,24 @@
+=  `@ Type` (`KerMLHasTypeSelfExpression`, symbolic self-form)
+
+The keyword self-form (`hastype Type`) works,
+but bare `@ Type` is routed to metadata-access parsing instead.
+
+Fixed:
+Added `SyntaxKind::AT` to the prefix check in `parse_classification_expression`
+(`kerml_expressions/mod.rs`),
+alongside `HASTYPE_KW`/`ISTYPE_KW`.
+Note the raw token output was already identical either way
+(`parse_metadata_access` happens to consume the same `@` + qualified-name shape)
+
+The real fix is architectural:
+taking the classification-expression path short-circuits right after the type reference
+(matching the keyword form and the `("hastype"|"@") MCType` grammar),
+instead of falling through to base-expression level,
+which would otherwise let further postfix/binary operators attach onto the type reference.
+The metadata-reference use of `@` (e.g. `filter @Safety;`) and
+the infix `expr @ Type` form both produce unchanged output.
+
+Regression tests added in `tests/tests_parser_expressions.rs` (`test_hastype_self_form`).
 =  Connector/succession `Endpoint`
 
 Only reference-subsetting (`::>` / `references`) is supported on endpoints; general `:>`, `:>>`, `:` specializations on an endpoint aren't parsed.

@@ -229,10 +229,15 @@ pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
 /// ClassificationExpression = RelationalExpression (('hastype' | 'istype' | 'as' | 'meta' | '@' | '@@') TypeReference)?
 /// Per pest: classification_expression defined in each grammar - handles type operators
 /// KerML/SysML define their own classification operators
-/// Also handles prefix forms: 'hastype T' and 'istype T' (implicit self operand)
+/// Also handles prefix forms: 'hastype T', 'istype T', and '@ T' (implicit self operand,
+/// per KerMLHasTypeSelfExpression = ("hastype" | "@") MCType). Without this, a leading '@'
+/// falls through to the base-expression level's metadata-access parsing instead, which
+/// happens to consume the same tokens but doesn't short-circuit the way a bare MCType should
+/// (unlike the keyword form, it would otherwise allow further postfix/binary continuation
+/// onto the type reference).
 pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
-    // Handle prefix hastype/istype with implicit self operand
-    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW]) {
+    // Handle prefix hastype/istype/@ with implicit self operand
+    if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW, SyntaxKind::AT]) {
         p.bump();
         p.skip_trivia();
         p.parse_qualified_name();
