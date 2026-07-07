@@ -5,6 +5,36 @@ All notable changes to syster-base will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0-alpha] - 2026-07-07
+
+Large batch of language-feature PRs (#27–#48), plus parser-internals work.
+
+### Added
+
+- **Union expressions** (#47): `union` set-operator expression level (`and → union → equality`); `union` remains usable as a plain function/feature name.
+- **OCL `exists` quantifier** (#46): `exists Name (',' Name)* ':' Expression`; `exists` remains a plain function name (e.g. `ControlFunctions::exists`).
+- **Infinity literal** (#48): `*`/infinity literal value in expressions.
+- **Timing** (#45): `instant`/timing support with a dedicated node; `instant` usable as a feature name (stdlib `Transfers.kerml`).
+- **Control nodes** (#40): `fork` / `join` / `merge` / `decide` parsed via a shared `ControlNodePrefix`.
+- **Specific definition/usage node kinds** (#38): `ACTION_DEFINITION`/`CALC_DEFINITION`/`CONSTRAINT_DEFINITION`/`REQUIREMENT_DEFINITION` and their usage counterparts are now emitted (previously always the generic `DEFINITION`/`USAGE`).
+- **User-defined keywords & `actor def`** (#32): user-defined keyword support; qualified prefix-metadata names.
+- **Explicit types for Null and Empty** (#43).
+- **Flow payload as a first-class feature** (#44): distinguishes a named payload feature from a bare payload type reference.
+- **Filter bracket support** (#33).
+- **Concern reference** (#31).
+- **Parallel state** (#28): `state s parallel { ... }`; `parallel` usable as a plain name elsewhere.
+
+### Changed
+
+- **Parser internals (Pest → Rowan)** (#42): substantial parser restructuring toward the Rowan-based pipeline; grammar mapping documented in `docs/grammar-mapping.adoc`.
+- **Qualified-name parsing** (#29): `#Foo::Bar` prefix-metadata names now consume all segments.
+- **Self-form routing** (#37) and **endpoint special handling** (#34).
+- **Deduplication** (#39) of symbols/relationships.
+
+### Fixed
+
+- **`assert` / `assume` / `require` dispatch** (#27, #30): `assert not <constraint>` now routes to a negated constraint (not a verification); `not`/`satisfy`/`verify`/`requirement` disambiguation for the requirement-verification long form corrected.
+
 ## [0.4.2-alpha] - 2026-06-30
 
 ### Fixed
