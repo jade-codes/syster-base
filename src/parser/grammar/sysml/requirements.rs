@@ -4,10 +4,10 @@ use super::*;
 // Requirement Body Elements
 // =============================================================================
 
+// tag::parse_subject_usage[]
 /// SubjectUsage = 'subject' Identification? Typing? ';'
-/// Per pest: requirement_subject_usage = { requirement_subject_usage_declaration ~ (";"|requirement_body) }
-/// Per pest: requirement_subject_usage_declaration = { subject_prefix? ~ usage_declaration }
 /// Pattern: subject <name>? <typing>? <specializations>? <multiplicity>? <default>? <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_subject_usage
 pub fn parse_subject_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SUBJECT_USAGE);
 
@@ -35,11 +35,12 @@ pub fn parse_subject_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_subject_usage[]
 
+// tag::parse_actor_usage[]
 /// ActorUsage = 'actor' Identification? Typing? ';'
-/// Per pest: requirement_actor_member = { requirement_actor_member_declaration ~ value_part? ~ multiplicity_part? ~ (";"|requirement_body) }
-/// Per pest: requirement_actor_member_declaration = { "actor" ~ usage_declaration? }
 /// Pattern: actor <name>? <typing>? <specializations>? <multiplicity>? <default>? semicolon
+/// Grammar: see docs/grammar-mapping.adoc#parse_actor_usage
 pub fn parse_actor_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::ACTOR_USAGE);
 
@@ -65,10 +66,12 @@ pub fn parse_actor_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_actor_usage[]
 
+// tag::parse_stakeholder_usage[]
 /// StakeholderUsage = 'stakeholder' Identification? Typing? ';'
-/// Per pest: requirement_stakeholder_member = { "stakeholder" ~ usage_declaration? ~ (";"|requirement_body) }
 /// Pattern: stakeholder <name>? <typing>? semicolon
+/// Grammar: see docs/grammar-mapping.adoc#parse_stakeholder_usage
 pub fn parse_stakeholder_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::STAKEHOLDER_USAGE);
 
@@ -85,10 +88,12 @@ pub fn parse_stakeholder_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_stakeholder_usage[]
 
+// tag::parse_objective_usage[]
 /// ObjectiveUsage = 'objective' Identification? [: Type] [:>> ref, ...] Body
-/// Per pest: requirement_objective_member = { "objective" ~ usage_declaration? ~ requirement_body }
 /// Pattern: objective <name>? <typing>? <specializations>? <multiplicity>? body
+/// Grammar: see docs/grammar-mapping.adoc#parse_objective_usage
 pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::OBJECTIVE_USAGE);
 
@@ -101,7 +106,7 @@ pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
 
     parse_optional_typing(p);
 
-    // Specializations (per pest: constraint_usage_declaration = usage_declaration? ~ value_part?)
+    // Specializations (redefines, subsets, etc.)
     parse_specializations_with_skip(p);
 
     // Multiplicity can also appear after specializations
@@ -111,11 +116,12 @@ pub fn parse_objective_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_objective_usage[]
 
+// tag::parse_requirement_constraint[]
 /// RequirementConstraint = ('assert' | 'assume' | 'require') 'not'? 'constraint'? Identification? ConstraintBody
-/// Per pest: requirement_constraint_member = { constraint_prefix? ~ metadata_prefix* ~ "constraint" ~ usage_declaration? ~ value_part? ~ constraint_body }
-/// Per pest: constraint_prefix = { ("assert"|"assume"|"require") }
 /// Pattern: assert|assume|require [not] [#metadata] [constraint] <name>? <typing|specializations>? <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_requirement_constraint
 pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
     // Checkpoint instead of an upfront start_node: whether this is a genuine
     // constraint usage declaration (CONSTRAINT_USAGE) or a bare reference to
@@ -197,14 +203,14 @@ pub fn parse_requirement_constraint<P: SysMLParser>(p: &mut P) {
 
     p.finish_node(); // USAGE
 }
+// end::parse_requirement_constraint[]
 
+// tag::parse_requirement_verification[]
 /// RequirementVerification = ('assert'|'assume'|'require')? 'not'? ('satisfy' | 'verify') 'requirement'? Identification? ('by' QualifiedName)? ';'
 /// Also covers the RequirementUsage long form, where 'verify'? 'not'? 'satisfy'? are all
 /// optional and 'requirement' is the mandatory usage keyword, e.g. "assume requirement r1 {...}".
-/// Per pest: requirement_verification_member = { satisfy_requirement_usage | verify_requirement_usage }
-/// Per pest: satisfy_requirement_usage = { "assert"? ~ "not"? ~ "satisfy" ~ "requirement"? ~ usage_declaration? ~ value_part? ~ (";"|requirement_body) }
-/// Per pest: verify_requirement_usage = { "verify" ~ "requirement"? ~ usage_declaration? ~ ("by" ~ qualified_name)? ~ (";"|requirement_body) }
 /// Pattern: [assert|assume|require] [not] [verify] [satisfy] [requirement] <name|typing>? [by <verifier>]? <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_requirement_verification
 pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
     // Checkpoint instead of an upfront start_node: this covers both the
     // RequirementUsage long form (has the 'requirement' keyword, wrapped in
@@ -273,11 +279,12 @@ pub fn parse_requirement_verification<P: SysMLParser>(p: &mut P) {
 
     p.finish_node(); // USAGE
 }
+// end::parse_requirement_verification[]
 
+// tag::parse_exhibit_usage[]
 /// ExhibitUsage = 'exhibit' 'state'? QualifiedName ';'
-/// Per pest: case_exhibit_member = { "exhibit" ~ (exhibit_state_usage|owned_reference) }
-/// Per pest: exhibit_state_usage = { "state" ~ usage_declaration? ~ state_body }
 /// Pattern: exhibit [state <declaration> <body>] | exhibit <reference> semicolon
+/// Grammar: see docs/grammar-mapping.adoc#parse_exhibit_usage
 pub fn parse_exhibit_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -323,6 +330,7 @@ pub fn parse_exhibit_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_exhibit_usage[]
 
 /// Parse allocate usage: allocate <source> to <target> ;
 pub fn parse_allocate_usage<P: SysMLParser>(p: &mut P) {

@@ -1,0 +1,3049 @@
+= SysML v2 / KerML Grammar-to-Parser Mapping
+:toc:
+:toclevels: 3
+:source-highlighter: rouge
+
+Maps each hand-written recursive-descent parser function in `src/parser/grammar/` to the official OMG KEBNF grammar rule it implements.
+
+== Sources
+
+* `docs/grammar/SysML-textual-bnf.kebnf` and `docs/grammar/KerML-textual-bnf.kebnf` are unmodified (except for the `tag::`/`end::` markers used below) copies of the official grammar, fetched from https://github.com/Systems-Modeling/SysML-v2-Release[Systems-Modeling/SysML-v2-Release] via the https://crates.io/crates/kebnf[`kebnf`] CLI (`kebnf --fetch-spec`).
+* Every code block below is pulled live from the current source via AsciiDoc's tagged-region `include` mechanism -- it is never a stale copy-paste. If a function or grammar rule is renamed, the corresponding `tag::`/`end::` pair must move with it or the include will fail at render time.
+* This document replaces the old `/// Per pest: ...` doc-comment citations that used to reference a since-deleted, hand-rolled `.pest` grammar (see `docs/grammar-gaps.adoc` for the broader parser-completeness audit this superseded work grew out of).
+
+== How to read an entry
+
+Each entry shows, in order: the Rust parsing function, the KEBNF production(s) it implements, and a fidelity note. "Good/full match" means the Rust structure tracks the official grammar closely. "Partial" means the Rust function is broader, narrower, or merges multiple official rules -- not necessarily a bug (a hand-written recursive-descent parser routinely collapses several small grammar rules into one function for pragmatic reasons), but worth knowing when comparing behavior against the spec. "Does not correspond well" flags custom/legacy logic with no real official counterpart.
+
+NOTE: A few function doc comments in the KerML expression module were found, during this mapping work, to describe a *different, nearby* function than the one they're attached to (a pre-existing misattachment, not introduced by this pass) -- see the notes on `parse_ternary_conditional`, `parse_literal`, `looks_like_typed_parameter`, and `handle_feature_chain` below.
+
+== KerML Core
+
+Namespace-level parsing shared by all KerML/SysML files: file entry, package/import/alias, definitions, standalone relationships, and annotations.
+
+[[parse_kerml_file]]
+=== `parse_kerml_file`
+
+`src/parser/grammar/kerml/entry.rs`
+
+.Rust: `parse_kerml_file` (parser/grammar/kerml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/entry.rs[tags=parse_kerml_file]
+----
+====
+
+*KerML KEBNF rule*: `RootNamespace`
+
+.KEBNF (KerML): `RootNamespace`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=RootNamespace]
+----
+====
+
+*Fidelity*: Close match (SOI/EOI implicit as the start rule).
+
+[[parse_namespace_element]]
+=== `parse_namespace_element`
+
+`src/parser/grammar/kerml/entry.rs`
+
+.Rust: `parse_namespace_element` (parser/grammar/kerml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/entry.rs[tags=parse_namespace_element]
+----
+====
+
+*KerML KEBNF rule*: `NamespaceBodyElement`
+
+.KEBNF (KerML): `NamespaceBodyElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=NamespaceBodyElement]
+----
+====
+
+*Fidelity*: Partial: also serves as dispatch for `TypeBodyElement`/`MetadataBodyElement` content and inlines visibility/prefix-metadata handling that the spec models via `MemberPrefix`/`TypePrefix` wrappers.
+
+[[kerml_parse_prefix_metadata]]
+=== `parse_prefix_metadata`
+
+`src/parser/grammar/kerml/entry.rs`
+
+.Rust: `parse_prefix_metadata` (parser/grammar/kerml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/entry.rs[tags=parse_prefix_metadata]
+----
+====
+
+*KerML KEBNF rule*: `PrefixMetadataMember`
+
+.KEBNF (KerML): `PrefixMetadataMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=PrefixMetadataMember]
+----
+====
+
+*Fidelity*: Partial: spec's `PrefixMetadataFeature` allows a full qualified-name typing reference; Rust only consumes a single name token after `#`.
+
+[[parse_optional_visibility]]
+=== `parse_optional_visibility`
+
+`src/parser/grammar/kerml/mod.rs`
+
+.Rust: `parse_optional_visibility` (parser/grammar/kerml/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/mod.rs[tags=parse_optional_visibility]
+----
+====
+
+*KerML KEBNF rule*: `VisibilityIndicator`
+
+.KEBNF (KerML): `VisibilityIndicator`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=VisibilityIndicator]
+----
+====
+
+*Fidelity*: Full match.
+
+[[parse_identification]]
+=== `parse_identification`
+
+`src/parser/grammar/kerml/mod.rs`
+
+.Rust: `parse_identification` (parser/grammar/kerml/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/mod.rs[tags=parse_identification]
+----
+====
+
+*KerML KEBNF rule*: `Identification`
+
+.KEBNF (KerML): `Identification`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Identification]
+----
+====
+
+*Fidelity*: Full match; Rust additionally allows keywords as short-name identifiers (extra permissiveness beyond spec).
+
+[[parse_qualified_name]]
+=== `parse_qualified_name`
+
+`src/parser/grammar/kerml/mod.rs`
+
+.Rust: `parse_qualified_name` (parser/grammar/kerml/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/mod.rs[tags=parse_qualified_name]
+----
+====
+
+*KerML KEBNF rule*: `QualifiedName`
+
+.KEBNF (KerML): `QualifiedName`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=QualifiedName]
+----
+====
+
+*Fidelity*: Partial: official rule only uses `::`; Rust also accepts `.` (feature-chain) separators and special-cases the `this` keyword.
+
+[[kerml_parse_body]]
+=== `parse_body`
+
+`src/parser/grammar/kerml/mod.rs`
+
+.Rust: `parse_body` (parser/grammar/kerml/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/mod.rs[tags=parse_body]
+----
+====
+
+*KerML KEBNF rule*: `NamespaceBody`
+
+.KEBNF (KerML): `NamespaceBody`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=NamespaceBody]
+----
+====
+
+*Fidelity*: Full structural match; also structurally identical to `TypeBody` -- this function is a shared generic used for both.
+
+[[parse_typing]]
+=== `parse_typing`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_typing` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_typing]
+----
+====
+
+*KerML KEBNF rule*: `Typings`
+
+.KEBNF (KerML): `Typings`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Typings]
+----
+====
+
+*Fidelity*: Partial: also accepts a bare `of` keyword as an alternate typing operator, which isn't part of the official `TYPED_BY` token rule -- likely a legacy artifact.
+
+[[parse_multiplicity]]
+=== `parse_multiplicity`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_multiplicity` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_multiplicity]
+----
+====
+
+*KerML KEBNF rule*: `MultiplicityBounds`
+
+.KEBNF (KerML): `MultiplicityBounds`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=MultiplicityBounds]
+----
+====
+
+*Fidelity*: Partial: Rust parses `ordered`/`nonunique` modifiers *inside* the brackets; spec places them outside, in `MultiplicityPart`.
+
+[[parse_multiplicity_definition]]
+=== `parse_multiplicity_definition`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_multiplicity_definition` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_multiplicity_definition]
+----
+====
+
+*KerML KEBNF rule*: `MultiplicityRange`
+
+.KEBNF (KerML): `MultiplicityRange`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=MultiplicityRange]
+----
+====
+
+*Fidelity*: Good match; doesn't handle the `MultiplicitySubset` (`subsets`) alternative of `Multiplicity`.
+
+[[parse_single_specialization]]
+=== `parse_single_specialization`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_single_specialization` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_single_specialization]
+----
+====
+
+*KerML KEBNF rule*: `SpecializationPart`
+
+.KEBNF (KerML): `SpecializationPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=SpecializationPart]
+----
+====
+
+*Fidelity*: Custom/generic helper actually shared across many KEBNF productions (`Subsettings`, `Redefinitions`, `UnioningPart`, `IntersectingPart`, `DifferencingPart`, `DisjoiningPart`); per-item visibility isn't modeled in the spec at all.
+
+[[kerml_parse_specializations]]
+=== `parse_specializations`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_specializations` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_specializations]
+----
+====
+
+*KerML KEBNF rule*: `FeatureSpecializationPart`
+
+.KEBNF (KerML): `FeatureSpecializationPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureSpecializationPart]
+----
+====
+
+*Fidelity*: Partial: broader than the spec rule -- also folds in `TypeRelationshipPart`, `ConjugationPart`, `ChainingPart`, `InvertingPart`, `TypeFeaturingPart` into one loop.
+
+[[kerml_parse_package]]
+=== `parse_package`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_package` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_package]
+----
+====
+
+*KerML KEBNF rule*: `Package`
+
+.KEBNF (KerML): `Package`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Package]
+----
+====
+
+*Fidelity*: Good match; also covers `Namespace`/`NamespaceDeclaration` for the `namespace` keyword variant.
+
+[[kerml_parse_library_package]]
+=== `parse_library_package`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_library_package` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_library_package]
+----
+====
+
+*KerML KEBNF rule*: `LibraryPackage`
+
+.KEBNF (KerML): `LibraryPackage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=LibraryPackage]
+----
+====
+
+*Fidelity*: Full match.
+
+[[kerml_parse_import]]
+=== `parse_import`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_import` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_import]
+----
+====
+
+*KerML KEBNF rule*: `Import`
+
+.KEBNF (KerML): `Import`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Import]
+----
+====
+
+*Fidelity*: Good match; visibility (part of `Import` in spec) is parsed by the caller instead.
+
+[[parse_definition_impl]]
+=== `parse_definition_impl`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_definition_impl` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_definition_impl]
+----
+====
+
+*KerML KEBNF rule*: `Type`
+
+.KEBNF (KerML): `Type`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Type]
+----
+====
+
+*Fidelity*: Custom/generic: single implementation merges `Class`, `Structure`, `DataType`, `Behavior`, `Function`, `Predicate`, `Classifier`, `Interaction`, `Metaclass`, `Association`/`AssociationStructure`.
+
+[[parse_calc_body]]
+=== `parse_calc_body`
+
+`src/parser/grammar/kerml/definitions.rs`
+
+.Rust: `parse_calc_body` (parser/grammar/kerml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/definitions.rs[tags=parse_calc_body]
+----
+====
+
+*KerML KEBNF rule*: `FunctionBodyPart`
+
+.KEBNF (KerML): `FunctionBodyPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FunctionBodyPart]
+----
+====
+
+*Fidelity*: Partial: doesn't distinguish `ReturnFeatureMember` vs. the trailing `ResultExpressionMember` position; treats a trailing bare expression generically.
+
+[[parse_featuring_relationship]]
+=== `parse_featuring_relationship`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_featuring_relationship` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_featuring_relationship]
+----
+====
+
+*KerML KEBNF rule*: `TypeFeaturing`
+
+.KEBNF (KerML): `TypeFeaturing`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=TypeFeaturing]
+----
+====
+
+*Fidelity*: Good match (body parsed by caller).
+
+[[parse_typing_relationship]]
+=== `parse_typing_relationship`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_typing_relationship` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_typing_relationship]
+----
+====
+
+*KerML KEBNF rule*: `FeatureTyping`
+
+.KEBNF (KerML): `FeatureTyping`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureTyping]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_conjugation_relationship]]
+=== `parse_conjugation_relationship`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_conjugation_relationship` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_conjugation_relationship]
+----
+====
+
+*KerML KEBNF rule*: `Conjugation`
+
+.KEBNF (KerML): `Conjugation`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Conjugation]
+----
+====
+
+*Fidelity*: Good match, including `CONJUGATES` shorthand.
+
+[[parse_standalone_relationship]]
+=== `parse_standalone_relationship`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_standalone_relationship` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_standalone_relationship]
+----
+====
+
+*KerML KEBNF rule*: `Specialization`
+
+.KEBNF (KerML): `Specialization`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Specialization]
+----
+====
+
+*Fidelity*: Generic dispatcher spanning `Specialization`, `Subclassification`, `Redefinition`, `Subsetting`, `FeatureTyping`, `Conjugation`, `TypeFeaturing`.
+
+[[kerml_parse_dependency]]
+=== `parse_dependency`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_dependency` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_dependency]
+----
+====
+
+*KerML KEBNF rule*: `Dependency`
+
+.KEBNF (KerML): `Dependency`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Dependency]
+----
+====
+
+*Fidelity*: Excellent match.
+
+[[parse_textual_representation]]
+=== `parse_textual_representation`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_textual_representation` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_textual_representation]
+----
+====
+
+*KerML KEBNF rule*: `TextualRepresentation`
+
+.KEBNF (KerML): `TextualRepresentation`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=TextualRepresentation]
+----
+====
+
+*Fidelity*: Good match; trailing optional `;` in Rust isn't in the spec production.
+
+[[parse_disjoint]]
+=== `parse_disjoint`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_disjoint` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_disjoint]
+----
+====
+
+*KerML KEBNF rule*: `Disjoining`
+
+.KEBNF (KerML): `Disjoining`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Disjoining]
+----
+====
+
+*Fidelity*: Good match; the `disjoining`-keyword/identification form is dispatched separately via `parse_standalone_relationship`.
+
+[[parse_filter]]
+=== `parse_filter`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_filter` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_filter]
+----
+====
+
+*KerML KEBNF rule*: `ElementFilterMember`
+
+.KEBNF (KerML): `ElementFilterMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ElementFilterMember]
+----
+====
+
+*Fidelity*: Excellent match.
+
+[[parse_inverting_relationship]]
+=== `parse_inverting_relationship`
+
+`src/parser/grammar/kerml/relationships.rs`
+
+.Rust: `parse_inverting_relationship` (parser/grammar/kerml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/relationships.rs[tags=parse_inverting_relationship]
+----
+====
+
+*KerML KEBNF rule*: `FeatureInverting`
+
+.KEBNF (KerML): `FeatureInverting`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureInverting]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_metadata_annotation]]
+=== `parse_metadata_annotation`
+
+`src/parser/grammar/kerml/annotations.rs`
+
+.Rust: `parse_metadata_annotation` (parser/grammar/kerml/annotations.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/annotations.rs[tags=parse_metadata_annotation]
+----
+====
+
+*KerML KEBNF rule*: `MetadataFeature`
+
+.KEBNF (KerML): `MetadataFeature`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=MetadataFeature]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_locale_annotation]]
+=== `parse_locale_annotation`
+
+`src/parser/grammar/kerml/annotations.rs`
+
+.Rust: `parse_locale_annotation` (parser/grammar/kerml/annotations.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/annotations.rs[tags=parse_locale_annotation]
+----
+====
+
+*Fidelity*: Does not correspond well: `locale` only exists as an optional inner clause of `Comment`/`Documentation`/`TextualRepresentation`, never a top-level production. Custom/fallback path.
+
+[[parse_comment_doc_annotation]]
+=== `parse_comment_doc_annotation`
+
+`src/parser/grammar/kerml/annotations.rs`
+
+.Rust: `parse_comment_doc_annotation` (parser/grammar/kerml/annotations.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/annotations.rs[tags=parse_comment_doc_annotation]
+----
+====
+
+*KerML KEBNF rule*: `Comment`
+
+.KEBNF (KerML): `Comment`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Comment]
+----
+====
+
+*Fidelity*: Partial: merges `Comment` and `Documentation` into one generic parser since the caller already consumed the differentiating keyword.
+
+[[parse_annotation]]
+=== `parse_annotation`
+
+`src/parser/grammar/kerml/annotations.rs`
+
+.Rust: `parse_annotation` (parser/grammar/kerml/annotations.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/annotations.rs[tags=parse_annotation]
+----
+====
+
+*KerML KEBNF rule*: `AnnotatingElement`
+
+.KEBNF (KerML): `AnnotatingElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=AnnotatingElement]
+----
+====
+
+*Fidelity*: Good primary match (though `TextualRepresentation` dispatch actually happens earlier, in `parse_namespace_element`, not here).
+
+[[parse_annotation_body]]
+=== `parse_annotation_body`
+
+`src/parser/grammar/kerml/annotations.rs`
+
+.Rust: `parse_annotation_body` (parser/grammar/kerml/annotations.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/annotations.rs[tags=parse_annotation_body]
+----
+====
+
+*KerML KEBNF rule*: `MetadataBodyElement`
+
+.KEBNF (KerML): `MetadataBodyElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=MetadataBodyElement]
+----
+====
+
+*Fidelity*: Does not correspond well: implementation is a stub that only brace-matches/skips content rather than parsing `MetadataBodyElement` structure.
+
+== KerML Usages & Connectors
+
+Feature/step/expression usages, invariants, parameters, connectors, bindings, successions, and flows.
+
+[[parse_feature_prefix_modifiers]]
+=== `parse_feature_prefix_modifiers`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_feature_prefix_modifiers` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_feature_prefix_modifiers]
+----
+====
+
+*KerML KEBNF rule*: `FeaturePrefix`
+
+.KEBNF (KerML): `FeaturePrefix`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeaturePrefix]
+----
+====
+
+*Fidelity*: Partial: covers the derived/abstract/composite/portion/const/var keywords from `BasicFeaturePrefix`, the `ref`/`variation` keywords from SysML `RefPrefix`, and the `#`-metadata loop -- but also accepts `MEMBER_KW`/`READONLY_KW`, which aren't prefix-modifier tokens in either official grammar (non-standard/extra).
+
+[[parse_optional_feature_keyword]]
+=== `parse_optional_feature_keyword`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_optional_feature_keyword` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_optional_feature_keyword]
+----
+====
+
+*Fidelity*: Not a real grammar-rule match -- a custom lookahead/dispatch helper distinguishing which keyword introduces a usage; the `not`-after-`inv` handling doesn't correspond to the official grammar (see `Invariant`, which negates via `inv false`, a boolean literal, not a keyword).
+
+[[parse_optional_default_value]]
+=== `parse_optional_default_value`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_optional_default_value` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_optional_default_value]
+----
+====
+
+*KerML KEBNF rule*: `FeatureValue`
+
+.KEBNF (KerML): `FeatureValue`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureValue]
+----
+====
+
+*Fidelity*: Full match: `=`, `:=`, and `default (= | :=)?` all correspond directly.
+
+[[parse_usage_impl]]
+=== `parse_usage_impl`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_usage_impl` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_usage_impl]
+----
+====
+
+*KerML KEBNF rule*: `Feature`
+
+.KEBNF (KerML): `Feature`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Feature]
+----
+====
+
+*Fidelity*: Partial/merged: one Rust function handles three distinct KEBNF top-level rules (`Feature`, `Step`, `Expression`) that share structure but are formally separate productions.
+
+[[parse_invariant]]
+=== `parse_invariant`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_invariant` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_invariant]
+----
+====
+
+*KerML KEBNF rule*: `Invariant`
+
+.KEBNF (KerML): `Invariant`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=Invariant]
+----
+====
+
+*Fidelity*: Discrepancy: the official grammar negates with `inv false` (boolean literal), not an `inv not` keyword -- the Rust parser's `NOT_KW` handling after `INV_KW` doesn't match the official textual notation.
+
+[[parse_parameter_impl]]
+=== `parse_parameter_impl`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_parameter_impl` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_parameter_impl]
+----
+====
+
+*KerML KEBNF rule*: `FeatureDirection`
+
+.KEBNF (KerML): `FeatureDirection`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureDirection]
+----
+====
+
+*Fidelity*: Partial: direction keyword (`in`/`out`/`inout`) matches exactly, but "parameters" aren't a separate KEBNF production -- they're just `Feature`s with a direction prefix, so the rest is generic feature-parsing custom logic (including a non-standard "type name" shorthand).
+
+[[parse_end_feature_or_parameter]]
+=== `parse_end_feature_or_parameter`
+
+`src/parser/grammar/kerml/usages.rs`
+
+.Rust: `parse_end_feature_or_parameter` (parser/grammar/kerml/usages.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/usages.rs[tags=parse_end_feature_or_parameter]
+----
+====
+
+*KerML KEBNF rule*: `EndFeaturePrefix`
+
+.KEBNF (KerML): `EndFeaturePrefix`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=EndFeaturePrefix]
+----
+====
+
+*Fidelity*: Partial: prefix matches exactly; remaining body handles several ad hoc shorthand branches not literally present as separate rules in the spec.
+
+[[parse_connection_end]]
+=== `parse_connection_end`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_connection_end` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_connection_end]
+----
+====
+
+*KerML KEBNF rule*: `ConnectorEnd`
+
+.KEBNF (KerML): `ConnectorEnd`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConnectorEnd]
+----
+====
+
+*Fidelity*: Partial: multiplicity + name + `::>`/`references` chain roughly matches `OwnedCrossMultiplicity` + `declaredName REFERENCES` + `OwnedReferenceSubsetting`, though the official rule structure is more indirect than the Rust's direct qualified-name parse.
+
+[[parse_succession_first_pattern]]
+=== `parse_succession_first_pattern`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_succession_first_pattern` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_succession_first_pattern]
+----
+====
+
+*KerML KEBNF rule*: `SuccessionDeclaration`
+
+.KEBNF (KerML): `SuccessionDeclaration`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=SuccessionDeclaration]
+----
+====
+
+*Fidelity*: Good match for the `'first' ConnectorEndMember 'then' ConnectorEndMember` alternative.
+
+[[parse_endpoint_references]]
+=== `parse_endpoint_references`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_endpoint_references` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_endpoint_references]
+----
+====
+
+*KerML KEBNF rule*: `BindingConnectorDeclaration`
+
+.KEBNF (KerML): `BindingConnectorDeclaration`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BindingConnectorDeclaration]
+----
+====
+
+*Fidelity*: Partial: correctly generalizes both endpoint-separator patterns (`=` and `then`) but merges two distinct official rules (`BindingConnectorDeclaration`, `SuccessionDeclaration`) into one helper.
+
+[[parse_binding_of_clause]]
+=== `parse_binding_of_clause`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_binding_of_clause` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_binding_of_clause]
+----
+====
+
+*KerML KEBNF rule*: `BindingConnectorDeclaration`
+
+.KEBNF (KerML): `BindingConnectorDeclaration`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BindingConnectorDeclaration]
+----
+====
+
+*Fidelity*: Partial: matches the `of ... = ...` shape but uses a more permissive qualified-name/feature-chain parser than the official `OwnedReferenceSubsetting`/`ConnectorEndMember` node structure.
+
+[[parse_binding_or_succession_impl]]
+=== `parse_binding_or_succession_impl`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_binding_or_succession_impl` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_binding_or_succession_impl]
+----
+====
+
+*KerML KEBNF rule*: `BindingConnector`
+
+.KEBNF (KerML): `BindingConnector`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BindingConnector]
+----
+====
+
+*Fidelity*: Partial: single Rust function multiplexes two separate official top-level rules (`BindingConnector`, `Succession`) via an `is_succession` flag, each with extra heuristics absent from the formal grammar.
+
+[[parse_flow_usage]]
+=== `parse_flow_usage`
+
+`src/parser/grammar/kerml/connectors.rs`
+
+.Rust: `parse_flow_usage` (parser/grammar/kerml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml/connectors.rs[tags=parse_flow_usage]
+----
+====
+
+*KerML KEBNF rule*: `FlowDeclaration`
+
+.KEBNF (KerML): `FlowDeclaration`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FlowDeclaration]
+----
+====
+
+*Fidelity*: Partial: covers the direct and declaration forms of `FlowDeclaration`, but doesn't model `SuccessionFlow`'s `'succession' 'flow'` prefix as a separate rule, and dispatches to the generic expression parser for endpoints rather than official `FlowEnd`/`FlowFeatureMember` structure.
+
+== Expressions (shared by KerML and SysML)
+
+Expression precedence chain: literals, operators, classification/cast, feature chains, invocation, and the SysML `.{}` / `.?{}` / `->` shorthand forms. Shared verbatim by both grammars via the `kerml_expressions` module.
+
+[[parse_expression]]
+=== `parse_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_expression]
+----
+====
+
+*KerML KEBNF rule*: `OwnedExpression`
+
+.KEBNF (KerML): `OwnedExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=OwnedExpression]
+----
+====
+
+*Fidelity*: Full match -- top-level entry point.
+
+[[parse_ternary_conditional]]
+=== `parse_ternary_conditional`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_ternary_conditional` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_ternary_conditional]
+----
+====
+
+*KerML KEBNF rule*: `ConditionalExpression`
+
+.KEBNF (KerML): `ConditionalExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConditionalExpression]
+----
+====
+
+*Fidelity*: This private helper only implements the `? then else` tail after `if cond` is already consumed by the caller. Also implements an undocumented SysML `then`-based conditional extension with no counterpart in either official spec -- a non-standard/legacy addition.
+
+[[parse_null_coalescing_expression]]
+=== `parse_null_coalescing_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_null_coalescing_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_null_coalescing_expression]
+----
+====
+
+*KerML KEBNF rule*: `ConditionalBinaryOperatorExpression`
+
+.KEBNF (KerML): `ConditionalBinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConditionalBinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match for this precedence slice (`??`); the spec has no dedicated "NullCoalescing" rule name.
+
+[[parse_implies_expression]]
+=== `parse_implies_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_implies_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_implies_expression]
+----
+====
+
+*KerML KEBNF rule*: `ConditionalBinaryOperatorExpression`
+
+.KEBNF (KerML): `ConditionalBinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConditionalBinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match for this precedence slice (`implies`).
+
+[[parse_or_expression]]
+=== `parse_or_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_or_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_or_expression]
+----
+====
+
+*KerML KEBNF rule*: `ConditionalBinaryOperatorExpression`
+
+.KEBNF (KerML): `ConditionalBinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConditionalBinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Partial/mixed: one Rust function conflates `ConditionalBinaryOperatorExpression` (`or`) and `BinaryOperatorExpression` (`|`), two distinct official rules at the same precedence level.
+
+[[parse_xor_expression]]
+=== `parse_xor_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_xor_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_xor_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`xor`).
+
+[[parse_and_expression]]
+=== `parse_and_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_and_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_and_expression]
+----
+====
+
+*KerML KEBNF rule*: `ConditionalBinaryOperatorExpression`
+
+.KEBNF (KerML): `ConditionalBinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ConditionalBinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Partial/mixed, same pattern as `or`: conflates `and` (conditional) and `&` (binary).
+
+[[parse_equality_expression]]
+=== `parse_equality_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_equality_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_equality_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`==`, `!=`, `===`, `!==`).
+
+[[parse_classification_expression]]
+=== `parse_classification_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_classification_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_classification_expression]
+----
+====
+
+*KerML KEBNF rule*: `ClassificationExpression`
+
+.KEBNF (KerML): `ClassificationExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ClassificationExpression]
+----
+====
+
+*Fidelity*: Partial: one function combines four distinct official operator groups (`istype`/`hastype`/`@`, `as`, `meta`, `@@`); the optional-operand structure correctly matches the Rust prefix-form (implicit-self `hastype T`/`istype T`) handling.
+
+[[parse_relational_expression]]
+=== `parse_relational_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_relational_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_relational_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`<`, `>`, `<=`, `>=`).
+
+[[parse_range_expression]]
+=== `parse_range_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_range_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_range_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`..`).
+
+[[parse_additive_expression]]
+=== `parse_additive_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_additive_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_additive_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`+`, `-`).
+
+[[parse_multiplicative_expression]]
+=== `parse_multiplicative_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_multiplicative_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_multiplicative_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`*`, `/`, `%`).
+
+[[parse_exponentiation_expression]]
+=== `parse_exponentiation_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_exponentiation_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_exponentiation_expression]
+----
+====
+
+*KerML KEBNF rule*: `BinaryOperatorExpression`
+
+.KEBNF (KerML): `BinaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=BinaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match (`^`, `**`); right-associativity of Rust recursion matches the spec's explicit note.
+
+[[parse_unary_expression]]
+=== `parse_unary_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_unary_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_unary_expression]
+----
+====
+
+*KerML KEBNF rule*: `UnaryOperatorExpression`
+
+.KEBNF (KerML): `UnaryOperatorExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=UnaryOperatorExpression]
+----
+====
+
+*Fidelity*: Full match.
+
+[[parse_extent_expression]]
+=== `parse_extent_expression`
+
+`src/parser/grammar/kerml_expressions/mod.rs`
+
+.Rust: `parse_extent_expression` (parser/grammar/kerml_expressions/mod.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/mod.rs[tags=parse_extent_expression]
+----
+====
+
+*KerML KEBNF rule*: `ExtentExpression`
+
+.KEBNF (KerML): `ExtentExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ExtentExpression]
+----
+====
+
+*Fidelity*: Partial: spec requires the operand after `all` to be a `TypeReferenceMember` (qualified type name); Rust unconditionally delegates to `parse_primary_expression`, so it's looser than spec.
+
+[[parse_literal]]
+=== `parse_literal`
+
+`src/parser/grammar/kerml_expressions/atoms.rs`
+
+.Rust: `parse_literal` (parser/grammar/kerml_expressions/atoms.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/atoms.rs[tags=parse_literal]
+----
+====
+
+*KerML KEBNF rule*: `LiteralExpression`
+
+.KEBNF (KerML): `LiteralExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=LiteralExpression]
+----
+====
+
+*Fidelity*: Partial: also consumes `NULL_KW`, which per spec belongs to the separate `NullExpression` rule.
+
+[[parse_argument_list]]
+=== `parse_argument_list`
+
+`src/parser/grammar/kerml_expressions/atoms.rs`
+
+.Rust: `parse_argument_list` (parser/grammar/kerml_expressions/atoms.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/atoms.rs[tags=parse_argument_list]
+----
+====
+
+*KerML KEBNF rule*: `ArgumentList`
+
+.KEBNF (KerML): `ArgumentList`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=ArgumentList]
+----
+====
+
+*Fidelity*: Good match -- spec's `PositionalArgumentList`/`NamedArgumentList` split is handled uniformly rather than as separate grammar branches.
+
+[[looks_like_typed_parameter]]
+=== `looks_like_typed_parameter`
+
+`src/parser/grammar/kerml_expressions/body.rs`
+
+.Rust: `looks_like_typed_parameter` (parser/grammar/kerml_expressions/body.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/body.rs[tags=looks_like_typed_parameter]
+----
+====
+
+*KerML KEBNF rule*: `FunctionBodyPart`
+
+.KEBNF (KerML): `FunctionBodyPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FunctionBodyPart]
+----
+====
+
+*Fidelity*: Does not correspond well: "ArrowBody" and the "only 'in' parameters" restriction this helper encodes have no official counterpart; kept as a best-effort reference to `ExpressionBody`/`FunctionBodyPart`, which the official grammar reuses generically for any function/expression body.
+
+[[handle_feature_chain]]
+=== `handle_feature_chain`
+
+`src/parser/grammar/kerml_expressions/primary.rs`
+
+.Rust: `handle_feature_chain` (parser/grammar/kerml_expressions/primary.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/kerml_expressions/primary.rs[tags=handle_feature_chain]
+----
+====
+
+*KerML KEBNF rule*: `FeatureChainExpression`
+
+.KEBNF (KerML): `FeatureChainExpression`
+[%collapsible]
+====
+[source]
+----
+include::grammar/KerML-textual-bnf.kebnf[tags=FeatureChainExpression]
+----
+====
+
+*Fidelity*: Partial: this specific helper implements just the `.name` chain step (plus trailing invocation matching `InvocationExpression`), i.e. one alternative of `PrimaryExpression`, not the whole rule.
+
+== SysML Entry, Definitions & Namespace
+
+SysML file entry point, the generic package-body-element dispatcher, package/import/alias, and definition-level constructs (constraint bodies, dependency, metadata usage, variant usage, redefines shorthand).
+
+[[parse_sysml_file]]
+=== `parse_sysml_file`
+
+`src/parser/grammar/sysml/entry.rs`
+
+.Rust: `parse_sysml_file` (parser/grammar/sysml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/entry.rs[tags=parse_sysml_file]
+----
+====
+
+*SysML KEBNF rule*: `RootNamespace`
+
+.KEBNF (SysML): `RootNamespace`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=RootNamespace]
+----
+====
+
+*Fidelity*: Partial match: the old pest doc cited a `file = SOI ~ root_namespace ~ EOI` wrapper with no official-grammar counterpart (SOI/EOI are lexer artifacts); the real content-bearing rule is `RootNamespace = PackageBodyElement*`, which matches the loop over `parse_package_body_element`.
+
+[[parse_package_body_element]]
+=== `parse_package_body_element`
+
+`src/parser/grammar/sysml/entry.rs`
+
+.Rust: `parse_package_body_element` (parser/grammar/sysml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/entry.rs[tags=parse_package_body_element]
+----
+====
+
+*SysML KEBNF rule*: `PackageBodyElement`
+
+.KEBNF (SysML): `PackageBodyElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=PackageBodyElement]
+----
+====
+
+*Fidelity*: Partial/loose match: officially only covers `PackageMember | ElementFilterMember | AliasMember | Import`, but this single Rust function is reused as the generic "parse next element" dispatcher far beyond package scope -- also action-body statements, state-body statements, requirement-body statements, connectors, standalone relationships, etc. Really an ad hoc superset dispatcher, not a 1:1 mapping to any single official rule.
+
+[[sysml_parse_prefix_metadata]]
+=== `parse_prefix_metadata`
+
+`src/parser/grammar/sysml/entry.rs`
+
+.Rust: `parse_prefix_metadata` (parser/grammar/sysml/entry.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/entry.rs[tags=parse_prefix_metadata]
+----
+====
+
+*SysML KEBNF rule*: `PrefixMetadataMember`
+
+.KEBNF (SysML): `PrefixMetadataMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=PrefixMetadataMember]
+----
+====
+
+*Fidelity*: Partial match: official rule expects a full typed metadata usage; the Rust function only consumes `#name` and then brace-balance-skips any body verbatim without parsing its internal structure.
+
+[[sysml_parse_package]]
+=== `parse_package`
+
+`src/parser/grammar/sysml/namespace.rs`
+
+.Rust: `parse_package` (parser/grammar/sysml/namespace.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/namespace.rs[tags=parse_package]
+----
+====
+
+*SysML KEBNF rule*: `Package`
+
+.KEBNF (SysML): `Package`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=Package]
+----
+====
+
+*Fidelity*: Good match (prefix metadata handled by caller loop, declaration + body both present).
+
+[[sysml_parse_library_package]]
+=== `parse_library_package`
+
+`src/parser/grammar/sysml/namespace.rs`
+
+.Rust: `parse_library_package` (parser/grammar/sysml/namespace.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/namespace.rs[tags=parse_library_package]
+----
+====
+
+*SysML KEBNF rule*: `LibraryPackage`
+
+.KEBNF (SysML): `LibraryPackage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=LibraryPackage]
+----
+====
+
+*Fidelity*: Good match (`standard`? `library` prefix + declaration + body all present).
+
+[[sysml_parse_import]]
+=== `parse_import`
+
+`src/parser/grammar/sysml/namespace.rs`
+
+.Rust: `parse_import` (parser/grammar/sysml/namespace.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/namespace.rs[tags=parse_import]
+----
+====
+
+*SysML KEBNF rule*: `Import`
+
+.KEBNF (SysML): `Import`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=Import]
+----
+====
+
+*Fidelity*: Good match overall; minor discrepancy: the Rust function loops on `::*`/`::**` generically rather than modeling the official grammar's distinct `MembershipImport`/`NamespaceImport` productions separately.
+
+[[parse_alias]]
+=== `parse_alias`
+
+`src/parser/grammar/sysml/namespace.rs`
+
+.Rust: `parse_alias` (parser/grammar/sysml/namespace.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/namespace.rs[tags=parse_alias]
+----
+====
+
+*SysML KEBNF rule*: `AliasMember`
+
+.KEBNF (SysML): `AliasMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=AliasMember]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_constraint_body]]
+=== `parse_constraint_body`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_constraint_body` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_constraint_body]
+----
+====
+
+*SysML KEBNF rule*: `CalculationBodyPart`
+
+.KEBNF (SysML): `CalculationBodyPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=CalculationBodyPart]
+----
+====
+
+*Fidelity*: Good structural match (body items* then a trailing result expression), though the official grammar reuses the generic calculation-body machinery rather than a constraint-specific body rule.
+
+[[sysml_parse_dependency]]
+=== `parse_dependency`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_dependency` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_dependency]
+----
+====
+
+*SysML KEBNF rule*: `Dependency`
+
+.KEBNF (SysML): `Dependency`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=Dependency]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_metadata_usage]]
+=== `parse_metadata_usage`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_metadata_usage` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_metadata_usage]
+----
+====
+
+*SysML KEBNF rule*: `MetadataUsage`
+
+.KEBNF (SysML): `MetadataUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=MetadataUsage]
+----
+====
+
+*Fidelity*: Good match, including the `about` clause and prefix-annotation special case.
+
+[[parse_variant_usage]]
+=== `parse_variant_usage`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_variant_usage` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_variant_usage]
+----
+====
+
+*SysML KEBNF rule*: `VariantUsageMember`
+
+.KEBNF (SysML): `VariantUsageMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=VariantUsageMember]
+----
+====
+
+*Fidelity*: Good match: `variant [kw] name [mult] [typing] [specializations] body`.
+
+[[parse_redefines_feature_member]]
+=== `parse_redefines_feature_member`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_redefines_feature_member` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_redefines_feature_member]
+----
+====
+
+*SysML KEBNF rule*: `Redefinitions`
+
+.KEBNF (SysML): `Redefinitions`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=Redefinitions]
+----
+====
+
+*Fidelity*: Partial: this one Rust function eagerly parses the full remaining `UsageDeclaration`+`UsageCompletion` (typing, multiplicity, specializations, default value, body) after the shorthand `:>>`/`subsets` operator, collapsing several official sub-rules into one.
+
+[[parse_definition_or_usage]]
+=== `parse_definition_or_usage`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_definition_or_usage` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_definition_or_usage]
+----
+====
+
+*SysML KEBNF rule*: `PackageMember`
+
+.KEBNF (SysML): `PackageMember`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=PackageMember]
+----
+====
+
+*Fidelity*: Good match -- this is exactly the def-vs-usage dispatch the official rule (`MemberPrefix (DefinitionElement | UsageElement)`) encodes.
+
+[[parse_definition]]
+=== `parse_definition`
+
+`src/parser/grammar/sysml/definitions.rs`
+
+.Rust: `parse_definition` (parser/grammar/sysml/definitions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/definitions.rs[tags=parse_definition]
+----
+====
+
+*SysML KEBNF rule*: `DefinitionElement`
+
+.KEBNF (SysML): `DefinitionElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=DefinitionElement]
+----
+====
+
+*Fidelity*: The private dispatcher that actually builds a `DEFINITION` node once `parse_definition_or_usage` has decided this is a definition; picks the keyword-specific body parser (constraint/calc/action/state/case/metadata/generic).
+
+== SysML Actions
+
+Action usages: perform, accept, send, if, while/loop, for, control nodes (fork/join/merge/decide), successions, terminate, action/state bodies, and transitions.
+
+[[parse_perform_action]]
+=== `parse_perform_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_perform_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_perform_action]
+----
+====
+
+*SysML KEBNF rule*: `PerformActionUsage`
+
+.KEBNF (SysML): `PerformActionUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=PerformActionUsage]
+----
+====
+
+*Fidelity*: Good match -- handles both the `'action' UsageDeclaration` form and the `OwnedReferenceSubsetting`/qualified-name form.
+
+[[parse_frame_usage]]
+=== `parse_frame_usage`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_frame_usage` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_frame_usage]
+----
+====
+
+*SysML KEBNF rule*: `FramedConcernUsage`
+
+.KEBNF (SysML): `FramedConcernUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=FramedConcernUsage]
+----
+====
+
+*Fidelity*: Partial: official rule branches on `OwnedReferenceSubsetting` vs `'concern'` keyword; the generic identification/specialization/body handling doesn't distinguish these paths explicitly but is structurally compatible.
+
+[[parse_render_usage]]
+=== `parse_render_usage`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_render_usage` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_render_usage]
+----
+====
+
+*SysML KEBNF rule*: `ViewRenderingUsage`
+
+.KEBNF (SysML): `ViewRenderingUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ViewRenderingUsage]
+----
+====
+
+*Fidelity*: Good structural match for keyword + optional `'rendering'` extension keyword + usage declaration + body.
+
+[[parse_accept_action]]
+=== `parse_accept_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_accept_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_accept_action]
+----
+====
+
+*SysML KEBNF rule*: `AcceptNode`
+
+.KEBNF (SysML): `AcceptNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=AcceptNode]
+----
+====
+
+*Fidelity*: Good match, including trigger (`at`/`after`/`when`) and `via` handling.
+
+[[parse_send_action]]
+=== `parse_send_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_send_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_send_action]
+----
+====
+
+*SysML KEBNF rule*: `SendNode`
+
+.KEBNF (SysML): `SendNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=SendNode]
+----
+====
+
+*Fidelity*: Good structural match for expression/`via`/`to`/body forms.
+
+[[parse_if_action]]
+=== `parse_if_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_if_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_if_action]
+----
+====
+
+*SysML KEBNF rule*: `IfNode`
+
+.KEBNF (SysML): `IfNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=IfNode]
+----
+====
+
+*Fidelity*: Partial: conflates two official productions -- the real `IfNode` (if/then-body/else) and a `GuardedTargetSuccession`-shaped shorthand (`if <expr> then <target>;`) handled as a special case inside the same function rather than as a separate succession rule.
+
+[[parse_loop_action]]
+=== `parse_loop_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_loop_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_loop_action]
+----
+====
+
+*SysML KEBNF rule*: `WhileLoopNode`
+
+.KEBNF (SysML): `WhileLoopNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=WhileLoopNode]
+----
+====
+
+*Fidelity*: Good match for both `while <expr>` and bare `loop` forms plus optional `until` clause.
+
+[[parse_for_loop]]
+=== `parse_for_loop`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_for_loop` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_for_loop]
+----
+====
+
+*SysML KEBNF rule*: `ForLoopNode`
+
+.KEBNF (SysML): `ForLoopNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ForLoopNode]
+----
+====
+
+*Fidelity*: Good match; Rust additionally allows explicit `: Type` on the loop variable, a minor extra not spelled out at this level of the grammar.
+
+[[parse_first_action]]
+=== `parse_first_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_first_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_first_action]
+----
+====
+
+*SysML KEBNF rule*: `SuccessionAsUsage`
+
+.KEBNF (SysML): `SuccessionAsUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=SuccessionAsUsage]
+----
+====
+
+*Fidelity*: Partial: matches the `'first' end 'then' end UsageBody` shape closely, but doesn't parse the optional leading `'succession' UsageDeclaration`, and doesn't support a guard (cf. `GuardedSuccession`, which mandates one).
+
+[[parse_then_succession]]
+=== `parse_then_succession`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_then_succession` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_then_succession]
+----
+====
+
+*SysML KEBNF rule*: `TargetSuccession`
+
+.KEBNF (SysML): `TargetSuccession`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=TargetSuccession]
+----
+====
+
+*Fidelity*: Partial/broad: official `TargetSuccession` is just `SourceEndMember 'then' ConnectorEndMember`; this Rust function is a large dispatcher additionally handling inline actions/states, prefix keywords, chained `then` targets, control nodes, `accept`/`send`/`perform`/`terminate` targets, and a non-grammar `after` clause with no corresponding official production.
+
+[[parse_terminate_action]]
+=== `parse_terminate_action`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_terminate_action` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_terminate_action]
+----
+====
+
+*SysML KEBNF rule*: `TerminateNode`
+
+.KEBNF (SysML): `TerminateNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=TerminateNode]
+----
+====
+
+*Fidelity*: Good match.
+
+[[parse_else_succession]]
+=== `parse_else_succession`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_else_succession` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_else_succession]
+----
+====
+
+*SysML KEBNF rule*: `DefaultTargetSuccession`
+
+.KEBNF (SysML): `DefaultTargetSuccession`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=DefaultTargetSuccession]
+----
+====
+
+*Fidelity*: Good top-level match (`'else' TransitionSuccessionMember`), though Rust allows a broader target set (control node, accept, send, qualified name) than the grammar's `TransitionSuccessionMember`.
+
+[[parse_control_node]]
+=== `parse_control_node`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_control_node` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_control_node]
+----
+====
+
+*SysML KEBNF rule*: `ControlNode`
+
+.KEBNF (SysML): `ControlNode`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ControlNode]
+----
+====
+
+*Fidelity*: Partial: captures the shared shape (keyword + optional identification + `ActionBody`) for all four kinds (merge/decide/join/fork), and now (as of the `ctrl-typed` branch fix) also implements `ControlNodePrefix`'s `RefPrefix`/`individual`/`PortionKind`/`UsageExtensionKeyword*` prefix and the full `UsageDeclaration` tail (typing, specializations, multiplicity, default value).
+
+[[parse_action_body]]
+=== `parse_action_body`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_action_body` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_action_body]
+----
+====
+
+*SysML KEBNF rule*: `ActionBody`
+
+.KEBNF (SysML): `ActionBody`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ActionBody]
+----
+====
+
+*Fidelity*: Good top-level match (`';' | '{' items* '}'`); item-kind dispatch is delegated to `parse_package_body_element` rather than distinguishing all `ActionBodyItem` alternatives here.
+
+[[parse_state_body]]
+=== `parse_state_body`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_state_body` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_state_body]
+----
+====
+
+*SysML KEBNF rule*: `StateUsageBody`
+
+.KEBNF (SysML): `StateUsageBody`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=StateUsageBody]
+----
+====
+
+*Fidelity*: Good match (`';' | parallel? '{' StateBodyItem* '}'`).
+
+[[parse_state_body_element]]
+=== `parse_state_body_element`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_state_body_element` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_state_body_element]
+----
+====
+
+*SysML KEBNF rule*: `StateBodyItem`
+
+.KEBNF (SysML): `StateBodyItem`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=StateBodyItem]
+----
+====
+
+*Fidelity*: Partial: official rule has distinct named alternatives for behavior/transition/entry/do/exit members; Rust generically delegates to `parse_package_body_element` and only special-cases entry/do/exit to suppress trailing transitions.
+
+[[parse_target_transition]]
+=== `parse_target_transition`
+
+`src/parser/grammar/sysml/actions.rs`
+
+.Rust: `parse_target_transition` (parser/grammar/sysml/actions.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/actions.rs[tags=parse_target_transition]
+----
+====
+
+*SysML KEBNF rule*: `TargetTransitionUsage`
+
+.KEBNF (SysML): `TargetTransitionUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=TargetTransitionUsage]
+----
+====
+
+*Fidelity*: Good match -- optional trigger (`accept`), guard (`if`), effect (`do`), then required `'then' TransitionSuccessionMember` + body.
+
+== SysML States & Requirements
+
+State definitions/usages, transitions, and the requirement/constraint/concern family (subject, actor, stakeholder, objective, satisfy/verify, exhibit).
+
+[[parse_state_subaction]]
+=== `parse_state_subaction`
+
+`src/parser/grammar/sysml/states.rs`
+
+.Rust: `parse_state_subaction` (parser/grammar/sysml/states.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/states.rs[tags=parse_state_subaction]
+----
+====
+
+*SysML KEBNF rule*: `StateActionUsage`
+
+.KEBNF (SysML): `StateActionUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=StateActionUsage]
+----
+====
+
+*Fidelity*: Partial: the Rust function conflates the keyword-dispatch layer (KEBNF splits this into `EntryActionMember`/`DoActionMember`/`ExitActionMember`) with the action-content layer (`StateActionUsage`'s alternatives). It also handles a generic `action` keyword + full body form not directly present in `StateActionUsage`.
+
+[[parse_transition]]
+=== `parse_transition`
+
+`src/parser/grammar/sysml/states.rs`
+
+.Rust: `parse_transition` (parser/grammar/sysml/states.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/states.rs[tags=parse_transition]
+----
+====
+
+*SysML KEBNF rule*: `TransitionUsage`
+
+.KEBNF (SysML): `TransitionUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=TransitionUsage]
+----
+====
+
+*Fidelity*: Good structural match: `'transition' (name 'first')? source EmptyParameterMember (accept trigger)? (if guard)? (do effect)? 'then' target ActionBody` lines up closely with the Rust logic's ordering of optional name/first/source/accept/if/do/then/body.
+
+[[parse_subject_usage]]
+=== `parse_subject_usage`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_subject_usage` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_subject_usage]
+----
+====
+
+*SysML KEBNF rule*: `SubjectUsage`
+
+.KEBNF (SysML): `SubjectUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=SubjectUsage]
+----
+====
+
+*Fidelity*: Good match -- `Usage` (identification, specializations, value part, body) covers the identification/typing/specializations/multiplicity/default/body sequence well.
+
+[[parse_actor_usage]]
+=== `parse_actor_usage`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_actor_usage` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_actor_usage]
+----
+====
+
+*SysML KEBNF rule*: `ActorUsage`
+
+.KEBNF (SysML): `ActorUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ActorUsage]
+----
+====
+
+*Fidelity*: Partial: KEBNF's `Usage` permits a full body, but the Rust function only accepts a trailing semicolon (no `{...}` body) -- a real capability gap versus the spec.
+
+[[parse_stakeholder_usage]]
+=== `parse_stakeholder_usage`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_stakeholder_usage` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_stakeholder_usage]
+----
+====
+
+*SysML KEBNF rule*: `StakeholderUsage`
+
+.KEBNF (SysML): `StakeholderUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=StakeholderUsage]
+----
+====
+
+*Fidelity*: Same gap as `ActorUsage`: KEBNF `Usage` allows a body; Rust only allows semicolon-termination.
+
+[[parse_objective_usage]]
+=== `parse_objective_usage`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_objective_usage` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_objective_usage]
+----
+====
+
+*SysML KEBNF rule*: `ObjectiveRequirementUsage`
+
+.KEBNF (SysML): `ObjectiveRequirementUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ObjectiveRequirementUsage]
+----
+====
+
+*Fidelity*: Partial: `ObjectiveMember` supplies the `'objective'` keyword dispatch while the name/typing/specializations/body content maps to `ObjectiveRequirementUsage`; the single Rust function merges both layers.
+
+[[parse_requirement_constraint]]
+=== `parse_requirement_constraint`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_requirement_constraint` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_requirement_constraint]
+----
+====
+
+*SysML KEBNF rule*: `RequirementConstraintUsage`
+
+.KEBNF (SysML): `RequirementConstraintUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=RequirementConstraintUsage]
+----
+====
+
+*Fidelity*: Partial: one Rust function handles all three prefix keywords (`assert`/`assume`/`require`) generically plus `#metadata` prefixes and an optional `constraint` keyword, whereas the official grammar splits `assert` (own top-level rule, with an `OwnedReferenceSubsetting` alternative not implemented here) from `assume`/`require` (`RequirementKind`).
+
+[[parse_requirement_verification]]
+=== `parse_requirement_verification`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_requirement_verification` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_requirement_verification]
+----
+====
+
+*SysML KEBNF rule*: `SatisfyRequirementUsage`
+
+.KEBNF (SysML): `SatisfyRequirementUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=SatisfyRequirementUsage]
+----
+====
+
+*Fidelity*: Partial: the Rust function merges two distinct official productions (`SatisfyRequirementUsage` and `RequirementVerificationUsage`) into one; its `by`-clause handling loosely corresponds to `SatisfactionSubjectMember` but doesn't construct that intermediate membership node explicitly.
+
+[[parse_exhibit_usage]]
+=== `parse_exhibit_usage`
+
+`src/parser/grammar/sysml/requirements.rs`
+
+.Rust: `parse_exhibit_usage` (parser/grammar/sysml/requirements.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/requirements.rs[tags=parse_exhibit_usage]
+----
+====
+
+*SysML KEBNF rule*: `ExhibitStateUsage`
+
+.KEBNF (SysML): `ExhibitStateUsage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ExhibitStateUsage]
+----
+====
+
+*Fidelity*: Good match -- the two-branch structure (bare reference vs. `'state'`-prefixed full declaration + body) directly mirrors the Rust `if p.at(STATE_KW) {...} else {...}` split.
+
+== SysML Relationships, Connectors & Usage Dispatch
+
+Specializations/typing dispatch, parameter declarations, assign/connect actions, connector ends, calc/generic bodies, and the top-level `parse_usage` dispatcher.
+
+[[sysml_parse_specializations]]
+=== `parse_specializations`
+
+`src/parser/grammar/sysml/relationships.rs`
+
+.Rust: `parse_specializations` (parser/grammar/sysml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/relationships.rs[tags=parse_specializations]
+----
+====
+
+*SysML KEBNF rule*: `FeatureSpecialization`
+
+.KEBNF (SysML): `FeatureSpecialization`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=FeatureSpecialization]
+----
+====
+
+*Fidelity*: Partial/broader -- implements the core typing/subsetting/references/crosses/redefinitions dispatch, but the same loop also folds in unrelated KerML productions not part of `FeatureSpecialization` itself: `Conjugation`/`ConjugationPart`, `TypeRelationshipPart` (disjoint/unions/intersects/differences), and `FeatureRelationshipPart` extras (`chains`, `inverse of`, `featured by`).
+
+[[parse_sysml_parameter]]
+=== `parse_sysml_parameter`
+
+`src/parser/grammar/sysml/relationships.rs`
+
+.Rust: `parse_sysml_parameter` (parser/grammar/sysml/relationships.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/relationships.rs[tags=parse_sysml_parameter]
+----
+====
+
+*SysML KEBNF rule*: `Usage`
+
+.KEBNF (SysML): `Usage`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=Usage]
+----
+====
+
+*Fidelity*: Partial -- merges two official rules into one function (direction-prefixed `Usage` for in/out/inout, and the separate `ReturnParameterMember` production for `return`).
+
+[[parse_assign_action]]
+=== `parse_assign_action`
+
+`src/parser/grammar/sysml/connectors.rs`
+
+.Rust: `parse_assign_action` (parser/grammar/sysml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/connectors.rs[tags=parse_assign_action]
+----
+====
+
+*SysML KEBNF rule*: `AssignmentNodeDeclaration`
+
+.KEBNF (SysML): `AssignmentNodeDeclaration`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=AssignmentNodeDeclaration]
+----
+====
+
+*Fidelity*: Partial -- matches the `assign target := expr` shape closely; doesn't model the optional `ActionNodeUsageDeclaration` prefix or the explicit `AssignmentTargetMember`/`FeatureChainMember`/`NodeParameterMember` sub-structure, treating target/expression generically instead.
+
+[[parse_connect_usage]]
+=== `parse_connect_usage`
+
+`src/parser/grammar/sysml/connectors.rs`
+
+.Rust: `parse_connect_usage` (parser/grammar/sysml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/connectors.rs[tags=parse_connect_usage]
+----
+====
+
+*SysML KEBNF rule*: `ConnectorPart`
+
+.KEBNF (SysML): `ConnectorPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ConnectorPart]
+----
+====
+
+*Fidelity*: Good match -- binary (`end to end`) and n-ary (`(end, end, ...)`) forms both directly correspond.
+
+[[parse_connector_end]]
+=== `parse_connector_end`
+
+`src/parser/grammar/sysml/connectors.rs`
+
+.Rust: `parse_connector_end` (parser/grammar/sysml/connectors.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/connectors.rs[tags=parse_connector_end]
+----
+====
+
+*SysML KEBNF rule*: `ConnectorEnd`
+
+.KEBNF (SysML): `ConnectorEnd`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=ConnectorEnd]
+----
+====
+
+*Fidelity*: Good match -- optional cross-multiplicity, optional `name REFERENCES`, then reference subsetting target line up closely.
+
+[[parse_sysml_calc_body]]
+=== `parse_sysml_calc_body`
+
+`src/parser/grammar/sysml/body.rs`
+
+.Rust: `parse_sysml_calc_body` (parser/grammar/sysml/body.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/body.rs[tags=parse_sysml_calc_body]
+----
+====
+
+*SysML KEBNF rule*: `CalculationBodyPart`
+
+.KEBNF (SysML): `CalculationBodyPart`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=CalculationBodyPart]
+----
+====
+
+*Fidelity*: Good match -- the item-loop-then-optional-final-expression structure mirrors `CalculationBodyPart` directly, including `ReturnParameterMember` and `ResultExpressionMember`.
+
+[[sysml_parse_body]]
+=== `parse_body`
+
+`src/parser/grammar/sysml/body.rs`
+
+.Rust: `parse_body` (parser/grammar/sysml/body.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/body.rs[tags=parse_body]
+----
+====
+
+*SysML KEBNF rule*: `DefinitionBody`
+
+.KEBNF (SysML): `DefinitionBody`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=DefinitionBody]
+----
+====
+
+*Fidelity*: Good match -- this is the generic reusable "any element body" parser referenced by many usage/definition kinds, exactly mirroring the shared `DefinitionBody`/`UsageBody` production.
+
+[[parse_usage]]
+=== `parse_usage`
+
+`src/parser/grammar/sysml/usage.rs`
+
+.Rust: `parse_usage` (parser/grammar/sysml/usage.rs)
+[%collapsible]
+====
+[source,rust]
+----
+include::../src/parser/grammar/sysml/usage.rs[tags=parse_usage]
+----
+====
+
+*SysML KEBNF rule*: `UsageElement`
+
+.KEBNF (SysML): `UsageElement`
+[%collapsible]
+====
+[source]
+----
+include::grammar/SysML-textual-bnf.kebnf[tags=UsageElement]
+----
+====
+
+*Fidelity*: The generic dispatcher for every SysML usage kind once its keyword has been identified upstream; matches `UsageElement = NonOccurrenceUsageElement | OccurrenceUsageElement` at the top level, with kind-specific body dispatch (constraint/calc/action/state/case/metadata/generic).
+

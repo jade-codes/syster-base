@@ -4,11 +4,9 @@ use super::*;
 // Action Body Elements
 // =============================================================================
 
+// tag::parse_perform_action[]
 /// Parse perform action usage
-/// Per pest: perform_action_usage = { perform_token ~ perform_action_usage_declaration ~ action_body }
-/// Per pest: perform_action_usage_declaration = { (action_declaration_header | qualified_name) ~ feature_specialization_part? }
-/// Per pest: action_declaration_header = { action_token ~ usage_declaration? }
-/// Per pest: usage_declaration = { identification ~ multiplicity_part? ~ feature_specialization_part }
+/// Grammar: see docs/grammar-mapping.adoc#parse_perform_action
 pub fn parse_perform_action<P: SysMLParser>(p: &mut P) {
     // Wrap in USAGE so it's recognized as a NamespaceMember
     p.start_node(SyntaxKind::USAGE);
@@ -45,10 +43,12 @@ pub fn parse_perform_action<P: SysMLParser>(p: &mut P) {
     p.finish_node(); // PERFORM_ACTION_USAGE
     p.finish_node(); // USAGE
 }
+// end::parse_perform_action[]
 
+// tag::parse_frame_usage[]
 /// Parse frame usage
-/// Per pest: Frame usage for requirement framing
 /// Pattern: 'frame' [<keyword>] <name> ';'
+/// Grammar: see docs/grammar-mapping.adoc#parse_frame_usage
 pub fn parse_frame_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -81,10 +81,12 @@ pub fn parse_frame_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_frame_usage[]
 
+// tag::parse_render_usage[]
 /// Parse render usage
-/// Per pest: view_rendering_usage = { render_token ~ (rendering_usage_keyword ~ usage_declaration)? ~ semi_colon }
 /// Pattern: 'render' [<keyword>] <name> [: Type] [multiplicity] ';'
+/// Grammar: see docs/grammar-mapping.adoc#parse_render_usage
 pub fn parse_render_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -113,13 +115,11 @@ pub fn parse_render_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_render_usage[]
 
+// tag::parse_accept_action[]
 /// Parse accept action usage
-/// Per pest: accept_node = { occurrence_usage_prefix ~ accept_node_declaration ~ action_body }
-/// Per pest: accept_node_declaration = { action_node_usage_declaration? ~ accept_token ~ accept_parameter_part }
-/// Per pest: accept_parameter_part = { payload_parameter_member ~ (via_token ~ node_parameter_member)? }
-/// Per pest: payload_parameter = { (identification? ~ payload_feature_specialization_part? ~ trigger_value_part) | payload }
-/// Per pest: trigger_expression = { time_trigger_kind ~ argument_member | change_trigger_kind ~ argument_expression_member }
+/// Grammar: see docs/grammar-mapping.adoc#parse_accept_action
 pub fn parse_accept_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::ACCEPT_ACTION_USAGE);
 
@@ -157,12 +157,11 @@ pub fn parse_accept_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_accept_action[]
 
+// tag::parse_send_action[]
 /// Parse send action usage
-/// Per pest: send_node = { occurrence_usage_prefix ~ send_node_declaration ~ action_body }
-/// Per pest: send_node_declaration = { action_node_usage_declaration? ~ send_token ~ (action_body | (node_parameter_member ~ sender_receiver_part? | empty_parameter_member ~ sender_receiver_part) ~ action_body) }
-/// Per pest: node_parameter_member = { owned_expression }
-/// Per pest: sender_receiver_part = { via_token ~ ... | empty_parameter_member ~ to_token ~ ... }
+/// Grammar: see docs/grammar-mapping.adoc#parse_send_action
 pub fn parse_send_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SEND_ACTION_USAGE);
 
@@ -176,11 +175,10 @@ pub fn parse_send_action<P: SysMLParser>(p: &mut P) {
         return;
     }
 
-    // Check for sender_receiver_part directly (empty parameter member pattern)
-    // Per pest: sender_receiver_part = { via_token ~ ... | empty_parameter_member ~ to_token ~ ... }
+    // Check for a bare via/to clause with no payload expression.
     // When via/to appears directly, skip the expression parsing
     if !p.at(SyntaxKind::VIA_KW) && !p.at(SyntaxKind::TO_KW) && p.can_start_expression() {
-        // What to send (node_parameter_member = owned_expression)
+        // What to send
         parse_expression(p);
         p.skip_trivia();
     }
@@ -197,10 +195,11 @@ pub fn parse_send_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_send_action[]
 
+// tag::parse_if_action[]
 /// Parse if action usage
-/// Per pest: if_node = { occurrence_usage_prefix ~ if_node_parameter_member ~ action_body ~ (else_token ~ action_body_parameter)? }
-/// Per pest: if_node_parameter_member = { if_token ~ argument_expression_member ~ (then_token? ~ target_succession_member)? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_if_action
 pub fn parse_if_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::IF_ACTION_USAGE);
 
@@ -258,9 +257,11 @@ pub fn parse_if_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_if_action[]
 
+// tag::parse_loop_action[]
 /// Parse loop/while action usage
-/// Per pest: while_loop_node = { occurrence_usage_prefix ~ (while_token ~ argument_expression_member? | loop_token) ~ action_body ~ (until_token ~ argument_expression_member ~ semi_colon)? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_loop_action
 pub fn parse_loop_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::WHILE_LOOP_ACTION_USAGE);
 
@@ -292,11 +293,11 @@ pub fn parse_loop_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_loop_action[]
 
+// tag::parse_for_loop[]
 /// Parse for loop action usage
-/// Per pest: for_loop_node = { occurrence_usage_prefix ~ for_token ~ for_variable_declaration_member ~ in_token ~ node_parameter_member ~ action_body }
-/// Per pest: for_variable_declaration_member = { for_variable_declaration }
-/// Per pest: for_variable_declaration = { identification? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_for_loop
 pub fn parse_for_loop<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::FOR_LOOP_ACTION_USAGE);
 
@@ -327,10 +328,12 @@ pub fn parse_for_loop<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_for_loop[]
 
+// tag::parse_first_action[]
 /// Parse first action usage (initial succession)
-/// Per pest: empty_succession = { first_token ~ empty_succession_member ~ (then_token ~ empty_succession_member)? ~ semi_colon }
 /// Pattern: 'first' [mult]? TargetRef ('then' [mult]? TargetRef)? (';' | '{' '}')
+/// Grammar: see docs/grammar-mapping.adoc#parse_first_action
 pub fn parse_first_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SUCCESSION);
 
@@ -373,11 +376,12 @@ pub fn parse_first_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_first_action[]
 
+// tag::parse_then_succession[]
 /// Parse then succession
-/// Per pest: action_target_succession = { target_succession | guarded_target_succession | default_target_succession }
-/// Per pest: target_succession = { empty_succession_member ~ then_token ~ target_succession_member ~ usage_body }
 /// Pattern: 'then' TargetRef ';'
+/// Grammar: see docs/grammar-mapping.adoc#parse_then_succession
 pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SUCCESSION);
 
@@ -405,7 +409,6 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
         p.skip_trivia();
 
         // After inline action/state, check for additional target successions (then X, then Y)
-        // Per pest grammar: behavior_usage_member ~ target_succession_member*
         while p.at(SyntaxKind::THEN_KW) {
             bump_keyword(p); // then
 
@@ -510,10 +513,12 @@ pub fn parse_then_succession<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_then_succession[]
 
+// tag::parse_terminate_action[]
 /// Parse terminate action
-/// Per pest: terminate_node = { terminate_token ~ target_succession_member ~ semi_colon }
 /// Pattern: terminate [<target>] ;
+/// Grammar: see docs/grammar-mapping.adoc#parse_terminate_action
 pub fn parse_terminate_action<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONTROL_NODE); // or create TERMINATE_ACTION_USAGE if needed
 
@@ -529,10 +534,12 @@ pub fn parse_terminate_action<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_terminate_action[]
 
+// tag::parse_else_succession[]
 /// Parse else succession (default target succession)
-/// Per pest: default_target_succession = { else_token ~ target_succession_member ~ usage_body }
 /// Pattern: else <target>;
+/// Grammar: see docs/grammar-mapping.adoc#parse_else_succession
 pub fn parse_else_succession<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::SUCCESSION);
 
@@ -557,44 +564,26 @@ pub fn parse_else_succession<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_else_succession[]
 
+// tag::parse_control_node[]
 /// Parse control node (fork, join, merge, decide)
 ///
-/// Per grammar, these control nodes extend ActionUsage:
-///  ControlNode = MergeNode | DecisionNode | JoinNode| ForkNode
-///  ControlNodePrefix : OccurrenceUsage =
-///    RefPrefix
-///    ( isIndividual ?= 'individual )?
-///    ( portionKind = PortionKind { isPortion = true } )?
-///    UsageExtensionKeyword*
-///  MergeNode =
-///    ControlNodePrefix
-///    isComposite ?= 'merge' UsageDeclaration
-///    ActionBody
-///  DecisionNode =
-///    ControlNodePrefix
-///    isComposite ?= 'decide' UsageDeclaration
-///    ActionBody
-///  JoinNode =
-///    ControlNodePrefix
-///    isComposite ?= 'join' UsageDeclaration
-///    ActionBody
-///  ForkNode =
-///    ControlNodePrefix isComposite ?= 'fork' UsageDeclaration
-///    ActionBody
+/// Per the official SysML v2 KEBNF grammar, a control node is one of four
+/// kinds sharing a common `ControlNodePrefix`:
 ///
-/// ForkAction/DecideAction/JoinAction/MergeAction = Modifier UserDefinedKeyword*
-///   ('fork' | 'join' | 'merge' | 'decide')
-///   SysMLIdentifier? Name? SysMLCardinality?
-///   Specialization*
-///   DefaultValue?
-///   ('{' SysMLElement* '}' | ';')
-/// Pattern: ControlNodePrefix (ref/individual/snapshot/timeslice/etc.)
-///   ('fork' | 'join' | 'merge' | 'decide')
-///   Identification? Multiplicity?
-///   Typing? Specializations? Multiplicity?
-///   DefaultValue?
-///   Body
+///   ControlNode = MergeNode | DecisionNode | JoinNode | ForkNode
+///   ControlNodePrefix : OccurrenceUsage =
+///       RefPrefix ( isIndividual ?= 'individual' )?
+///       ( portionKind = PortionKind { isPortion = true } )?
+///       UsageExtensionKeyword*
+///   MergeNode    = ControlNodePrefix isComposite ?= 'merge'  UsageDeclaration ActionBody
+///   DecisionNode = ControlNodePrefix isComposite ?= 'decide' UsageDeclaration ActionBody
+///   JoinNode     = ControlNodePrefix isComposite ?= 'join'   UsageDeclaration ActionBody
+///   ForkNode     = ControlNodePrefix isComposite ?= 'fork'   UsageDeclaration ActionBody
+///
+/// Pattern: ('fork' | 'join' | 'merge' | 'decide') Identification? Body
+/// Grammar: see docs/grammar-mapping.adoc#parse_control_node
 pub fn parse_control_node<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONTROL_NODE);
 
@@ -630,11 +619,11 @@ pub fn parse_control_node<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_control_node[]
 
+// tag::parse_action_body[]
 /// Parse action body (for action definitions and action usages)
-/// Per pest: action_body = { semi_colon | (forward_curl_brace ~ action_body_item* ~ backward_curl_brace) }
-/// Per pest: action_body_item can include: directed_parameter_member, structure_usage_member, behavior_usage_member,
-///           action_node_member, initial_node_member, etc.
+/// Grammar: see docs/grammar-mapping.adoc#parse_action_body
 pub fn parse_action_body<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 
@@ -660,11 +649,12 @@ pub fn parse_action_body<P: SysMLParser>(p: &mut P) {
     p.expect(SyntaxKind::R_BRACE);
     p.finish_node(); // NAMESPACE_BODY
 }
+// end::parse_action_body[]
 
+// tag::parse_state_body[]
 /// Parse state body (for state usages)
-/// Per pest: state_usage_body = { semi_colon | (parallel_marker? ~ forward_curl_brace ~ state_body_part ~ backward_curl_brace) }
-/// Per pest: state_body_part = { state_body_item* }
 /// Pattern: ";" | parallel? "{" state_body_part "}"
+/// Grammar: see docs/grammar-mapping.adoc#parse_state_body
 pub fn parse_state_body<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 
@@ -698,14 +688,13 @@ pub fn parse_state_body<P: SysMLParser>(p: &mut P) {
 
     p.finish_node(); // NAMESPACE_BODY
 }
+// end::parse_state_body[]
 
+// tag::parse_state_body_element[]
 /// Parse a state body element
-/// Per pest: state_body_item includes: entry_action_member, do_action_member, exit_action_member,
-///           entry_transition_member, transition_usage_member, target_transition_usage_member,
-///           behavior_usage_member, and more
-/// Per pest: behavior_usage_member ~ target_transition_usage_member*
 /// This means after accept/action/etc., we can have "then target;" transitions
 /// BUT: entry/do/exit subactions are standalone and don't have transitions after
+/// Grammar: see docs/grammar-mapping.adoc#parse_state_body_element
 fn parse_state_body_element<P: SysMLParser>(p: &mut P) {
     // Check if this is a standalone state subaction (entry/do/exit)
     // These are complete statements and should NOT be followed by target transitions
@@ -717,7 +706,7 @@ fn parse_state_body_element<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 
     // Only check for target transitions if this was NOT a state subaction
-    // State subactions (entry/do/exit) are standalone per the pest grammar
+    // State subactions (entry/do/exit) are standalone, not followed by a transition
     if !is_state_subaction {
         // After behavior usages, check for target transitions
         // Target transitions can start with: accept, if, do, or then
@@ -731,11 +720,13 @@ fn parse_state_body_element<P: SysMLParser>(p: &mut P) {
         }
     }
 }
+// end::parse_state_body_element[]
 
+// tag::parse_target_transition[]
 /// Parse target transition usage
-/// Per pest grammar:
-/// target_transition_usage = empty_parameter_member
-///   ~ (transition_usage_keyword ~ ... | trigger_action_member ~ ... | guard_expression_member ~ ...)?\n///   ~ then_token ~ transition_succession_member ~ action_body\n/// This handles: [accept ...] [if expr] [do action] then target;\n/// Per pest: target_transition_usage = { target_transition_usage_declaration ~ transition_succession_block }\n/// Per pest: target_transition_usage_declaration = { (trigger_action_member? ~ guard_expression_member? ~ effect_behavior_member?)? ~ then_token ~ transition_succession_member }\n/// Pattern: [accept <trigger>] [if <guard>] [do <effect>] then <target> [body]
+/// This handles: [accept ...] [if expr] [do action] then target;
+/// Pattern: [accept <trigger>] [if <guard>] [do <effect>] then <target> [body]
+/// Grammar: see docs/grammar-mapping.adoc#parse_target_transition
 fn parse_target_transition<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::TRANSITION_USAGE);
 
@@ -814,3 +805,4 @@ fn parse_target_transition<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_target_transition[]

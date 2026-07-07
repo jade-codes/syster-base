@@ -4,10 +4,10 @@ use super::*;
 // SysML-specific parsing functions (called from trait implementations)
 // =============================================================================
 
+// tag::parse_constraint_body[]
 /// ConstraintBody = ';' | '{' Expression '}'
-/// Per pest: constraint_body = { ";" | ("{" ~ constraint_body_part ~ "}") }
-/// Per pest: constraint_body_part = { definition_body_item* ~ (visible_annotating_member* ~ owned_expression)? }
 /// Pattern: semicolon | { [members]* [expression] }
+/// Grammar: see docs/grammar-mapping.adoc#parse_constraint_body
 pub fn parse_constraint_body<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONSTRAINT_BODY);
 
@@ -17,8 +17,7 @@ pub fn parse_constraint_body<P: SysMLParser>(p: &mut P) {
         p.bump();
         p.skip_trivia();
 
-        // Per pest grammar: constraint_body_part = definition_body_item* ~ (visible_annotating_member* ~ owned_expression)?
-        // This means we can have doc comments, imports, parameters, etc. before the expression
+        // The body can have doc comments, imports, parameters, etc. before the expression
         while !p.at(SyntaxKind::R_BRACE) && !p.at(SyntaxKind::ERROR) {
             // Check for annotations (doc, comment, etc.)
             if p.at(SyntaxKind::COMMENT_KW)
@@ -111,6 +110,7 @@ pub fn parse_constraint_body<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_constraint_body[]
 
 /// Textual representation: rep <name> language <string> or just language <string>
 pub(super) fn parse_textual_representation<P: SysMLParser>(p: &mut P) {
@@ -142,8 +142,9 @@ pub(super) fn parse_textual_representation<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
-/// Definition or Usage - determined by presence of 'def' keyword
-/// Per pest: package_body_item = { (metadata_usage | visibility_prefix? ~ (package_member | import_alias)) ~ ";"? }
+// tag::parse_dependency[]
+/// Parse a dependency declaration: dependency [<name> from] <source>[,<source>]* to <target>[,<target>]*
+/// Grammar: see docs/grammar-mapping.adoc#sysml_parse_dependency
 pub fn parse_dependency<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::DEPENDENCY);
 
@@ -196,6 +197,7 @@ pub fn parse_dependency<P: SysMLParser>(p: &mut P) {
     p.parse_body();
     p.finish_node();
 }
+// end::parse_dependency[]
 
 /// Filter = 'filter' Expression ';'
 pub fn parse_filter<P: SysMLParser>(p: &mut P) {
@@ -216,10 +218,11 @@ pub fn parse_filter<P: SysMLParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_metadata_usage[]
 /// MetadataUsage = '@' QualifiedName ...
-/// Per pest: metadata_usage = { "@" ~ qualified_name ~ ("about" ~ qualified_name_list)? ~ (";"|metadata_body) }
 /// Pattern: @ <qualified_name> [about <references>] <body|semicolon>
 /// Also handles prefix annotations: @Metadata part x; where the metadata annotates the part
+/// Grammar: see docs/grammar-mapping.adoc#parse_metadata_usage
 pub fn parse_metadata_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::METADATA_USAGE);
 
@@ -249,6 +252,7 @@ pub fn parse_metadata_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_metadata_usage[]
 
 /// Check if the current token could start a definition or usage
 fn is_definition_or_usage_start<P: SysMLParser>(p: &P) -> bool {
@@ -299,11 +303,10 @@ fn is_definition_or_usage_start<P: SysMLParser>(p: &P) -> bool {
     ])
 }
 
-/// BindUsage = 'bind' connector_end '=' connector_end body
-/// e.g., bind start = done { ... }
-/// Per pest: binding_connector = { "bind" ~ connector_end ~ "=" ~ connector_end ~ (";"|connector_body) }
-/// Per pest: connector_end = { multiplicity? ~ owned_feature_chain }
-/// Pattern: bind [mult] <source> = [mult] <target> <body|semicolon>
+// tag::parse_variant_usage[]
+/// VariantUsage = 'variant' [usage_keyword] <name>? [mult] [typing] [specializations] <body|semicolon>
+/// Pattern: variant [part|action|use case|...] <name> [mult] [typing] [specializations] <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_variant_usage
 pub fn parse_variant_usage<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -346,8 +349,12 @@ pub fn parse_variant_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_variant_usage[]
 
-/// Redefines feature member\n/// Per pest: owned_feature_member = { visibility_prefix? ~ (owned_feature_declaration|owned_redefinition) ~ value_part? ~ (body|\";\") }\n/// Per pest: owned_redefinition = { usage_prefix* ~ (\":>>\" ~ qualified_name_list | \"subsets\" ~ qualified_name_list) }\n/// Pattern: [prefixes] :>>|subsets <name>[,<name>]* [typing] [mult] [specializations] [default] <body|semicolon>
+// tag::parse_redefines_feature_member[]
+/// Redefines feature member
+/// Pattern: [prefixes] :>>|subsets <name>[,<name>]* [typing] [mult] [specializations] [default] <body|semicolon>
+/// Grammar: see docs/grammar-mapping.adoc#parse_redefines_feature_member
 pub fn parse_redefines_feature_member<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::USAGE);
 
@@ -395,6 +402,7 @@ pub fn parse_redefines_feature_member<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_redefines_feature_member[]
 
 /// Shorthand feature member
 /// Parse anonymous usage: `: Type;` or `typed by Type;`
@@ -466,8 +474,9 @@ pub fn parse_shorthand_feature_member<P: SysMLParser>(p: &mut P) {
 // Definition/Usage Classification & Dispatch
 // =============================================================================
 
-/// Per pest: package_member = { (definition | usage | alias_member | ...) }
+// tag::parse_definition_or_usage[]
 /// Pattern: Determines whether to parse as definition (has 'def') or usage (no 'def')
+/// Grammar: see docs/grammar-mapping.adoc#parse_definition_or_usage
 pub fn parse_definition_or_usage<P: SysMLParser>(p: &mut P) {
     if has_def_keyword(p) {
         parse_definition(p);
@@ -475,6 +484,7 @@ pub fn parse_definition_or_usage<P: SysMLParser>(p: &mut P) {
         parse_usage(p);
     }
 }
+// end::parse_definition_or_usage[]
 
 /// Scan ahead (skipping trivia) to determine if this declaration has a 'def' keyword
 fn has_def_keyword<P: SysMLParser>(p: &P) -> bool {
@@ -500,8 +510,10 @@ fn has_def_keyword<P: SysMLParser>(p: &P) -> bool {
     false
 }
 
+// tag::parse_definition[]
+/// Pattern: [abstract|variation|individual] <keyword> def <name> <specializations> <body>
+/// Grammar: see docs/grammar-mapping.adoc#parse_definition
 fn parse_definition<P: SysMLParser>(p: &mut P) {
-    // Per pest: definition = { prefix* ~ definition_declaration ~ definition_body }
     // Pattern: [abstract|variation|individual] <keyword> def <name> <specializations> <body>
     let checkpoint = p.checkpoint();
 
@@ -575,3 +587,4 @@ fn parse_definition<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_definition[]

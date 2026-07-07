@@ -4,7 +4,10 @@ use super::*;
 // State Body Elements
 // =============================================================================
 
-/// StateSubaction = ('entry' | 'do' | 'exit') Identification? Body\n/// Per pest: entry_transition_member = { \"entry\" ~ (entry_transition_member_declaration|semi_colon) }\n/// Per pest: do_behavior_member = { \"do\" ~ (behavior_usage_member_declaration|semi_colon) }\n/// Per pest: exit_transition_member = { \"exit\" ~ (exit_transition_member_declaration|semi_colon) }\n/// Pattern: entry|do|exit [assign|send|accept|action|<name>] [body|semicolon]
+// tag::parse_state_subaction[]
+/// StateSubaction = ('entry' | 'do' | 'exit') Identification? Body
+/// Pattern: entry|do|exit [assign|send|accept|action|<name>] [body|semicolon]
+/// Grammar: see docs/grammar-mapping.adoc#parse_state_subaction
 pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::STATE_SUBACTION);
 
@@ -28,8 +31,6 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
         parse_accept_action(p);
     } else if p.at(SyntaxKind::ACTION_KW) {
         // action [name] [: Type] [:>> ref, ...] body
-        // Per pest: action_keyword ~ (identifier ~ semi_colon | usage_declaration? ~ action_body)
-        // where usage_declaration includes typing and specializations
         p.bump(); // action
         p.skip_trivia();
         if p.at_name_token() || p.at(SyntaxKind::LT) {
@@ -105,21 +106,11 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_state_subaction[]
 
-/// TransitionUsage per Pest grammar:
-/// transition_usage = transition_usage_keyword
-///   ~ (usage_declaration ~ (first_token ~ transition_source_member | transition_source_member)
-///     | first_token ~ transition_source_member
-///     | transition_source_member)
-///   ~ empty_parameter_member
-///   ~ (empty_parameter_member ~ trigger_action_member)?  // accept trigger
-///   ~ guard_expression_member?                          // if guard
-///   ~ effect_behavior_member?                           // do effect
-///   ~ then_token ~ transition_succession_member
-///   ~ action_body
-/// Per pest: transition_usage = { (transition_usage_declaration | first_node) ~ transition_succession_block }
-/// Per pest: transition_succession = { succession_as_usage | transition_feature_membership }
+// tag::parse_transition[]
 /// Pattern: transition [name] [first] <source>? accept [trigger] [if guard] [do effect] then <target> body
+/// Grammar: see docs/grammar-mapping.adoc#parse_transition
 pub fn parse_transition<P: SysMLParser>(p: &mut P) {
     // Wrap in USAGE so it gets extracted by NamespaceMember::cast
     p.start_node(SyntaxKind::USAGE);
@@ -129,7 +120,6 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
     p.skip_trivia();
 
     // Optional usage declaration (transition name)
-    // Per pest: usage_declaration ~ (first_token ~ transition_source_member | transition_source_member)
     // Heuristic: if we see a name that's NOT 'first', and peek shows 'first' or newline after it, it's a name
     if p.at_name_token() && !p.at(SyntaxKind::FIRST_KW) {
         // Check if next token (after skipping this name) is 'first'
@@ -223,3 +213,4 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
 
     p.finish_node(); // USAGE
 }
+// end::parse_transition[]

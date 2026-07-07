@@ -1,9 +1,9 @@
 use super::*;
 
+// tag::parse_usage[]
+/// Pattern: [prefixes] [#metadata] [event] <keyword> [<name>] [<mult>] [<typing>] [<specializations>] [<default>] <body>
+/// Grammar: see docs/grammar-mapping.adoc#parse_usage
 pub fn parse_usage<P: SysMLParser>(p: &mut P) {
-    // Per pest: usage = { (usage_prefix* ~ metadata_prefix* ~ event_prefix? ~ usage_element) | owned_crossing_feature }
-    // Per pest: usage_element = { keyword ~ usage_declaration ~ value_part? ~ (body | ";") }
-    // Per pest: owned_crossing_feature = { "end" ~ (identifier ~ multiplicity?)? ~ keyword ~ usage_declaration }
     // Pattern: [prefixes] [#metadata] [event] <keyword> [<name>] [<mult>] [<typing>] [<specializations>] [<default>] <body>
     // Checkpoint instead of an upfront start_node: the specific node kind (e.g.
     // ACTION_USAGE vs generic USAGE) isn't known until the usage keyword itself
@@ -118,8 +118,8 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
     parse_usage_keyword(p);
     p.skip_trivia();
 
-    // Per pest: constraint_usage_declaration is optional (usage_declaration? ~ value_part?)
-    // So we can have just "requirement;" or "constraint;" with no name/typing/body content
+    // The declaration part is optional, so we can have just "requirement;" or
+    // "constraint;" with no name/typing/body content.
     // Check if we're at body start immediately after keyword
     if p.at(SyntaxKind::SEMICOLON) || p.at(SyntaxKind::L_BRACE) {
         // Minimal usage: just keyword + body
@@ -525,6 +525,7 @@ pub fn parse_usage<P: SysMLParser>(p: &mut P) {
 
     p.finish_node();
 }
+// end::parse_usage[]
 
 /// Parse allocate end member: [name ::>] qualified_name
 fn parse_allocate_end_member<P: SysMLParser>(p: &mut P) {

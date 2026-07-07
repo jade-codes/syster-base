@@ -1,6 +1,7 @@
 //! Expression parsing for KerML and SysML
 //!
-//! This module implements the expression precedence chain from kerml_expressions.pest:
+//! This module implements the following expression precedence chain (highest to
+//! lowest binding, i.e. `PrimaryExpression` binds tightest):
 //!
 //! ```text
 //! OwnedExpression → ConditionalExpression → NullCoalescingExpression
@@ -10,6 +11,13 @@
 //!     → ExponentiationExpression → UnaryExpression → ExtentExpression
 //!     → PrimaryExpression
 //! ```
+//!
+//! The official KEBNF grammar (`docs/grammar/KerML-textual-bnf.kebnf`) doesn't name
+//! each precedence level as its own rule the way this chain does -- it collapses
+//! almost all of them into three generic rules, `ConditionalBinaryOperatorExpression`,
+//! `BinaryOperatorExpression`, and `UnaryOperatorExpression`, and expresses precedence
+//! via a prose table rather than the grammar productions themselves. See
+//! `docs/grammar-mapping.adoc` for the per-function mapping to those rules.
 
 // Submodules
 mod atoms;
@@ -71,24 +79,22 @@ pub trait ExpressionParser {
     fn parse_argument(&mut self);
 }
 
+// tag::parse_expression[]
 /// Parse an expression, returning true if any tokens were consumed
-/// Per pest: owned_expression = { conditional_expression }
 /// Entry point for all expressions
+/// Grammar: see docs/grammar-mapping.adoc#parse_expression
 pub fn parse_expression<P: ExpressionParser>(p: &mut P) -> bool {
     let start_pos = p.get_pos();
     parse_conditional_expression(p);
     p.get_pos() > start_pos
 }
+// end::parse_expression[]
 
-/// ConditionalExpression per Pest:
-/// Per pest: conditional_expression = {
-///     if_token ~ null_coalescing_expression ~ question_mark ~ owned_expression_reference ~ else_token ~ owned_expression_reference
-///     | null_coalescing_expression
-/// }
-///
+// tag::parse_ternary_conditional[]
 /// We also support the SysML-style `if cond then expr else expr` with `then` keyword
 ///
 /// Parse if ? then else - KerML style
+/// Grammar: see docs/grammar-mapping.adoc#parse_ternary_conditional
 fn parse_ternary_conditional<P: ExpressionParser>(p: &mut P) {
     p.bump(); // ?
     p.skip_trivia();
@@ -100,6 +106,7 @@ fn parse_ternary_conditional<P: ExpressionParser>(p: &mut P) {
         parse_expression(p);
     }
 }
+// end::parse_ternary_conditional[]
 
 /// Parse if then else - SysML style
 fn parse_keyword_conditional<P: ExpressionParser>(p: &mut P) {
@@ -150,8 +157,9 @@ pub fn parse_conditional_expression<P: ExpressionParser>(p: &mut P) {
     p.finish_node();
 }
 
+// tag::parse_null_coalescing_expression[]
 /// NullCoalescingExpression = ImpliesExpression ('??' ImpliesExpression)*
-/// Per pest: null_coalescing_expression = { implies_expression ~ (double_question_mark ~ implies_expression_reference)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_null_coalescing_expression
 pub fn parse_null_coalescing_expression<P: ExpressionParser>(p: &mut P) {
     parse_implies_expression(p);
 
@@ -161,9 +169,11 @@ pub fn parse_null_coalescing_expression<P: ExpressionParser>(p: &mut P) {
         parse_implies_expression(p);
     }
 }
+// end::parse_null_coalescing_expression[]
 
+// tag::parse_implies_expression[]
 /// ImpliesExpression = OrExpression ('implies' OrExpression)*
-/// Per pest: implies_expression = { or_expression ~ (implies_token ~ or_expression_reference)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_implies_expression
 pub fn parse_implies_expression<P: ExpressionParser>(p: &mut P) {
     parse_or_expression(p);
 
@@ -173,9 +183,11 @@ pub fn parse_implies_expression<P: ExpressionParser>(p: &mut P) {
         parse_or_expression(p);
     }
 }
+// end::parse_implies_expression[]
 
+// tag::parse_or_expression[]
 /// OrExpression = XorExpression (('|' | 'or') XorExpression)*
-/// Per pest: or_expression = { xor_expression ~ ((or_token ~ xor_expression_reference) | ("|" ~ xor_expression))* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_or_expression
 pub fn parse_or_expression<P: ExpressionParser>(p: &mut P) {
     parse_xor_expression(p);
     p.skip_trivia();
@@ -187,9 +199,11 @@ pub fn parse_or_expression<P: ExpressionParser>(p: &mut P) {
         p.skip_trivia();
     }
 }
+// end::parse_or_expression[]
 
+// tag::parse_xor_expression[]
 /// XorExpression = AndExpression ('xor' AndExpression)*
-/// Per pest: xor_expression = { and_expression ~ (xor_token ~ and_expression)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_xor_expression
 pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
     parse_and_expression(p);
     p.skip_trivia();
@@ -201,9 +215,11 @@ pub fn parse_xor_expression<P: ExpressionParser>(p: &mut P) {
         p.skip_trivia();
     }
 }
+// end::parse_xor_expression[]
 
+// tag::parse_and_expression[]
 /// AndExpression = EqualityExpression (('&' | 'and') EqualityExpression)*
-/// Per pest: and_expression = { equality_expression ~ ((and_token ~ equality_expression_reference) | ("&" ~ equality_expression))* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_and_expression
 pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
     parse_equality_expression(p);
     p.skip_trivia();
@@ -215,10 +231,11 @@ pub fn parse_and_expression<P: ExpressionParser>(p: &mut P) {
         p.skip_trivia();
     }
 }
+// end::parse_and_expression[]
 
+// tag::parse_equality_expression[]
 /// EqualityExpression = ClassificationExpression (('==' | '!=' | '===' | '!==') ClassificationExpression)*
-/// Per pest: equality_expression = { classification_expression ~ (equality_operator ~ classification_expression)* }
-/// Per pest: equality_operator is defined in parent grammar (KerML/SysML)
+/// Grammar: see docs/grammar-mapping.adoc#parse_equality_expression
 pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
     parse_classification_expression(p);
     p.skip_trivia();
@@ -235,9 +252,10 @@ pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
         p.skip_trivia();
     }
 }
+// end::parse_equality_expression[]
 
+// tag::parse_classification_expression[]
 /// ClassificationExpression = RelationalExpression (('hastype' | 'istype' | 'as' | 'meta' | '@' | '@@') TypeReference)?
-/// Per pest: classification_expression defined in each grammar - handles type operators
 /// KerML/SysML define their own classification operators
 /// Also handles prefix forms: 'hastype T', 'istype T', and '@ T' (implicit self operand,
 /// per KerMLHasTypeSelfExpression = ("hastype" | "@") MCType). Without this, a leading '@'
@@ -245,6 +263,7 @@ pub fn parse_equality_expression<P: ExpressionParser>(p: &mut P) {
 /// happens to consume the same tokens but doesn't short-circuit the way a bare MCType should
 /// (unlike the keyword form, it would otherwise allow further postfix/binary continuation
 /// onto the type reference).
+/// Grammar: see docs/grammar-mapping.adoc#parse_classification_expression
 pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
     // Handle prefix hastype/istype/@ with implicit self operand
     if p.at_any(&[SyntaxKind::HASTYPE_KW, SyntaxKind::ISTYPE_KW, SyntaxKind::AT]) {
@@ -270,10 +289,11 @@ pub fn parse_classification_expression<P: ExpressionParser>(p: &mut P) {
         p.parse_qualified_name();
     }
 }
+// end::parse_classification_expression[]
 
+// tag::parse_relational_expression[]
 /// RelationalExpression = RangeExpression (('<' | '>' | '<=' | '>=') RangeExpression)*
-/// Per pest: relational_expression = { range_expression ~ (relational_operator ~ range_expression)* }
-/// Per pest: relational_operator is defined in parent grammar
+/// Grammar: see docs/grammar-mapping.adoc#parse_relational_expression
 pub fn parse_relational_expression<P: ExpressionParser>(p: &mut P) {
     parse_range_expression(p);
     p.skip_trivia();
@@ -290,9 +310,11 @@ pub fn parse_relational_expression<P: ExpressionParser>(p: &mut P) {
         p.skip_trivia();
     }
 }
+// end::parse_relational_expression[]
 
+// tag::parse_range_expression[]
 /// RangeExpression = AdditiveExpression ('..' AdditiveExpression)?
-/// Per pest: range_expression = { additive_expression ~ (".." ~ additive_expression)? }
+/// Grammar: see docs/grammar-mapping.adoc#parse_range_expression
 pub fn parse_range_expression<P: ExpressionParser>(p: &mut P) {
     parse_additive_expression(p);
 
@@ -303,9 +325,11 @@ pub fn parse_range_expression<P: ExpressionParser>(p: &mut P) {
         parse_additive_expression(p);
     }
 }
+// end::parse_range_expression[]
 
+// tag::parse_additive_expression[]
 /// AdditiveExpression = MultiplicativeExpression (('+' | '-') MultiplicativeExpression)*
-/// Per pest: additive_expression = { multiplicative_expression ~ (additive_operator ~ multiplicative_expression)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_additive_expression
 pub fn parse_additive_expression<P: ExpressionParser>(p: &mut P) {
     parse_multiplicative_expression(p);
 
@@ -315,9 +339,11 @@ pub fn parse_additive_expression<P: ExpressionParser>(p: &mut P) {
         parse_multiplicative_expression(p);
     }
 }
+// end::parse_additive_expression[]
 
+// tag::parse_multiplicative_expression[]
 /// MultiplicativeExpression = ExponentiationExpression (('*' | '/' | '%') ExponentiationExpression)*
-/// Per pest: multiplicative_expression = { exponentiation_expression ~ (multiplicative_operator ~ exponentiation_expression)* }
+/// Grammar: see docs/grammar-mapping.adoc#parse_multiplicative_expression
 pub fn parse_multiplicative_expression<P: ExpressionParser>(p: &mut P) {
     parse_exponentiation_expression(p);
 
@@ -327,10 +353,12 @@ pub fn parse_multiplicative_expression<P: ExpressionParser>(p: &mut P) {
         parse_exponentiation_expression(p);
     }
 }
+// end::parse_multiplicative_expression[]
 
+// tag::parse_exponentiation_expression[]
 /// ExponentiationExpression = UnaryExpression (('**' | '^') ExponentiationExpression)?
-/// Per pest: exponentiation_expression = { unary_expression ~ (exponentiation_operator ~ exponentiation_expression)? }
 /// Note: Right-associative by recursing on right side
+/// Grammar: see docs/grammar-mapping.adoc#parse_exponentiation_expression
 pub fn parse_exponentiation_expression<P: ExpressionParser>(p: &mut P) {
     parse_unary_expression(p);
 
@@ -341,9 +369,11 @@ pub fn parse_exponentiation_expression<P: ExpressionParser>(p: &mut P) {
         parse_exponentiation_expression(p);
     }
 }
+// end::parse_exponentiation_expression[]
 
+// tag::parse_unary_expression[]
 /// UnaryExpression = ('+' | '-' | '~' | 'not')? ExtentExpression
-/// Per pest: unary_expression = { unary_operator ~ extent_expression | extent_expression }
+/// Grammar: see docs/grammar-mapping.adoc#parse_unary_expression
 pub fn parse_unary_expression<P: ExpressionParser>(p: &mut P) {
     if p.at_any(&[
         SyntaxKind::PLUS,
@@ -356,9 +386,11 @@ pub fn parse_unary_expression<P: ExpressionParser>(p: &mut P) {
     }
     parse_extent_expression(p);
 }
+// end::parse_unary_expression[]
 
+// tag::parse_extent_expression[]
 /// ExtentExpression = ('all')? PrimaryExpression
-/// Per pest: extent_expression defined in each grammar - handles 'all' and collection ops
+/// Grammar: see docs/grammar-mapping.adoc#parse_extent_expression
 pub fn parse_extent_expression<P: ExpressionParser>(p: &mut P) {
     if p.at(SyntaxKind::ALL_KW) {
         p.bump();
@@ -366,3 +398,4 @@ pub fn parse_extent_expression<P: ExpressionParser>(p: &mut P) {
     }
     parse_primary_expression(p);
 }
+// end::parse_extent_expression[]
