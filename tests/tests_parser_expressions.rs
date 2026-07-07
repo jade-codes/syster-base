@@ -70,6 +70,28 @@ fn test_classification_expressions(#[case] input: &str) {
     assert!(parses_successfully(input), "Failed to parse: {}", input);
 }
 
+// Regression: `@ Type` (KerMLHasTypeSelfExpression's symbolic self-form, implicit
+// self operand) used to fall through to base-expression's metadata-access parsing
+// instead of being recognized as a classification-expression prefix, unlike its
+// keyword-form sibling `hastype Type`. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("constraint def C { @Integer }")]
+#[case("constraint def C { istype Integer }")]
+#[case("constraint def C { hastype Integer }")]
+// Infix forms and the metadata-reference-as-expression use of `@` (e.g. in a
+// filter condition) must keep working unchanged.
+#[case("constraint def C { x @ Integer }")]
+#[case("view def V { filter @Safety; }")]
+fn test_hastype_self_form(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Number Literals
 // ============================================================================
