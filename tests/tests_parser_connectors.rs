@@ -43,6 +43,27 @@ fn test_connection_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: a connector/succession `Endpoint` only supported reference-subsetting
+// (`::>` / `references`); general `:`, `:>`, `:>>` specializations on an endpoint
+// weren't parsed. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("part def P { connect a : Type to c; }")]
+#[case("part def P { connect a :> b to c; }")]
+#[case("part def P { connect a :>> b to c; }")]
+#[case("part def P { connect a to c :> d; }")]
+// The existing reference-subsetting form must keep working.
+#[case("part def P { connect a ::> b to c; }")]
+#[case("part def P { connect a references b to c; }")]
+fn test_connector_endpoint_specializations(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Interface Definitions
 // ============================================================================

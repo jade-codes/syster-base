@@ -1,3 +1,24 @@
+=  Connector/succession `Endpoint`
+
+Only reference-subsetting (`::>` / `references`) is supported on endpoints; general `:>`, `:>>`, `:` specializations on an endpoint aren't parsed.
+
+Fixed on both sides:
+
+* SysML `parse_connector_end_reference` (`sysml/connectors.rs`) kept the
+  existing `::>`/`references` handling untouched (it has a bespoke AST
+  shape relied on by `ConnectorEnd::target()` in `parser/ast/relationships.rs`
+  -- reusing the generic specialization helper there would have wrapped the
+  reference target in a `SPECIALIZATION` node and broken that accessor), and
+  added a call to `parse_specializations` in the `else` branch to cover the
+  general `:`, `:>`, `:>>` forms.
+* KerML `parse_endpoint_references` (`kerml/connectors.rs`) had no
+  specialization handling at all for either endpoint of a `binding`/
+  succession pairing (`x = y` / `x then y`); added `parse_specializations`
+  after each endpoint's qualified name.
+
+Regression tests added in `tests/tests_parser_connectors.rs`
+(`test_connector_endpoint_specializations`) and
+`tests/tests_parser_kerml.rs` (`test_binding_endpoint_specializations`).
 = SysML v2 Grammar Coverage Punch List
 :toc:
 
