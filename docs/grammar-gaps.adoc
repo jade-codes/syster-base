@@ -48,6 +48,10 @@ Checkboxes are unchecked; check them off as items are fixed.
   immediately before a `StateUsage` body. Regression tests added in
   `tests/tests_parser_behavioral.rs`
   (`test_parallel_state_marker`, `test_parallel_as_identifier`)._
+* [ ] `state s parallel { ... }` -- confirmed empirically: `parallel` is
+  swallowed as the name of a *second, unrelated* usage instead of a modifier
+  on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
+  path never reaches it.
 * [ ] `do action1()` inside a transition -- call-style effects break parsing
   and corrupt the rest of the transition (the `then` target is dropped into
   an `ERROR` node). Only bare-name / `send` / `accept` / `assign` / inline
@@ -59,6 +63,17 @@ Checkboxes are unchecked; check them off as items are fixed.
 * [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
   mis-dispatched into `parse_requirement_constraint`, which only checks for
   `constraint`, not `requirement`; corrupts the tree.
+* [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree. +
+  _Fixed: `entry.rs`'s `ASSERT_KW`/`ASSUME_KW`/`REQUIRE_KW` dispatch now also
+  checks for `verify`/`requirement` (not just `satisfy`/`not`), and
+  `parse_requirement_verification` now consumes any of
+  `assert`/`assume`/`require` as its leading modifier instead of only
+  `assert`. As a side effect this also fixes the analogous
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. Regression
+  tests added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
 * [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
   checked in `parse_requirement_constraint` (`requirements.rs:119`).
 * [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
