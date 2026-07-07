@@ -152,7 +152,11 @@ pub fn parse_connector_end<P: SysMLParser>(p: &mut P) {
 // end::parse_connector_end[]
 
 /// Parse connector end reference
-/// identifier ::> reference | identifier references reference | qualified_name
+/// identifier ::> reference | identifier references reference | qualified_name Specialization*
+/// Per grammar: Endpoint = MCQualifiedName SysMLCardinality? Specialization* -- besides the
+/// reference-subsetting form (`::>` / `references`) handled specially below (to preserve its
+/// AST shape for `ConnectorEnd::target()`), an endpoint can also carry a plain `:` typing or
+/// `:>` / `:>>` specialization/redefinition, e.g. `end : Type`, `end :> super`.
 fn parse_connector_end_reference<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONNECTOR_END_REFERENCE);
 
@@ -166,6 +170,10 @@ fn parse_connector_end_reference<P: SysMLParser>(p: &mut P) {
 
             // Parse target (qualified name or feature chain)
             parse_qualified_name_and_skip(p);
+        } else {
+            // General Specialization* on the endpoint (`:`, `:>`, `:>>`).
+            parse_specializations(p);
+            p.skip_trivia();
         }
     }
 
@@ -481,17 +489,10 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
             p.parse_qualified_name();
         }
     } else if has_of_clause {
-        // Pattern: flow of Type [mult] from X to Y
+        // Pattern: flow of <payload> [from X to Y]
         p.bump(); // of
         p.skip_trivia();
-        p.parse_qualified_name(); // Type
-        p.skip_trivia();
-
-        // Optional multiplicity
-        if p.at(SyntaxKind::L_BRACKET) {
-            p.parse_multiplicity();
-            p.skip_trivia();
-        }
+        parse_flow_payload(p);
 
         // Flow part: from X to Y or X to Y - wrap in FROM_TO_CLAUSE
         parse_optional_from_to(p);
@@ -525,18 +526,11 @@ pub fn parse_flow_usage<P: SysMLParser>(p: &mut P) {
             p.skip_trivia();
         }
 
-        // Optional 'of Type' for named flows
+        // Optional 'of <payload>' for named flows
         if p.at(SyntaxKind::OF_KW) {
             p.bump();
             p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-
-            // Multiplicity after of clause
-            if p.at(SyntaxKind::L_BRACKET) {
-                p.parse_multiplicity();
-                p.skip_trivia();
-            }
+            parse_flow_payload(p);
         }
 
         // Flow part: from X to Y - wrap in FROM_TO_CLAUSE

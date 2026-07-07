@@ -57,6 +57,23 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
         parse_action_body(p);
     } else if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
+    } else if p.at_name_token()
+        && matches!(
+            p.peek_kind(1),
+            SyntaxKind::DOT | SyntaxKind::COLON_COLON
+        )
+    {
+        // Qualified-name (feature chain) reference to an existing action, per grammar:
+        // EntryAction/DoAction = ... MCQualifiedName ("{" SysMLElement* "}" | ";")
+        // e.g. `entry Off.entry;` or `entry On::entry;`
+        p.parse_qualified_name();
+        p.skip_trivia();
+
+        if p.at(SyntaxKind::L_BRACE) {
+            parse_action_body(p);
+        } else if p.at(SyntaxKind::SEMICOLON) {
+            p.bump();
+        }
     } else if p.at_name_token() {
         // Could be: identifier ; or identifier [: Type] [:> ref, ...] { ... } or semicolon
         // Pattern: do myAction : ActionType { ... }
@@ -138,39 +155,7 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
     if p.at(SyntaxKind::ACCEPT_KW) {
         p.bump(); // accept
         p.skip_trivia();
-
-        // Payload name (but not if it's a trigger keyword)
-        if (p.at_name_token() || p.at(SyntaxKind::LT))
-            && !p.at(SyntaxKind::AT_KW)
-            && !p.at(SyntaxKind::AFTER_KW)
-            && !p.at(SyntaxKind::WHEN_KW)
-            && !p.at(SyntaxKind::VIA_KW)
-        {
-            p.parse_identification();
-            p.skip_trivia();
-        }
-
-        // Optional typing
-        if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::COLON_GT) {
-            p.parse_typing();
-            p.skip_trivia();
-        }
-
-        // Optional trigger expression (at/after/when)
-        if p.at(SyntaxKind::AT_KW) || p.at(SyntaxKind::AFTER_KW) || p.at(SyntaxKind::WHEN_KW) {
-            p.bump();
-            p.skip_trivia();
-            parse_expression(p);
-            p.skip_trivia();
-        }
-
-        // Optional via
-        if p.at(SyntaxKind::VIA_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
+        parse_accept_trigger(p);
     }
 
     // Optional guard: if <expression>
@@ -199,8 +184,12 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
         } else if p.at(SyntaxKind::ACTION_KW) {
             parse_inline_action(p);
         } else if p.at_name_token() {
-            // Typed reference (action name)
+            // Typed reference (action name), optionally invoked as a call: do action1();
             p.parse_qualified_name();
+            p.skip_trivia();
+            if p.at(SyntaxKind::L_PAREN) {
+                parse_argument_list(p);
+            }
         }
         p.skip_trivia();
     }

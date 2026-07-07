@@ -20,3 +20,445 @@ which an existing regression test (`test_binding_of_pattern`) already guarded
 Caught by the full test suite.
 
 Regression tests in `tests/tests_parser_behavioral.rs`.
+= `FlowPayload` isn't a first-class production
+
+Payload params are parsed as generic typed parameters.
+
+Fixed:
+Added `parse_flow_payload()` (`sysml/helpers.rs`)
+which wraps the `flow ... of <payload>` clause
+in a new dedicated `PAYLOAD_FEATURE` SyntaxKind,
+matching the spec's `PayloadFeature` production.
+This also fixed a real parse bug found while investigating:
+
+The named+typed form `flow of payload :
+PayloadType from a to b` previously produced syntax errors
+(only the bare `flow of PayloadType from a to b` anonymous form worked),
+because the old code unconditionally called `parse_qualified_name()`
+right after `of` with no lookahead, so it couldn't handle
+a name followed by a `:`/`:>`/etc. specialization clause.
+Added `peek_past_name_for_specialization()` lookahead helper to
+distinguish the named form from the bare-type form.
+`message`'s own, differently-structured `of` handling was left untouched.
+
+Regression tests in `tests/tests_parser_connectors.rs`.
+= SysMLNullLiteral` / `SysMLEmptyExpression` (`()`)
+
+Parse without error but have no distinct AST node
+
+Indistinguishable from a degenerate parenthesized expression.
+
+Fixed:
+The CST-level flat token stream was left as-is
+(no expression sub-kinds are constructed anywhere in the grammar yet -- a much larger, out-of-scope change), but `extract_value_expression()` in both
+`src/parser/ast/expressions.rs` and `src/syntax/normalized.rs` special-cases
+the exact two-token `(` `)` sequence and returns `ValueExpression::Null`,
+matching the spec's `NullExpression = 'null' | '(' ')'`. `(1)` and other
+non-empty parenthesized/sequence expressions are unaffected and remain
+`ValueExpression::Expression(...)`.
+
+Regression tests added in `src/parser/ast/tests.rs`.
+= SysML v2 Grammar Coverage Punch List
+= Control nodes `fork` / `join` / `merge` / `decide`
+
+Only parse an optional name, no typing (`: TypeName`).
+
+Fixed:
+`parse_control_node` (`sysml/actions.rs`) was a bare-bones `keyword Identification? Body` implementation,
+but per grammar these all extend `ActionUsage` and share its full declaration tail.
+
+Added multiplicity, typing, specializations,
+a second multiplicity slot (after specializations), and
+default value.
+Mirroring the exact identification/multiplicity/typing/specializations/multiplicity/default
+sequence already used by `parse_subject_usage` and friends in `requirements.rs`.
+
+Regression tests added in `tests/tests_parser_behavioral.rs`
+(`test_control_nodes_declaration_tail`)
+
+== Follow-up: ControlNodePrefix
+
+The comment above `parse_control_node` was later filled in with the fuller
+official grammar:
+
+----
+ControlNodePrefix : OccurrenceUsage =
+  RefPrefix
+  ( isIndividual ?= 'individual )?
+  ( portionKind = PortionKind { isPortion = true } )?
+  UsageExtensionKeyword*
+MergeNode/DecisionNode/JoinNode/ForkNode =
+  ControlNodePrefix isComposite ?= ('merge'|'decide'|'join'|'fork') UsageDeclaration
+  ActionBody
+----
+
+`parse_control_node`'s own body already matched `UsageDeclaration` (fixed
+above), but `ControlNodePrefix` -- `ref`/`individual`/`snapshot`/`timeslice`/
+etc. before the control keyword -- wasn't handled at all, and not just
+missing: `individual fork f { }` produced a real `SyntaxError`. Root cause:
+`parse_package_body_element`'s dispatcher (`entry.rs`) unconditionally routed
+those prefix keywords to `parse_definition_or_usage()`, but `fork`/`join`/
+`merge`/`decide` aren't SysML usage/definition keywords, so that function
+choked on them.
+
+Fixed: added a lookahead (`peek_past_usage_prefix_keywords` in `helpers.rs`)
+right before the dispatcher's big `match`, which looks past a run of
+`USAGE_PREFIX_KEYWORDS` to check whether a control-node keyword follows; if
+so, dispatches straight to `parse_control_node` instead. `parse_control_node`
+now consumes that prefix itself via `parse_usage_prefix` (bumped from
+private to `pub(super)` in `usage.rs` -- the exact same prefix set was
+already being parsed there, just not reusable). Regression tests added in
+`tests/tests_parser_behavioral.rs` (`test_control_node_prefix`).
+= De-Duplicate
+
+Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
+three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
+shared function -- consistency risk for future changes.
+
+Deduped:
+`helpers.rs`'s `parse_accept_trigger` was already the canonical
+implementation (used by `parse_accept_action`);
+the two inline copies in `states.rs`'s `parse_transition` and
+`actions.rs`'s `parse_target_transition` were byte-for-byte duplicates and
+are now calls to it.
+No behavior change (verified: full test suite passes unchanged).
+
+Bare `ordered` / `nonunique` cardinality-modifier parsing is
+copy-pasted across roughly six call sites rather than shared
+fragile for future usage kinds that forget to copy the snippet.
+
+Deduped:
+found 11 copies total, across both KerML and SysML.
+KerML already had two canonical helpers
+(`parse_multiplicity_modifiers` in `kerml/definitions.rs`,
+`parse_ordering_modifiers` in `kerml/usages.rs`)
+that most call sites bypassed with inline loops instead of calling.
+Those are now routed through them.
+SysML's `usage.rs` had four inline copies and no shared helper at all;
+added one (`parse_ordering_modifiers` in `sysml/helpers.rs`) and
+pointed all four call sites at it.
+The one non-consuming boolean peek
+(`kerml/definitions.rs`'s `is_modifier` check in `parse_multiplicity`) was
+left alone since it isn't the same pattern.
+No behavior change (verified: full test suite passes unchanged).
+= Dead `SyntaxKind` variants declared but never constructed
+
+`ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
+`CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
+`REQUIREMENT_USAGE`
+
+Everything routes through generic `DEFINITION` / `USAGE` nodes with boolean flags instead.
+Not a parse bug, but
+any downstream HIR/AST code matching on these specific kinds will never see them.
+
+Implemented:
+
+Added `checkpoint()`/`start_node_at()` to the `ExpressionParser` trait
+(thin wrappers around rowan's `GreenNodeBuilder` checkpoint API),
+implemented on `Parser` in `parser.rs`.
+This lets a node's kind be decided *after* parsing its prefix tokens
+(abstract/variation/individual, `#metadata`, etc.)
+instead of requiring it upfront,
+without changing what those prefixes' tokens are children of.
+
+`parse_definition` and `parse_usage`
+(`sysml/definitions.rs`, `sysml/usage.rs`)
+now take a checkpoint instead of an upfront
+`start_node(DEFINITION/USAGE)`,
+and retroactively wrap in
+`ACTION_DEFINITION`/`CALC_DEFINITION`/`CONSTRAINT_DEFINITION`/ `REQUIREMENT_DEFINITION`
+or the matching `_USAGE` kind once the element keyword is known.
+Kinds without a dedicated variant (`part`, `port`, `state`, etc.)
+keep using the generic `DEFINITION`/`USAGE`.
+
+`parse_requirement_constraint` and `parse_requirement_verification`
+(`sysml/requirements.rs` -- the `assert`/`assume`/`require`-prefixed forms, a separate code path from `parse_usage`)
+got the same treatment:
+`CONSTRAINT_USAGE`/`REQUIREMENT_USAGE`
+when actually defining a new constraint/requirement
+(the `constraint`/`requirement` keyword is present),
+generic `USAGE` for the bare reference/shorthand forms
+(e.g. `assert c1;`, `satisfy r1;`),
+which aren't defining anything.
+
+Widened `Definition`/`Usage`/`NamespaceMember`'s `AstNode::can_cast`
+(in `parser/ast/elements.rs` and `parser/ast/namespace.rs`)
+to accept the new kinds alongside the generic ones.
+`Definition` converted from the single-kind `ast_node!` macro to a manual multi-kind impl,
+matching the pattern `Usage` already used for `SUBJECT_USAGE`/`ACTOR_USAGE`/etc.
+
+Updated the nested-scope-boundary ancestor checks in
+`hir/symbols/extract_definition.rs`, `extract_usage.rs`,
+and the two duplicate copies in `syntax/normalized.rs`
+to also treat the new kinds as scope boundaries
+(they previously only checked for generic `USAGE`/`DEFINITION`,
+which would have let expression extraction
+incorrectly reach into a nested action/calc/constraint/requirement body).
+
+The formatter's independent, simplified tree-builder
+(`syntax/formatter/mod.rs`, `parse_definition_or_usage`)
+got a matching `definition_or_usage_kind` helper
+so its output stays consistent with the main parser.
+
+
+Regression tests added in `tests/tests_parser_definitions.rs`
+  (`test_specific_definition_kinds`, `test_specific_usage_kinds`,
+  `test_constraint_and_requirement_references_stay_generic_usage`).
+=  `@ Type` (`KerMLHasTypeSelfExpression`, symbolic self-form)
+
+The keyword self-form (`hastype Type`) works,
+but bare `@ Type` is routed to metadata-access parsing instead.
+
+Fixed:
+Added `SyntaxKind::AT` to the prefix check in `parse_classification_expression`
+(`kerml_expressions/mod.rs`),
+alongside `HASTYPE_KW`/`ISTYPE_KW`.
+Note the raw token output was already identical either way
+(`parse_metadata_access` happens to consume the same `@` + qualified-name shape)
+
+The real fix is architectural:
+taking the classification-expression path short-circuits right after the type reference
+(matching the keyword form and the `("hastype"|"@") MCType` grammar),
+instead of falling through to base-expression level,
+which would otherwise let further postfix/binary operators attach onto the type reference.
+The metadata-reference use of `@` (e.g. `filter @Safety;`) and
+the infix `expr @ Type` form both produce unchanged output.
+
+Regression tests added in `tests/tests_parser_expressions.rs` (`test_hastype_self_form`).
+=  Connector/succession `Endpoint`
+
+Only reference-subsetting (`::>` / `references`) is supported on endpoints; general `:>`, `:>>`, `:` specializations on an endpoint aren't parsed.
+
+Fixed on both sides:
+
+* SysML `parse_connector_end_reference` (`sysml/connectors.rs`) kept the
+  existing `::>`/`references` handling untouched (it has a bespoke AST
+  shape relied on by `ConnectorEnd::target()` in `parser/ast/relationships.rs`
+  -- reusing the generic specialization helper there would have wrapped the
+  reference target in a `SPECIALIZATION` node and broken that accessor), and
+  added a call to `parse_specializations` in the `else` branch to cover the
+  general `:`, `:>`, `:>>` forms.
+* KerML `parse_endpoint_references` (`kerml/connectors.rs`) had no
+  specialization handling at all for either endpoint of a `binding`/
+  succession pairing (`x = y` / `x then y`); added `parse_specializations`
+  after each endpoint's qualified name.
+
+Regression tests added in `tests/tests_parser_connectors.rs`
+(`test_connector_endpoint_specializations`) and
+`tests/tests_parser_kerml.rs` (`test_binding_endpoint_specializations`).
+= SysML v2 Grammar Coverage Punch List
+:toc:
+
+Gaps found by comparing MontiCore's official SysMLv2 grammar
+(`SysMLBasis.mc4`, `SysMLParts.mc4`, `SysMLActions.mc4`, `SysMLStates.mc4`,
+`SysMLConstraints.mc4`, `SysMLExpressions.mc4`, `SysMLv2.mc4`, release/7.8.x)
+against the Rust parser in `src/parser/grammar/`.
+
+Checkboxes are unchecked; check them off as items are fixed.
+
+== Entirely missing (no token/keyword exists at all)
+
+* [ ] `timing` keyword (`SysMLCausality`) -- Parts. No `TIMING_KW` anywhere.
+* [ ] `exists ... :` (`ExistsExpression`) -- Expressions. No `EXISTS` token.
+* [ ] `union` as a binary expression operator (`UnionExpression`) -- Expressions.
+  Only `UNIONS_KW` (the unrelated relationship keyword) exists.
+* [ ] `INF` / `-INF` literal (`Infinity`) -- Expressions. No infinity token/literal.
+* [ ] `nat` primitive type (`MCPrimitiveTypeWithNat`) -- Expressions. Not lexed.
+* [ ] LaTeX-style set operators: `\subseteq`, `\subset`, `\supseteq`, `\supset`,
+  `\sqsubseteq`, `\in` -- Expressions. None exist.
+* [ ] `static` modifier -- Basis. Not even lexed as a token; falls through as `IDENT`.
+* [ ] Symbolic visibility shorthand `+` / `-` / `#` for public/private/protected --
+  Basis. Tokens exist but are never checked as visibility markers.
+* [ ] `?` as a `readonly` alias -- Basis. `QUESTION` token exists (used for
+  ternary) but is never treated as readonly.
+* [ ] `refines` (`SysMLRefinement`) -- Basis. No dedicated keyword path found.
+* [ ] `AnonymousReference` production -- Basis. Not distinguished from
+  `AnonymousUsage`; no distinct implementation.
+* [ ] `StateDef` / `StateUsage` parameter list, e.g. `state def S (in x: Integer) { }`
+  -- States. Confirmed by test: real syntax error.
+* [ ] `first X if guard then Y` (guard attached to a `first` succession) --
+  Actions. `parse_first_action` has no guard branch.
+
+== Real bugs (should parse, doesn't -- or silently mis-parses)
+
+* [x] `state s parallel { ... }` -- confirmed empirically: `parallel` is
+  swallowed as the name of a *second, unrelated* usage instead of a modifier
+  on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
+  path never reaches it. +
+  _Fixed: the root cause was that `parallel` was never lexed as `PARALLEL_KW`
+  at all (`lexer.rs` had no `#[token("parallel")]`) -- it always came through
+  as a plain `IDENT`, so `usage.rs` had nothing to dispatch on. Added the
+  missing lexer token, then made `PARALLEL_KW` a contextual keyword (added
+  to `at_name_token()`, matching the existing `to`/`state` precedent) and
+  removed it from the two "starts a new definition/usage" keyword lists in
+  `entry.rs` and `definitions.rs`, since a bare `parallel` must remain a
+  valid identifier (e.g. an enum variant named `parallel`) everywhere except
+  immediately before a `StateUsage` body. Regression tests added in
+  `tests/tests_parser_behavioral.rs`
+  (`test_parallel_state_marker`, `test_parallel_as_identifier`)._
+* [ ] `state s parallel { ... }` -- confirmed empirically: `parallel` is
+  swallowed as the name of a *second, unrelated* usage instead of a modifier
+  on the state. `actions.rs:613` has the check but the `usage.rs` dispatch
+  path never reaches it.
+* [x] `do action1()` inside a transition -- call-style effects break parsing
+  and corrupt the rest of the transition (the `then` target is dropped into
+  an `ERROR` node). Only bare-name / `send` / `accept` / `assign` / inline
+  `action` effects work (`states.rs:196-214`). +
+  _Fixed: the bare-name branch in `parse_transition`'s `do` effect now checks
+  for a trailing `(` after the qualified name and, if present, parses it as
+  an `ARGUMENT_LIST` (reusing `parse_argument_list` from
+  `kerml_expressions::atoms`, re-exported through `sysml::mod`). Regression
+  tests added in `tests/tests_parser_behavioral.rs`
+  (`test_transition_do_effect_call_parses`)._
+* [x] `entry Off.entry;` and other dotted qualified-name state-action bodies
+  -- `parse_state_subaction` uses `parse_identification` (single name)
+  instead of `parse_qualified_name`. Confirmed syntax error on `.`. Same
+  code path affects `DoAction` and `ExitAction`. +
+  _Fixed: `parse_state_subaction` now peeks one token past the name; if it's
+  `.` or `::`, it parses a full qualified name (feature chain) instead of a
+  single identifier, then goes straight to body-or-semicolon per the
+  `MCQualifiedName ("{" ... "}" | ";")` grammar rule. The plain single-name
+  forms (both the bare reference and the `do myAction : ActionType { ... }`
+  inline-declaration extension) are left on the original `parse_identification`
+  path, unchanged, to avoid altering their AST shape. Regression tests added
+  in `tests/tests_parser_behavioral.rs`
+  (`test_state_subaction_qualified_name_parses`)._
+* [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree.
+* [ ] `do action1()` inside a transition -- call-style effects break parsing
+  and corrupt the rest of the transition (the `then` target is dropped into
+  an `ERROR` node). Only bare-name / `send` / `accept` / `assign` / inline
+  `action` effects work (`states.rs:196-214`).
+* [ ] `entry Off.entry;` and other dotted qualified-name state-action bodies
+  -- `parse_state_subaction` uses `parse_identification` (single name)
+  instead of `parse_qualified_name`. Confirmed syntax error on `.`. Same
+  code path affects `DoAction` and `ExitAction`.
+* [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree.
+* [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break.
+* [ ] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
+  `::Bar` remainder dangles unconsumed.
+* [x] `expose Pkg::* [@Filter]` -- the filter-bracket clause has no parser
+  support, unlike the equivalent `import` path. +
+  _Fixed: `parse_filter_package` (`namespace.rs`) was `import`-private
+  (module-private `fn`); bumped to `pub(super)` so `requirements.rs` can
+  reach it via the existing `sysml::mod` glob re-export, and
+  `parse_expose_statement` now calls it when an `L_BRACKET` follows the
+  qualified name / wildcard, mirroring `parse_import`. Regression tests
+  added in `tests/tests_parser_views.rs` (`test_expose_with_filter`)._
+* [x] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
+  `::Bar` remainder dangles unconsumed. +
+  _Fixed: both `parse_prefix_metadata` implementations (SysML's
+  `entry.rs` and KerML's `kerml/entry.rs` -- the same bug existed on both
+  sides) now call `parse_qualified_name` instead of a single `bump()`.
+  This nests the identifier inside a `QUALIFIED_NAME` node rather than
+  leaving a bare `IDENT` token as a direct child of `PREFIX_METADATA`,
+  which broke `PrefixMetadata::ident_token()` in `parser/ast/elements.rs`
+  (it only scanned direct children) -- updated it to scan descendants
+  instead, fixing a hover regression this surfaced
+  (`hover_metadata_prefix_on_definition`). Regression tests added in
+  `tests/tests_parser_definitions.rs`
+  (`test_prefix_metadata_qualified_name_sysml`,
+  `test_prefix_metadata_qualified_name_kerml`)._
+* [x] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break. +
+  _Fixed: `parse_frame_usage` (`actions.rs`) now branches on whether a usage
+  keyword (`concern`) followed `frame`. If so, it's `ConcernUsage` defining a
+  new name and keeps using `parse_optional_identification` (unchanged, to
+  preserve its AST shape). If not, it's the `ConcernReference` shorthand and
+  now uses `parse_qualified_name` so multi-segment references like
+  `frame Pkg::Concern1;` (and deeper chains like `Pkg::Sub::Concern1`) parse
+  correctly. Regression tests added in `tests/tests_parser_requirements.rs`
+  (`test_frame_concern_reference_and_usage`)._
+* [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
+  mis-dispatched into `parse_requirement_constraint`, which only checks for
+  `constraint`, not `requirement`; corrupts the tree. +
+  _Fixed: `entry.rs`'s `ASSERT_KW`/`ASSUME_KW`/`REQUIRE_KW` dispatch now also
+  checks for `verify`/`requirement` (not just `satisfy`/`not`), and
+  `parse_requirement_verification` now consumes any of
+  `assert`/`assume`/`require` as its leading modifier instead of only
+  `assert`. As a side effect this also fixes the analogous
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. The dispatch
+  looks past an optional `not` to the following keyword to decide between
+  the two parsers, rather than treating `not` itself as an unconditional
+  verification trigger -- see the `assert not constraint c1 {...}` fix
+  below, which this dispatch change was updated alongside. Regression tests
+  added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
+* [x] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`). +
+  _Fixed: added `consume_if(p, SyntaxKind::NOT_KW)` right after the
+  `assert`/`assume`/`require` bump in `parse_requirement_constraint`. This
+  also required updating `entry.rs`'s dispatch (see the item above) to look
+  past `not` to the keyword that actually follows it (`satisfy`/`verify`/
+  `requirement` -> verification, anything else including `constraint` or a
+  bare name -> constraint) instead of routing every `not`-prefixed case to
+  the verification parser unconditionally, which is what let this bug hide
+  behind a working-by-accident `assert not massLimitation {...}` fixture.
+  That fixture now parses via the (correct) constraint path instead of the
+  verification path. Regression tests added in
+  `tests/tests_parser_requirements.rs`
+  (`test_constraint_usage_not_modifier`)._
+  `assume satisfy r1;` / `require satisfy r1;` mis-dispatch. Regression
+  tests added in `tests/tests_parser_requirements.rs`
+  (`test_requirement_usage_prefix_dispatch`)._
+* [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [ ] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break.
+* [ ] `#Foo::Bar` (`UserDefinedKeyword`) -- only consumes `#Foo`; the
+  `::Bar` remainder dangles unconsumed.
+* [ ] `expose Pkg::* [@Filter]` -- the filter-bracket clause has no parser
+  support, unlike the equivalent `import` path.
+* [ ] Connector/succession `Endpoint` -- only reference-subsetting
+  (`::>` / `references`) is supported on endpoints; general `:>`, `:>>`, `:`
+  specializations on an endpoint aren't parsed.
+* [ ] `@ Type` (`KerMLHasTypeSelfExpression`, symbolic self-form) -- the
+  keyword self-form (`hastype Type`) works, but bare `@ Type` is routed to
+  metadata-access parsing instead.
+
+== Partial / structural concerns (parses, but with gaps or duplication)
+
+* [ ] Payload parsing (`name:Type` / `when` / `at` / `after`) is implemented
+  three separate times (`helpers.rs`, `states.rs`, `actions.rs`) with no
+  shared function -- consistency risk for future changes.
+* [ ] Control nodes `fork` / `join` / `merge` / `decide` only parse an
+  optional name, no typing (`: TypeName`).
+* [ ] `SysMLNullLiteral` / `SysMLEmptyExpression` (`()`) parse without error
+  but have no distinct AST node -- indistinguishable from a degenerate
+  parenthesized expression.
+* [ ] Dead `SyntaxKind` variants declared but never constructed:
+  `ACTION_DEFINITION`, `CALC_DEFINITION`, `ACTION_USAGE`, `CALC_USAGE`,
+  `CONSTRAINT_DEFINITION`, `REQUIREMENT_DEFINITION`, `CONSTRAINT_USAGE`,
+  `REQUIREMENT_USAGE` -- everything routes through generic `DEFINITION` /
+  `USAGE` nodes with boolean flags instead. Not a parse bug, but any
+  downstream HIR/AST code matching on these specific kinds will never see
+  them.
+* [ ] `FlowPayload` isn't a first-class production -- payload params are
+  parsed as generic typed parameters.
+* [ ] Bare `ordered` / `nonunique` cardinality-modifier parsing is
+  copy-pasted across roughly six call sites rather than shared -- fragile
+  for future usage kinds that forget to copy the snippet.
+
+== Confirmed fully implemented
+
+Everything else across all seven grammar files checked out as fully
+implemented, including:
+
+* Definitions/usages for `part`, `attribute`, `port`, `connection`,
+  `interface`, `flow`, `allocation`, `occurrence`, `item`, `analysis`,
+  `verification`, `case`, `view`, `viewpoint`, `rendering`, `metadata`.
+* Requirements/constraints/concern long forms and the shorthand
+  `satisfy` / `verify` forms.
+* The full expression precedence chain: collect (`.{ }`), select
+  (`.?{ }`), arrow invocation (`->`), cast (`as`), `istype`, `hastype`
+  (infix), ternary, index (`#(...)`), power (`^`, `**`), range (`..`),
+  and/or/xor/not.

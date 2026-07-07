@@ -429,6 +429,8 @@ pub enum LogosToken {
     OutKw,
     #[token("package")]
     PackageKw,
+    #[token("parallel")]
+    ParallelKw,
     #[token("part")]
     PartKw,
     #[token("perform")]
@@ -720,6 +722,7 @@ impl From<LogosToken> for SyntaxKind {
             OrderedKw => SyntaxKind::ORDERED_KW,
             OutKw => SyntaxKind::OUT_KW,
             PackageKw => SyntaxKind::PACKAGE_KW,
+            ParallelKw => SyntaxKind::PARALLEL_KW,
             PartKw => SyntaxKind::PART_KW,
             PerformKw => SyntaxKind::PERFORM_KW,
             PortKw => SyntaxKind::PORT_KW,

@@ -480,6 +480,9 @@ pub enum SyntaxKind {
     FROM_TO_SOURCE,
     FROM_TO_TARGET,
 
+    // Message/flow payload feature: the `of <payload>` clause
+    PAYLOAD_FEATURE,
+
     // Special
     ERROR,
     TOMBSTONE, // For incremental reparsing

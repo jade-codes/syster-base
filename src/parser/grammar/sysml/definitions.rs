@@ -282,7 +282,6 @@ fn is_definition_or_usage_start<P: SysMLParser>(p: &P) -> bool {
         SyntaxKind::USE_KW,
         SyntaxKind::CONCERN_KW,
         SyntaxKind::FLOW_KW,
-        SyntaxKind::PARALLEL_KW,
         SyntaxKind::EVENT_KW,
         SyntaxKind::MESSAGE_KW,
         SyntaxKind::SNAPSHOT_KW,
@@ -515,7 +514,8 @@ fn has_def_keyword<P: SysMLParser>(p: &P) -> bool {
 /// Pattern: [abstract|variation|individual] <keyword> def <name> <specializations> <body>
 /// Grammar: see docs/grammar-mapping.adoc#parse_definition
 fn parse_definition<P: SysMLParser>(p: &mut P) {
-    p.start_node(SyntaxKind::DEFINITION);
+    // Pattern: [abstract|variation|individual] <keyword> def <name> <specializations> <body>
+    let checkpoint = p.checkpoint();
 
     // Prefixes (variation point and individual markers)
     while p.at(SyntaxKind::ABSTRACT_KW)
@@ -529,10 +529,27 @@ fn parse_definition<P: SysMLParser>(p: &mut P) {
     let is_calc = p.at(SyntaxKind::CALC_KW);
     let is_action = p.at(SyntaxKind::ACTION_KW);
     let is_state = p.at(SyntaxKind::STATE_KW);
+    let is_requirement = p.at(SyntaxKind::REQUIREMENT_KW);
     let is_analysis = p.at(SyntaxKind::ANALYSIS_KW);
     let is_verification = p.at(SyntaxKind::VERIFICATION_KW);
     let is_metadata = p.at(SyntaxKind::METADATA_KW);
     let is_usecase = p.at(SyntaxKind::USE_KW); // use case def
+
+    // Now that the definition's keyword is known, retroactively wrap everything
+    // parsed since `checkpoint` (including any abstract/variation/individual
+    // prefixes) in the specific node kind instead of the generic DEFINITION.
+    let node_kind = if is_constraint {
+        SyntaxKind::CONSTRAINT_DEFINITION
+    } else if is_calc {
+        SyntaxKind::CALC_DEFINITION
+    } else if is_action {
+        SyntaxKind::ACTION_DEFINITION
+    } else if is_requirement {
+        SyntaxKind::REQUIREMENT_DEFINITION
+    } else {
+        SyntaxKind::DEFINITION
+    };
+    p.start_node_at(checkpoint, node_kind);
 
     // Definition keyword
     parse_definition_keyword(p);
