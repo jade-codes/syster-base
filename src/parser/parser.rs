@@ -302,6 +302,8 @@ impl<'a> ExpressionParser for Parser<'a> {
         // Also "var" which is used as a feature name in Actions.sysml (assign var := ...)
         // Also "state" which is not a reserved keyword per KerML spec §8.2.2.6 and is valid
         // as a plain identifier in feature declarations (e.g. `out item state : T`).
+        // Also "instant" which is used as a feature name in the standard library
+        // (Transfers.kerml: `private binding instant[instantNum] of ...`).
         // Also "parallel", which is only a marker keyword immediately before a StateUsage
         // body (`state s parallel { ... }`); elsewhere (e.g. an enum variant `parallel;`)
         // it must parse as a plain name.
@@ -331,6 +333,7 @@ impl<'a> ExpressionParser for Parser<'a> {
                 | SyntaxKind::VAR_KW
                 | SyntaxKind::STATE_KW
                 | SyntaxKind::TO_KW
+                | SyntaxKind::INSTANT_KW
                 | SyntaxKind::PARALLEL_KW
         )
     }

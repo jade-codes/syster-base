@@ -1,3 +1,25 @@
+= `timing` keyword (`SysMLCausality`)
+
+Parts No `TIMING_KW` anywhere.
+
+Fixed:
+Added `TIMING_KW`/`INSTANT_KW`/`DELAYED_KW` lexer tokens and a
+`parse_timing()` (`sysml/relationships.rs`) producing a dedicated
+`CAUSALITY` node, wired into `parse_package_body_element` so `timing;`,
+`timing instant;`, and `timing delayed;` are all recognized as body elements.
+
+Note: `SysMLCausality` is a MontiCore-specific construct, not
+part of the official OMG KEBNF grammar (verified absent from both
+`SysML-textual-bnf.kebnf` and `KerML-textual-bnf.kebnf`)
+
+This fix follows MontiCore's `SysMLParts.mc4` since that's what the punch list item cites.
+Also had to add `INSTANT_KW` to `at_name_token()`'s contextual-keyword allowlist:
+`Transfers.kerml` in the real KerML standard library uses `instant` as a plain feature name
+(`private binding instant[instantNum] of ...`),
+which an existing regression test (`test_binding_of_pattern`) already guarded
+Caught by the full test suite.
+
+Regression tests in `tests/tests_parser_behavioral.rs`.
 = `FlowPayload` isn't a first-class production
 
 Payload params are parsed as generic typed parameters.
