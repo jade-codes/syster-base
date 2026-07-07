@@ -89,6 +89,19 @@ Checkboxes are unchecked; check them off as items are fixed.
 * [ ] `assume requirement r1 {...}` / `require requirement r1 {...}` --
   mis-dispatched into `parse_requirement_constraint`, which only checks for
   `constraint`, not `requirement`; corrupts the tree.
+* [ ] `assert not constraint c1 {...}` -- the `["not"]?` modifier is never
+  checked in `parse_requirement_constraint` (`requirements.rs:119`).
+* [x] `frame Pkg::Concern1;` (`ConcernReference`) -- uses
+  `parse_optional_identification` (single name) instead of a qualified-name
+  parser; multi-segment names likely break. +
+  _Fixed: `parse_frame_usage` (`actions.rs`) now branches on whether a usage
+  keyword (`concern`) followed `frame`. If so, it's `ConcernUsage` defining a
+  new name and keeps using `parse_optional_identification` (unchanged, to
+  preserve its AST shape). If not, it's the `ConcernReference` shorthand and
+  now uses `parse_qualified_name` so multi-segment references like
+  `frame Pkg::Concern1;` (and deeper chains like `Pkg::Sub::Concern1`) parse
+  correctly. Regression tests added in `tests/tests_parser_requirements.rs`
+  (`test_frame_concern_reference_and_usage`)._
 * [x] `assume requirement r1 {...}` / `require requirement r1 {...}` --
   mis-dispatched into `parse_requirement_constraint`, which only checks for
   `constraint`, not `requirement`; corrupts the tree. +
