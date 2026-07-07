@@ -55,15 +55,27 @@ pub fn parse_frame_usage<P: SysMLParser>(p: &mut P) {
     expect_and_skip(p, SyntaxKind::FRAME_KW);
 
     // Check if followed by usage keyword (e.g., frame concern c1)
-    if p.at_any(SYSML_USAGE_KEYWORDS) {
+    let has_usage_kw = p.at_any(SYSML_USAGE_KEYWORDS);
+    if has_usage_kw {
         bump_keyword(p);
     }
 
-    // Parse identification
-    parse_optional_identification(p);
+    if has_usage_kw {
+        // ConcernUsage: "frame" "concern" Identification? Specialization* body
+        // Defines a new usage, so the name is an identification.
+        parse_optional_identification(p);
 
-    // Specializations
-    parse_specializations_with_skip(p);
+        // Specializations
+        parse_specializations_with_skip(p);
+    } else {
+        // ConcernReference: "frame" MCQualifiedName body
+        // References an existing concern, so allow a full (multi-segment)
+        // qualified name, e.g. `frame Pkg::Concern1;`.
+        if p.at_name_token() {
+            p.parse_qualified_name();
+            p.skip_trivia();
+        }
+    }
 
     p.parse_body();
 
@@ -575,11 +587,33 @@ pub fn parse_else_succession<P: SysMLParser>(p: &mut P) {
 pub fn parse_control_node<P: SysMLParser>(p: &mut P) {
     p.start_node(SyntaxKind::CONTROL_NODE);
 
+    // ControlNodePrefix: ref/individual/snapshot/timeslice/etc. -- the caller
+    // (parse_package_body_element) looks ahead past these before dispatching
+    // here, since fork/join/merge/decide aren't SysML usage/definition
+    // keywords and would otherwise be swallowed by parse_definition_or_usage.
+    parse_usage_prefix(p);
+    p.skip_trivia();
+
     // Control keyword
     bump_keyword(p);
 
     // Optional name
     parse_optional_identification(p);
+
+    // Multiplicity (can appear immediately after name, before typing)
+    parse_optional_multiplicity(p);
+
+    // Typing (e.g. `fork f : MyForkKind`)
+    parse_optional_typing(p);
+
+    // Specializations (redefines, subsets, etc.)
+    parse_specializations_with_skip(p);
+
+    // Multiplicity can also appear after specializations
+    parse_optional_multiplicity(p);
+
+    // Default value
+    parse_optional_default_value(p);
 
     p.parse_body();
 
@@ -703,39 +737,7 @@ fn parse_target_transition<P: SysMLParser>(p: &mut P) {
     if p.at(SyntaxKind::ACCEPT_KW) {
         p.bump(); // accept
         p.skip_trivia();
-
-        // Payload name (but not if it's a trigger keyword)
-        if (p.at_name_token() || p.at(SyntaxKind::LT))
-            && !p.at(SyntaxKind::AT_KW)
-            && !p.at(SyntaxKind::AFTER_KW)
-            && !p.at(SyntaxKind::WHEN_KW)
-            && !p.at(SyntaxKind::VIA_KW)
-        {
-            p.parse_identification();
-            p.skip_trivia();
-        }
-
-        // Optional typing
-        if p.at(SyntaxKind::COLON) || p.at(SyntaxKind::COLON_GT) {
-            p.parse_typing();
-            p.skip_trivia();
-        }
-
-        // Optional trigger expression (at/after/when)
-        if p.at(SyntaxKind::AT_KW) || p.at(SyntaxKind::AFTER_KW) || p.at(SyntaxKind::WHEN_KW) {
-            p.bump();
-            p.skip_trivia();
-            parse_expression(p);
-            p.skip_trivia();
-        }
-
-        // Optional via
-        if p.at(SyntaxKind::VIA_KW) {
-            p.bump();
-            p.skip_trivia();
-            p.parse_qualified_name();
-            p.skip_trivia();
-        }
+        parse_accept_trigger(p);
     }
 
     // Optional guard: if <expression>

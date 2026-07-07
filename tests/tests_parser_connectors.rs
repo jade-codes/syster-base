@@ -43,6 +43,27 @@ fn test_connection_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
 }
 
+// Regression: a connector/succession `Endpoint` only supported reference-subsetting
+// (`::>` / `references`); general `:`, `:>`, `:>>` specializations on an endpoint
+// weren't parsed. See docs/grammar-gaps.adoc.
+#[rstest]
+#[case("part def P { connect a : Type to c; }")]
+#[case("part def P { connect a :> b to c; }")]
+#[case("part def P { connect a :>> b to c; }")]
+#[case("part def P { connect a to c :> d; }")]
+// The existing reference-subsetting form must keep working.
+#[case("part def P { connect a ::> b to c; }")]
+#[case("part def P { connect a references b to c; }")]
+fn test_connector_endpoint_specializations(#[case] input: &str) {
+    let parsed = syster::parser::parse_sysml(input);
+    assert!(
+        parsed.ok(),
+        "Failed to parse without errors: {}\nerrors: {:?}",
+        input,
+        parsed.errors
+    );
+}
+
 // ============================================================================
 // Interface Definitions
 // ============================================================================
@@ -86,6 +107,61 @@ fn test_flow_def(#[case] input: &str) {
 #[case("package P { flow myFlow from source to target; }")]
 fn test_flow_usage(#[case] input: &str) {
     assert!(parses_sysml(input), "Failed to parse: {}", input);
+}
+
+// ============================================================================
+// Flow Payload -- `of <payload>` clause (bare type or named+typed feature)
+// ============================================================================
+
+#[rstest]
+#[case("part def A; part def B; part def T; part a : A { } part b : B { } flow of T from a to b;")]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow myFlow of payload : T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload :> T from a to b;"
+)]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T[1] from a to b;"
+)]
+#[case("part def A; part def B; part def T; part a : A { } part b : B { } flow of T[1] from a to b;")]
+#[case(
+    "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T = 5 from a to b;"
+)]
+fn test_flow_payload_forms(#[case] input: &str) {
+    let parsed = parse_sysml(input);
+    assert!(parsed.ok(), "Failed to parse {}: {:?}", input, parsed.errors);
+}
+
+#[test]
+fn test_flow_payload_produces_dedicated_node() {
+    use syster::parser::SyntaxKind;
+
+    let named = parse_sysml(
+        "part def A; part def B; part def T; part a : A { } part b : B { } flow of payload : T from a to b;",
+    );
+    assert!(named.ok(), "errors: {:?}", named.errors);
+    assert!(
+        named
+            .syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::PAYLOAD_FEATURE),
+        "named payload should produce a PAYLOAD_FEATURE node"
+    );
+
+    let bare = parse_sysml(
+        "part def A; part def B; part def T; part a : A { } part b : B { } flow of T from a to b;",
+    );
+    assert!(bare.ok(), "errors: {:?}", bare.errors);
+    assert!(
+        bare.syntax()
+            .descendants()
+            .any(|n| n.kind() == SyntaxKind::PAYLOAD_FEATURE),
+        "bare payload type should also produce a PAYLOAD_FEATURE node"
+    );
 }
 
 // ============================================================================

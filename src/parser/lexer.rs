@@ -331,6 +331,8 @@ pub enum LogosToken {
     ExitKw,
     #[token("expose")]
     ExposeKw,
+    #[token("exists")]
+    ExistsKw,
     #[token("event")]
     EventKw,
     #[token("expr")]
@@ -429,6 +431,8 @@ pub enum LogosToken {
     OutKw,
     #[token("package")]
     PackageKw,
+    #[token("parallel")]
+    ParallelKw,
     #[token("part")]
     PartKw,
     #[token("perform")]
@@ -501,6 +505,12 @@ pub enum LogosToken {
     ThisKw,
     #[token("timeslice")]
     TimesliceKw,
+    #[token("timing")]
+    TimingKw,
+    #[token("instant")]
+    InstantKw,
+    #[token("delayed")]
+    DelayedKw,
     #[token("to")]
     ToKw,
     #[token("transition")]
@@ -668,6 +678,7 @@ impl From<LogosToken> for SyntaxKind {
             ExitKw => SyntaxKind::EXIT_KW,
             ExposeKw => SyntaxKind::EXPOSE_KW,
             EventKw => SyntaxKind::EVENT_KW,
+            ExistsKw => SyntaxKind::EXISTS_KW,
             ExprKw => SyntaxKind::EXPR_KW,
             FalseKw => SyntaxKind::FALSE_KW,
             FeatureKw => SyntaxKind::FEATURE_KW,
@@ -716,6 +727,7 @@ impl From<LogosToken> for SyntaxKind {
             OrderedKw => SyntaxKind::ORDERED_KW,
             OutKw => SyntaxKind::OUT_KW,
             PackageKw => SyntaxKind::PACKAGE_KW,
+            ParallelKw => SyntaxKind::PARALLEL_KW,
             PartKw => SyntaxKind::PART_KW,
             PerformKw => SyntaxKind::PERFORM_KW,
             PortKw => SyntaxKind::PORT_KW,
@@ -752,6 +764,9 @@ impl From<LogosToken> for SyntaxKind {
             ThenKw => SyntaxKind::THEN_KW,
             ThisKw => SyntaxKind::THIS_KW,
             TimesliceKw => SyntaxKind::TIMESLICE_KW,
+            TimingKw => SyntaxKind::TIMING_KW,
+            InstantKw => SyntaxKind::INSTANT_KW,
+            DelayedKw => SyntaxKind::DELAYED_KW,
             ToKw => SyntaxKind::TO_KW,
             TransitionKw => SyntaxKind::TRANSITION_KW,
             TrueKw => SyntaxKind::TRUE_KW,

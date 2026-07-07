@@ -188,11 +188,7 @@ fn parse_definition_or_usage(
     // Determine if this is a definition (has 'def' keyword) or usage
     let is_definition = has_def_keyword(tokens, pos);
 
-    if is_definition {
-        builder.start_node(SyntaxKind::DEFINITION.into());
-    } else {
-        builder.start_node(SyntaxKind::USAGE.into());
-    }
+    builder.start_node(definition_or_usage_kind(tokens, pos, is_definition).into());
 
     // Consume modifiers (abstract, ref, const)
     while pos < tokens.len() {
@@ -265,6 +261,41 @@ fn has_def_keyword(tokens: &[Token], mut pos: usize) -> bool {
         }
     }
     false
+}
+
+/// Pick the specific DEFINITION/USAGE node kind (e.g. ACTION_DEFINITION,
+/// CONSTRAINT_USAGE) based on the element keyword at `pos`, skipping over
+/// modifiers (abstract/ref/const) and trivia. Falls back to the generic
+/// DEFINITION/USAGE for element kinds without a dedicated node kind.
+fn definition_or_usage_kind(tokens: &[Token], mut pos: usize, is_definition: bool) -> SyntaxKind {
+    while pos < tokens.len() {
+        match tokens[pos].kind {
+            SyntaxKind::ABSTRACT_KW
+            | SyntaxKind::REF_KW
+            | SyntaxKind::CONST_KW
+            | SyntaxKind::WHITESPACE
+            | SyntaxKind::LINE_COMMENT
+            | SyntaxKind::BLOCK_COMMENT => pos += 1,
+            SyntaxKind::ACTION_KW if is_definition => return SyntaxKind::ACTION_DEFINITION,
+            SyntaxKind::ACTION_KW => return SyntaxKind::ACTION_USAGE,
+            SyntaxKind::CALC_KW if is_definition => return SyntaxKind::CALC_DEFINITION,
+            SyntaxKind::CALC_KW => return SyntaxKind::CALC_USAGE,
+            SyntaxKind::CONSTRAINT_KW if is_definition => {
+                return SyntaxKind::CONSTRAINT_DEFINITION;
+            }
+            SyntaxKind::CONSTRAINT_KW => return SyntaxKind::CONSTRAINT_USAGE,
+            SyntaxKind::REQUIREMENT_KW if is_definition => {
+                return SyntaxKind::REQUIREMENT_DEFINITION;
+            }
+            SyntaxKind::REQUIREMENT_KW => return SyntaxKind::REQUIREMENT_USAGE,
+            _ => break,
+        }
+    }
+    if is_definition {
+        SyntaxKind::DEFINITION
+    } else {
+        SyntaxKind::USAGE
+    }
 }
 
 /// Check if a kind is an element keyword
