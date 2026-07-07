@@ -56,6 +56,23 @@ pub fn parse_state_subaction<P: SysMLParser>(p: &mut P) {
         parse_action_body(p);
     } else if p.at(SyntaxKind::SEMICOLON) {
         p.bump();
+    } else if p.at_name_token()
+        && matches!(
+            p.peek_kind(1),
+            SyntaxKind::DOT | SyntaxKind::COLON_COLON
+        )
+    {
+        // Qualified-name (feature chain) reference to an existing action, per grammar:
+        // EntryAction/DoAction = ... MCQualifiedName ("{" SysMLElement* "}" | ";")
+        // e.g. `entry Off.entry;` or `entry On::entry;`
+        p.parse_qualified_name();
+        p.skip_trivia();
+
+        if p.at(SyntaxKind::L_BRACE) {
+            parse_action_body(p);
+        } else if p.at(SyntaxKind::SEMICOLON) {
+            p.bump();
+        }
     } else if p.at_name_token() {
         // Could be: identifier ; or identifier [: Type] [:> ref, ...] { ... } or semicolon
         // Pattern: do myAction : ActionType { ... }
@@ -209,8 +226,12 @@ pub fn parse_transition<P: SysMLParser>(p: &mut P) {
         } else if p.at(SyntaxKind::ACTION_KW) {
             parse_inline_action(p);
         } else if p.at_name_token() {
-            // Typed reference (action name)
+            // Typed reference (action name), optionally invoked as a call: do action1();
             p.parse_qualified_name();
+            p.skip_trivia();
+            if p.at(SyntaxKind::L_PAREN) {
+                parse_argument_list(p);
+            }
         }
         p.skip_trivia();
     }
